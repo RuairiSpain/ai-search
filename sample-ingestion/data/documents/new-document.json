@@ -1,0 +1,14 @@
+{
+  "id": "doc-006",
+  "documentCode": "OPS-777",
+  "title": "Operations Checklist for Search Incidents",
+  "content": "When search queries fail, validate DNS resolution, private endpoint approval, RBAC roles, index schema, document count and query filters. Escalate private networking issues to the platform network team.",
+  "category": "Operations",
+  "sourceFile": "operations-checklist.md",
+  "publishedDate": "2026-07-08T00:00:00Z",
+  "lastUpdated": "2026-07-15T00:00:00Z",
+  "group_ids": [
+    "sre",
+    "ai-platform"
+  ]
+}

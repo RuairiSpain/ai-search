@@ -1,0 +1,139 @@
+[
+  {
+    "name": "rag-documents-index",
+    "fields": [
+      {
+        "name": "id",
+        "type": "Edm.String",
+        "key": true,
+        "searchable": false,
+        "filterable": true,
+        "sortable": true,
+        "facetable": false
+      },
+      {
+        "name": "documentCode",
+        "type": "Edm.String",
+        "searchable": false,
+        "filterable": true,
+        "sortable": true,
+        "facetable": true
+      },
+      {
+        "name": "title",
+        "type": "Edm.String",
+        "searchable": true,
+        "filterable": false,
+        "sortable": false,
+        "facetable": false
+      },
+      {
+        "name": "content",
+        "type": "Edm.String",
+        "searchable": true,
+        "filterable": false,
+        "sortable": false,
+        "facetable": false
+      },
+      {
+        "name": "category",
+        "type": "Edm.String",
+        "searchable": true,
+        "filterable": true,
+        "sortable": true,
+        "facetable": true
+      },
+      {
+        "name": "sourceFile",
+        "type": "Edm.String",
+        "searchable": true,
+        "filterable": true,
+        "sortable": true,
+        "facetable": true
+      },
+      {
+        "name": "publishedDate",
+        "type": "Edm.DateTimeOffset",
+        "filterable": true,
+        "sortable": true,
+        "facetable": true
+      },
+      {
+        "name": "lastUpdated",
+        "type": "Edm.DateTimeOffset",
+        "filterable": true,
+        "sortable": true,
+        "facetable": true
+      },
+      {
+        "name": "group_ids",
+        "type": "Collection(Edm.String)",
+        "searchable": false,
+        "filterable": true,
+        "facetable": true
+      },
+      {
+        "name": "titleVector",
+        "type": "Collection(Edm.Single)",
+        "searchable": true,
+        "retrievable": false,
+        "dimensions": 1536,
+        "vectorSearchProfile": "default-vector-profile"
+      },
+      {
+        "name": "contentVector",
+        "type": "Collection(Edm.Single)",
+        "searchable": true,
+        "retrievable": false,
+        "dimensions": 1536,
+        "vectorSearchProfile": "default-vector-profile"
+      }
+    ],
+    "vectorSearch": {
+      "algorithms": [
+        {
+          "name": "default-hnsw",
+          "kind": "hnsw",
+          "hnswParameters": {
+            "metric": "cosine",
+            "m": 4,
+            "efConstruction": 400,
+            "efSearch": 500
+          }
+        }
+      ],
+      "profiles": [
+        {
+          "name": "default-vector-profile",
+          "algorithm": "default-hnsw"
+        }
+      ]
+    },
+    "semantic": {
+      "defaultConfiguration": "default-semantic-config",
+      "configurations": [
+        {
+          "name": "default-semantic-config",
+          "prioritizedFields": {
+            "titleField": {
+              "fieldName": "title"
+            },
+            "prioritizedContentFields": [
+              {
+                "fieldName": "content"
+              }
+            ],
+            "prioritizedKeywordsFields": [
+              {
+                "fieldName": "category"
+              },
+              {
+                "fieldName": "sourceFile"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+]

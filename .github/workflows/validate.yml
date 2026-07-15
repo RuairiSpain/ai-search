@@ -1,0 +1,24 @@
+name: Validate project
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Python dependencies
+        run: pip install -r sample-ingestion/requirements.txt
+      - name: Run local validation
+        run: python sample-ingestion/validate_local.py
+      - name: Run local solution path
+        run: python sample-ingestion/local_solutions/run_all_local_solutions.py
+      - name: Install Azure CLI
+        run: curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+      - name: Bicep build
+        run: az bicep build --file main.bicep

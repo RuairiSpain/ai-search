@@ -1,0 +1,24 @@
+### Hybrid search request shape
+@endpoint = https://<your-search-service>.search.windows.net
+@apiVersion = 2026-04-01
+@apiKey = <query-or-admin-key>
+@indexName = rag-documents-index
+
+POST {{endpoint}}/indexes('{{indexName}}')/docs/search.post.search?api-version={{apiVersion}}
+Content-Type: application/json
+api-key: {{apiKey}}
+
+{
+  "search": "private endpoint DNS for search",
+  "select": "id,title,category,sourceFile",
+  "filter": "group_ids/any(g: search.in(g, 'ai-platform,sre'))",
+  "top": 5,
+  "vectorQueries": [
+    {
+      "kind": "vector",
+      "fields": "titleVector,contentVector",
+      "k": 20,
+      "vector": []
+    }
+  ]
+}

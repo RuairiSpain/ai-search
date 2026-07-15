@@ -1,0 +1,26 @@
+### Upload or merge documents
+@endpoint = https://<your-search-service>.search.windows.net
+@apiVersion = 2026-04-01
+@apiKey = <admin-key>
+@indexName = rag-documents-index
+
+POST {{endpoint}}/indexes('{{indexName}}')/docs/search.index?api-version={{apiVersion}}
+Content-Type: application/json
+api-key: {{apiKey}}
+
+{
+  "value": [
+    {
+      "@search.action": "mergeOrUpload",
+      "id": "manual-001",
+      "documentCode": "MAN-001",
+      "title": "Manual REST upload",
+      "content": "This demonstrates the Index Documents REST API shape.",
+      "category": "DeveloperGuide",
+      "sourceFile": "manual.http",
+      "publishedDate": "2026-07-15T00:00:00Z",
+      "lastUpdated": "2026-07-15T00:00:00Z",
+      "group_ids": ["developers"]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+### Create index from JSON manually
+# Replace variables before running with VS Code REST Client.
+@endpoint = https://<your-search-service>.search.windows.net
+@apiVersion = 2026-04-01
+@apiKey = <admin-key>
+@indexName = rag-documents-index
+
+PUT {{endpoint}}/indexes/{{indexName}}?api-version={{apiVersion}}
+Content-Type: application/json
+api-key: {{apiKey}}
+
+< ../data/indexes/rag-documents-index.json

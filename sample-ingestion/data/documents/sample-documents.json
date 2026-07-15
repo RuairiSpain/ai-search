@@ -1,0 +1,71 @@
+[
+  {
+    "id": "doc-001",
+    "documentCode": "POL-001",
+    "title": "Private Networking Baseline for Azure AI Search",
+    "content": "Azure AI Search must use private endpoints for confidential workloads. Public network access should be disabled for production. Private DNS must resolve the search endpoint to the private endpoint IP address.",
+    "category": "Policy",
+    "sourceFile": "private-networking-baseline.md",
+    "publishedDate": "2026-07-01T00:00:00Z",
+    "lastUpdated": "2026-07-10T00:00:00Z",
+    "group_ids": [
+      "ai-platform",
+      "sre"
+    ]
+  },
+  {
+    "id": "doc-002",
+    "documentCode": "RUN-014",
+    "title": "Foundry Agent Retrieval Runbook",
+    "content": "Foundry agents can use Azure AI Search for retrieval augmented generation. Hybrid search combines keyword search, vector recall, semantic ranking and security trimming.",
+    "category": "Runbook",
+    "sourceFile": "foundry-agent-retrieval.md",
+    "publishedDate": "2026-07-02T00:00:00Z",
+    "lastUpdated": "2026-07-11T00:00:00Z",
+    "group_ids": [
+      "ai-platform",
+      "developers"
+    ]
+  },
+  {
+    "id": "doc-003",
+    "documentCode": "ARC-221",
+    "title": "Cost Optimisation Guidance for Search Indexes",
+    "content": "Use replicas for query availability and partitions for storage or indexing scale. Review vector dimensions, stored vector settings and semantic ranking usage when optimising cost.",
+    "category": "Architecture",
+    "sourceFile": "cost-optimisation-search.md",
+    "publishedDate": "2026-06-20T00:00:00Z",
+    "lastUpdated": "2026-07-03T00:00:00Z",
+    "group_ids": [
+      "finops",
+      "ai-platform"
+    ]
+  },
+  {
+    "id": "doc-004",
+    "documentCode": "SEC-099",
+    "title": "Security Trimming with Group Identifiers",
+    "content": "Every indexed document should include access control fields such as group identifiers. Query filters should restrict results to the caller groups before content is sent to an agent or model.",
+    "category": "Security",
+    "sourceFile": "security-trimming.md",
+    "publishedDate": "2026-07-05T00:00:00Z",
+    "lastUpdated": "2026-07-12T00:00:00Z",
+    "group_ids": [
+      "security",
+      "ai-platform"
+    ]
+  },
+  {
+    "id": "doc-005",
+    "documentCode": "DEV-331",
+    "title": "Developer Quickstart for Document Uploads",
+    "content": "Developers can push JSON documents to Azure AI Search using upload, merge, mergeOrUpload and delete document actions. Use batches for throughput and log failed indexing results.",
+    "category": "DeveloperGuide",
+    "sourceFile": "developer-upload-quickstart.md",
+    "publishedDate": "2026-07-07T00:00:00Z",
+    "lastUpdated": "2026-07-14T00:00:00Z",
+    "group_ids": [
+      "developers"
+    ]
+  }
+]

@@ -1,0 +1,9 @@
+azure-search-documents
+azure-identity
+azure-storage-blob
+python-dotenv
+tiktoken
+matplotlib
+numpy
+python-docx
+pillow
