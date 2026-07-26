@@ -5,6 +5,7 @@ that a mock store would hide. Run `make db-up && make migrate` first.
 from __future__ import annotations
 
 import asyncio
+from uuid import uuid4
 
 import pytest
 
@@ -53,8 +54,13 @@ async def test_concurrent_ref_population_only_one_winner(pg_pool):
     store = ContextStore(pg_pool)
     ctx = await store.new_context("ticket-triage", ALICE)
 
-    ref_a = UpstreamRef(session_id="session-a")
-    ref_b = UpstreamRef(session_id="session-b")
+    # Unique per test run: gw_context_session_owner is unique on
+    # (app, session_id), and this local Postgres persists across repeated
+    # `make test` runs with no per-test truncation, so a literal id would
+    # collide with a previous run rather than exercising the race.
+    unique = uuid4().hex[:8]
+    ref_a = UpstreamRef(session_id=f"session-a-{unique}")
+    ref_b = UpstreamRef(session_id=f"session-b-{unique}")
 
     results = await asyncio.gather(
         store.record_upstream_ref(ctx.context_id, ALICE, ref_a),
@@ -64,4 +70,4 @@ async def test_concurrent_ref_population_only_one_winner(pg_pool):
     assert sorted(wins) == [False, True]
 
     final = await store.authorise_context(ctx.context_id, ALICE)
-    assert final.session_id in {"session-a", "session-b"}
+    assert final.session_id in {f"session-a-{unique}", f"session-b-{unique}"}

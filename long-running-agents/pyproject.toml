@@ -15,6 +15,7 @@ dependencies = [
     "PyJWT[crypto]>=2.8",
     "azure-identity>=1.17",
     "azure-storage-blob>=12.20",
+    "aiohttp>=3.9",  # async transport for azure.*.aio clients (BlobServiceClient, DefaultAzureCredential)
     # Foundry SDK surface used by the T1/T2 adapters. Pinned per
     # docs/01-gateway-config-and-adapter-contract.md §3 — bump deliberately.
     "azure-ai-projects>=2.0.0",

@@ -12,6 +12,8 @@ from collections.abc import AsyncIterator
 from typing import Any
 from uuid import uuid4
 
+import httpx
+
 from gateway.auth.principal import Principal
 from gateway.upstream.base import (
     TERMINAL_STATES,
@@ -56,10 +58,23 @@ class FoundryResponsesAdapter:
         cancel=True,
     )
 
-    def __init__(self, *, openai_client: Any, agent_name: str, poll_interval_s: float = 1.5):
+    def __init__(
+        self,
+        *,
+        openai_client: Any,
+        agent_name: str,
+        poll_interval_s: float = 1.5,
+        project_endpoint: str | None = None,
+        credential: Any | None = None,
+    ):
         self._openai = openai_client
         self._agent_name = agent_name
         self._interval = poll_interval_s
+        # Only needed for fetch_artifact_bytes() — a raw REST call to the
+        # containers endpoint, since the injected `_openai` client has no
+        # guaranteed method for it (docs/07 §5).
+        self._project_endpoint = project_endpoint
+        self._credential = credential
 
     async def submit(
         self, *, app: str, principal: Principal, ref: UpstreamRef, text: str, blocking: bool, budget_ms: int
@@ -96,7 +111,7 @@ class FoundryResponsesAdapter:
         return {"x-ms-user-identity": principal.user_identity_header()}
 
     async def follow(
-        self, ref: UpstreamRef, *, principal: Principal, from_sequence: int = 0
+        self, ref: UpstreamRef, *, task_id: str, principal: Principal, from_sequence: int = 0
     ) -> AsyncIterator[StatusEvent | ArtifactEvent]:
         seq = from_sequence
         while True:
@@ -104,12 +119,12 @@ class FoundryResponsesAdapter:
             state = _map_state(resp.status)
             seq += 1
             yield StatusEvent(
-                task_id=ref.run_id or "",
+                task_id=task_id,
                 state=state,
                 sequence=seq,
                 final=state in TERMINAL_STATES,
             )
-            for artifact in await self._new_artifacts(resp, seq):
+            for artifact in self._new_artifacts(resp, task_id, seq):
                 seq += 1
                 artifact.sequence = seq
                 yield artifact
@@ -117,28 +132,53 @@ class FoundryResponsesAdapter:
                 return
             await asyncio.sleep(self._interval)
 
-    async def _new_artifacts(self, resp: Any, seq: int) -> list[ArtifactEvent]:
-        """Harvest container_file_citation annotations as they appear.
+    def _new_artifacts(self, resp: Any, task_id: str, seq: int) -> list[ArtifactEvent]:
+        """Detect container_file_citation annotations as they appear.
 
         Deliberately called on every poll, not only at completion — a code
         interpreter container lives ~1h and a background response can
         outlive it. See docs/07-artifacts-and-code-interpreter.md §2.
-        Caller (the gateway's poll loop / api layer) is responsible for
-        copying bytes to blob and writing gw_artifact; this only detects
-        new citations to harvest.
+        Caller (gateway.api.a2a's SSE endpoint) harvests bytes via
+        fetch_artifact_bytes() and writes gw_artifact; this only detects
+        new citations and carries enough upstream_ref to fetch them later.
         """
         citations = getattr(resp, "container_file_citations", None) or []
         return [
             ArtifactEvent(
-                task_id=ref_task_id(resp),
+                task_id=task_id,
                 artifact_id=c.file_id,
                 name=getattr(c, "filename", c.file_id),
                 mime=getattr(c, "mime_type", "application/octet-stream"),
                 sequence=seq,
                 uri=None,  # filled in by the harvester after copy-to-blob
+                upstream_ref={"container_id": c.container_id, "file_id": c.file_id},
             )
             for c in citations
         ]
+
+    async def fetch_artifact_bytes(self, upstream_ref: dict) -> tuple[bytes, str]:
+        """Fetch code-interpreter container file bytes directly, so the
+        harvester can copy them into the gateway's own blob store before
+        the container's ~1h TTL expires (docs/07 §3, §5). A raw REST call
+        because the injected `_openai` client has no guaranteed method for
+        the containers endpoint across SDK versions (docs/00 premise #3)."""
+        if self._project_endpoint is None or self._credential is None:
+            raise RuntimeError(
+                "FoundryResponsesAdapter was built without project_endpoint/"
+                "credential; artifact harvesting is unavailable for this upstream."
+            )
+        container_id = upstream_ref["container_id"]
+        file_id = upstream_ref["file_id"]
+        token = await self._credential.get_token("https://ai.azure.com/.default")
+        url = (
+            f"{self._project_endpoint.rstrip('/')}/openai/v1/containers/"
+            f"{container_id}/files/{file_id}/content"
+        )
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.get(url, headers={"Authorization": f"Bearer {token.token}"})
+            resp.raise_for_status()
+            mime = resp.headers.get("content-type", "application/octet-stream")
+            return resp.content, mime
 
     async def resume(self, ref: UpstreamRef, *, principal: Principal, text: str) -> Submission:
         raise NotImplementedError(
@@ -176,7 +216,3 @@ class FoundryResponsesAdapter:
             return True
         except Exception:  # noqa: BLE001 - readiness probe: any failure means unhealthy
             return False
-
-
-def ref_task_id(resp: Any) -> str:
-    return getattr(resp, "id", "")

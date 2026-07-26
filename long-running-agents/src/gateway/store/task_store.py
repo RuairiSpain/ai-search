@@ -31,6 +31,20 @@ class TaskRow:
     updated_at: datetime
 
 
+def _row_to_task(row: asyncpg.Record) -> TaskRow:
+    return TaskRow(
+        task_id=row["task_id"],
+        context_id=row["context_id"],
+        app=row["app"],
+        tier=row["tier"],
+        state=row["state"],
+        run_id=row["run_id"],
+        last_sequence=row["last_sequence"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
 def _event_from_row(row: asyncpg.Record) -> StatusEvent | ArtifactEvent:
     payload = row["payload"]
     if isinstance(payload, str):
@@ -74,20 +88,37 @@ class TaskStore:
                 run_id,
             )
 
-    async def dedupe_inbound(self, message_id: str, task_id: str) -> bool:
+    async def get_task(self, task_id: str) -> TaskRow | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT * FROM gw_task WHERE task_id = $1", task_id)
+            return _row_to_task(row) if row else None
+
+    async def dedupe_inbound(self, message_id: str) -> bool:
         """True if this messageId is new (proceed); False if it's a
         retry we've already handled (docs/02-decisions.md D7 "Submit
-        idempotency" — dedupe on messageId *before* the upstream call)."""
+        idempotency" — dedupe on messageId *before* the upstream call,
+        which is necessarily before a task_id exists — see
+        link_inbound_message)."""
         async with self._pool.acquire() as conn:
             try:
                 await conn.execute(
-                    "INSERT INTO gw_inbound_message (message_id, task_id) VALUES ($1, $2)",
-                    message_id,
-                    task_id,
+                    "INSERT INTO gw_inbound_message (message_id) VALUES ($1)", message_id
                 )
                 return True
             except asyncpg.UniqueViolationError:
                 return False
+
+    async def link_inbound_message(self, message_id: str, task_id: str) -> None:
+        """Second step of dedupe_inbound: once the task actually exists,
+        link the message that caused it — for audit ("what task did this
+        message produce"), not for the idempotency check itself, which
+        already happened in dedupe_inbound."""
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE gw_inbound_message SET task_id = $2 WHERE message_id = $1",
+                message_id,
+                task_id,
+            )
 
     async def append_event(
         self, task_id: str, sequence: int, kind: str, payload: dict

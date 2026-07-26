@@ -84,6 +84,11 @@ class ArtifactEvent:
     mime: str
     sequence: int
     uri: str | None = None  # by reference. Never inline bytes.
+    # Transient fetch info an adapter needs to retrieve the bytes later
+    # (e.g. {"container_id", "file_id"} for T1 code interpreter — docs/07
+    # §3). IDs only, never bytes; stripped before this event reaches a
+    # client (see gateway.api.a2a.sse_event_stream).
+    upstream_ref: dict | None = None
 
 
 @dataclass
@@ -125,6 +130,7 @@ class UpstreamAdapter(Protocol):
         self,
         ref: UpstreamRef,
         *,
+        task_id: str,
         principal: Principal,
         from_sequence: int = 0,
     ) -> AsyncIterator[StatusEvent | ArtifactEvent]:
@@ -132,6 +138,12 @@ class UpstreamAdapter(Protocol):
 
         T1/T2 poll and synthesise events. T3 relays pushed events.
         `from_sequence` makes reconnection resumable.
+
+        `task_id` is the GATEWAY's task_id (gw_task.task_id) — not
+        `ref.run_id`, which is the upstream's own id and, for T1/T2, a
+        different value. Every yielded event must be stamped with
+        `task_id`, because gw_event.task_id and gw_artifact.task_id are
+        foreign keys against gw_task, not against the upstream.
         """
         ...
 

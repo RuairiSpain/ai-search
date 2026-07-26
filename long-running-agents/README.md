@@ -63,10 +63,12 @@ long-running-agents/
 ├── src/gateway/           # the gateway itself — Python, FastAPI
 │   ├── auth/              # EntraValidator / Principal (docs/00 §5, docs/05 §3)
 │   ├── upstream/          # UpstreamAdapter + T1/T2/T3 implementations (docs/01)
-│   ├── store/             # gw_context / gw_task / gw_event (docs/03)
-│   ├── api/                # A2A surface + T3 webhook receiver
+│   ├── store/             # gw_context / gw_task / gw_event / gw_artifact (docs/03)
+│   ├── api/                # A2A surface (message/send, tasks/get, tasks/cancel,
+│   │                       # SSE follow, artifact download) + T3 webhook receiver
+│   ├── artifacts.py        # ArtifactHarvester: container files -> blob -> SAS (docs/07)
 │   ├── config.py          # apps.yaml loader
-│   ├── registry.py        # builds adapters from config at startup
+│   ├── registry.py        # builds adapters + harvester from config at startup
 │   └── main.py            # FastAPI app, startup health probes
 ├── migrations/0001_init.sql
 ├── tests/                 # offline unit tests + Postgres integration tests
@@ -74,13 +76,28 @@ long-running-agents/
 └── docker-compose.yml     # local Postgres
 ```
 
-This is a working skeleton, not a finished gateway: `tasks/get`, `tasks/cancel`
-and the SSE follow endpoint are stubbed with `HTTPException(501, ...)` and a
-comment pointing at what to wire up (they need a `gw_task → gw_context` join
-that's straightforward but was left as an exercise rather than guessed at).
-Everything else — principal validation, the IDOR-safe `authorise_context`,
-the session-creation-race fix, the T1/T2/T3 adapters, the Postgres schema —
-is implemented and tested.
+This is a working skeleton, not a finished gateway. What's implemented and
+tested end to end (message/send → tasks/get → SSE stream → tasks/cancel,
+against a real Postgres): principal validation, the IDOR-safe
+`authorise_context`, the session-creation-race fix, the T1/T2/T3 adapters,
+the full A2A surface, and T1 code-interpreter artifact harvesting (copy to
+the shared blob container, index in `gw_artifact`, download via a
+short-lived user-delegation SAS).
+
+**Known gaps, not hidden:**
+- `steer()` / mid-run interjections (D7) — the adapter methods exist,
+  nothing exposes them over HTTP yet, and `gw_interjection` is unused.
+- T2/T3 artifacts still download through their native store (Session
+  Files API / T3's own mechanism), not the shared blob container — only
+  T1's code-interpreter path is harvested in this pass. See docs/07 §2
+  item 3 and docs/08.
+- The reaper (`gw_task_reaper`, `TaskStore.reap_wedged_tasks`) exists but
+  nothing schedules it.
+- `gw_push_config` is defined but never read or written.
+- Orphan upstream-session cleanup after a lost session-creation race is a
+  logged warning, not an actual termination call.
+- `gwlint` (the D6 CI linter) doesn't exist as code.
+- No VNet/private endpoint on Postgres or storage (deliberately deferred).
 
 ## Running it locally
 

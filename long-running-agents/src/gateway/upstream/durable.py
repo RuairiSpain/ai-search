@@ -105,20 +105,24 @@ class DurableAdapter:
         )
 
     async def follow(
-        self, ref: UpstreamRef, *, principal: Principal, from_sequence: int = 0
+        self, ref: UpstreamRef, *, task_id: str, principal: Principal, from_sequence: int = 0
     ) -> AsyncIterator[StatusEvent | ArtifactEvent]:
-        """Relay events the webhook receiver already persisted. No polling
-        of the upstream — T3 pushes (docs/06 §4.1)."""
+        """Relay events the webhook receiver already persisted under
+        `task_id` (the gateway's own id — the T3 orchestrator posts to
+        `/callback/tasks/{task_id}/events` using the id we handed back
+        from submit(), so this is already the right key; `ref` is unused
+        here but kept for Protocol symmetry with T1/T2). No polling of the
+        upstream — T3 pushes (docs/06 §4.1)."""
         seq = from_sequence
         while True:
-            batch = await self._events.events_after(ref.run_id or "", seq)
+            batch = await self._events.events_after(task_id, seq)
             for event in batch:
                 seq = event.sequence
                 yield event
                 if isinstance(event, StatusEvent) and event.final:
                     return
             if not batch:
-                await self._events.wait_for_new_event(ref.run_id or "", timeout_s=30.0)
+                await self._events.wait_for_new_event(task_id, timeout_s=30.0)
 
     async def resume(self, ref: UpstreamRef, *, principal: Principal, text: str) -> Submission:
         # Maps onto client.raise_event(instance_id, "APPROVAL", payload) on

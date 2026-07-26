@@ -19,6 +19,7 @@ from gateway.api.a2a import build_router
 from gateway.api.webhooks import build_webhook_router
 from gateway.config import get_config
 from gateway.registry import Registry
+from gateway.store.artifact_store import ArtifactStore
 from gateway.store.context_store import ContextStore
 from gateway.store.db import Database
 from gateway.store.task_store import TaskStore
@@ -34,7 +35,8 @@ async def lifespan(app: FastAPI):
 
     contexts = ContextStore(db.pool)
     tasks = TaskStore(db.pool)
-    registry = Registry(config, tasks)
+    artifacts = ArtifactStore(db.pool)
+    registry = Registry(config, tasks, artifacts)
     registry.build()
 
     health = await registry.health_check_all()
@@ -52,7 +54,7 @@ async def lifespan(app: FastAPI):
     app.state.registry = registry
     app.state.last_health = health
 
-    app.include_router(build_router(config, registry, contexts, tasks))
+    app.include_router(build_router(config, registry, contexts, tasks, artifacts, registry.harvester))
     app.include_router(build_webhook_router(tasks), prefix="/callback")
 
     try:

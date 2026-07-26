@@ -118,10 +118,17 @@ CREATE TABLE IF NOT EXISTS gw_push_config (
     PRIMARY KEY (context_id, url)
 );
 
--- Dedupe on the A2A messageId rather than inventing an Idempotency-Key header.
+-- Dedupe on the A2A messageId rather than inventing an Idempotency-Key
+-- header. task_id is nullable and linked in a second step: the dedupe
+-- claim must land BEFORE the upstream call (D7 "Submit idempotency"),
+-- which is before gw_task's row exists, so it cannot be NOT NULL at
+-- insert time. (Correction found during implementation: the original
+-- schema had this NOT NULL, which is incompatible with dedupe-before-
+-- task-exists — see gateway.store.task_store.dedupe_inbound /
+-- link_inbound_message.)
 CREATE TABLE IF NOT EXISTS gw_inbound_message (
     message_id  TEXT PRIMARY KEY,
-    task_id     TEXT NOT NULL REFERENCES gw_task(task_id),
+    task_id     TEXT REFERENCES gw_task(task_id),
     received_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
