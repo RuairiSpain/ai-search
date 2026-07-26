@@ -93,6 +93,26 @@ def _narrate(resp: Any) -> str | None:
         return None
 
 
+def _detail_for(resp: Any, state: TaskState) -> str | None:
+    """The actual answer on completion; coarse tool-call narration before
+    that. Without this split, a completed task's `StatusEvent.detail`
+    stayed whatever `_narrate()` last said about the final `message` output
+    item -- literally the static string "drafting a response" -- forever.
+    That's narration for an answer that was still being written, attached
+    to an event announcing the answer is done: not just unhelpful, actively
+    wrong. `resp.output_text` is a real `openai` package convenience
+    property (`Response.output_text`, verified against the installed
+    package) that aggregates every `output_text` content block from
+    `resp.output` -- the actual text a plain `chat.py`-style caller would
+    print. Falls back to `_narrate()` if the terminal response has no text
+    (a failed/canceled run, or a tool-only response with nothing to say)."""
+    if state in TERMINAL_STATES:
+        text = getattr(resp, "output_text", None)
+        if text:
+            return text
+    return _narrate(resp)
+
+
 def new_task_id() -> str:
     return f"task_{uuid4().hex}"
 
@@ -237,7 +257,7 @@ class FoundryResponsesAdapter:
                 task_id=task_id,
                 state=state,
                 sequence=seq,
-                detail=_narrate(resp),
+                detail=_detail_for(resp, state),
                 final=state in TERMINAL_STATES,
             )
             for artifact in self._new_artifacts(resp, task_id, seq):

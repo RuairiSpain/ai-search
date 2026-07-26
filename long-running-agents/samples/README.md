@@ -1,6 +1,6 @@
 # Samples
 
-Five worked examples across all three tiers. This is a first slice of the
+Six worked examples across all three tiers. This is a first slice of the
 target library laid out in `docs/02-decisions.md` ("Documentation and
 samples structure") — that section lists the full eventual set
 (`tier1/01`..`10`, `tier2/01`..`04`, `tier3/01`..`04`, `gateway/01`..`02`);
@@ -13,6 +13,7 @@ filling in the rest later doesn't require renaming anything.
 | [`tier1/01-basic-declarative-agent`](tier1/01-basic-declarative-agent/) | T1 | A single declarative prompt agent: instructions in markdown, a skill, an MCP toolbox. The "classic Foundry agent" shape. |
 | [`tier1/08-workflow-executor-reviewer`](tier1/08-workflow-executor-reviewer/) | T1 | Executor → reviewer, both defined entirely in markdown/YAML. The reviewer runs in an **isolated conversation** — no history, no memory of the executor's turn. |
 | [`tier1/03-code-interpreter-shared-memory`](tier1/03-code-interpreter-shared-memory/) | T1 | Code interpreter does a math calculation from the user's prompt; a second agent **shares the same conversation and memory scope** and reformats the result into an ELI5 preschool multiple-choice flashcard. Deliberately the mirror image of the sample above. |
+| [`tier2/02-per-user-isolated-storage`](tier2/02-per-user-isolated-storage/) | T2 | Three simulated users hit the same hosted agent. A function tool proves each gets an isolated, persistent `$HOME` (no cross-user leakage); code interpreter writes each user's prompt to a real `.docx`, harvested by the gateway's existing artifact pipeline and returned as a download link that outlives the agent session. |
 | [`tier2/04-long-running-hello-world`](tier2/04-long-running-hello-world/) | T2 | One hosted agent, ~5 minutes of work, fronted by this gateway. Narration is automatic and coarse: one line naming the tool call in progress ("running tool: slow_then_greet"), unchanged for the whole run, derived from the platform's own `Response.output` — no agent-side code. |
 | [`tier3/01-durable-hello-world-status`](tier3/01-durable-hello-world-status/) | T3 | The same ~5 minute hello world, this time as a durable orchestration that pushes explicit, author-chosen narration at each of five steps via webhook. Same client, visibly finer-grained experience. |
 

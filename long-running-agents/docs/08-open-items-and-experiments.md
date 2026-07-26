@@ -350,6 +350,77 @@ real than a `FakeAdapter`. In order found:
     shapes verified field-for-field against the installed `openai`
     package, not guessed.
 
+17. **T2 tasks never delivered the agent's actual answer text at all —
+    found while building `samples/tier2/02-per-user-isolated-storage`.**
+    That sample needs to read a T2 agent's conversational reply back
+    (a note count, stated in the model's own words) through the A2A
+    surface. Tracing how that would reach a client surfaced that it
+    couldn't: item 16's `_narrate()` maps a terminal `message`-type output
+    item to the **static string** `"drafting a response"` — appropriate
+    while the answer is still being written, wrong once the run is
+    actually done. Because `GatewayTaskStoreAdapter.get()`
+    (`src/gateway/a2a_server/task_store.py`) also sets `history=[]`
+    unconditionally (a separate, previously-documented gap — full
+    turn-by-turn history isn't persisted), the *only* place a T2 answer
+    could ever have reached a client was `StatusEvent.detail` on the final
+    status update. With `_narrate()` returning a placeholder there, no A2A
+    client had any path to a T2 agent's actual reply — not a narrower
+    progress-fidelity gap like items 15/16, but the delivery of the answer
+    itself.
+
+    Fixed with `_detail_for(resp, state)`
+    (`src/gateway/upstream/foundry_responses.py`): on a **terminal** state,
+    prefer `resp.output_text` — a real `openai` package convenience
+    `@property` (verified against the installed package's
+    `openai/types/responses/response.py`) that aggregates every
+    `output_text` content block from `resp.output` into the same string a
+    plain `chat.py`-style caller would print — falling back to
+    `_narrate()`'s coarse tool-call narration only if there's no text (a
+    failed/canceled run, or a tool-only turn with nothing to say). Non-terminal
+    states are untouched: `_narrate()` still drives in-progress narration,
+    and a non-empty `output_text` mid-run (partial streamed text) is
+    deliberately not surfaced early, so a client never sees a still-forming
+    answer reported as if it were final. Tests:
+    `tests/test_foundry_progress_narration.py::TestDetailFor` plus a
+    `follow()` integration test confirming the real answer text reaches
+    `StatusEvent.detail` on completion.
+
+18. **`samples/tier2/02-per-user-isolated-storage` added.** Three
+    simulated users (a fake chat UI script issuing real, distinct Entra
+    bearer tokens — no dev-mode auth bypass exists in `EntraValidator`, nor
+    should one) hit the same hosted agent through the same gateway app,
+    interleaved rather than sequential. Two mechanisms demonstrated, kept
+    deliberately separate since they're genuinely different subsystems (see
+    the sample's README "Two different sandboxes, one story" table):
+
+    - **Per-user `$HOME` isolation**: a function tool
+      (`@ai_function`, pre-written Python, executes inside the agent's own
+      hosted-session container) appends to a *fixed*-path notes file and
+      returns a turn count. Same code, same path, every call — what
+      differs, and is what the sample proves, is which sandbox that path
+      resolves inside, driven entirely by the gateway's existing
+      `identity: per_user` → `x-ms-user-identity` delegation
+      (`FoundryHostedAdapter._headers()`, docs/00 §5). No new gateway code.
+    - **Artifacts outliving the agent**: code interpreter writes the
+      user's prompt into a real `.docx`, using a hand-verified
+      `zipfile`-only (no `python-docx`, not installed in the sandbox)
+      docx-builder pasted verbatim into the agent's `instructions.md` —
+      built and round-tripped through `python-docx.Document()` in this
+      sample's own development to confirm Word can actually open it,
+      before being trusted in an instructions file the model executes
+      unmodified. This reuses the gateway's existing code-interpreter
+      harvest pipeline (`_new_artifacts()`, `ArtifactHarvester`) completely
+      unchanged, and the download link is read off
+      `task.artifacts[].parts[].url` — verified end to end by reading
+      `GatewayTaskStoreAdapter._project_artifacts()`
+      (`src/gateway/a2a_server/task_store.py`) directly: it mints a fresh
+      SAS on every `GetTask` read from `gw_artifact` rows already in
+      `state = 'stored'`. No new gateway code here either.
+
+    The one adjacent thing this sample's build *did* change is item 17
+    above — without it, the isolation demo's note count would never have
+    been visible to the client at all.
+
 ## D. Duplicate source documents collapsed during merge
 
 For traceability: these upload sets were identical or near-identical

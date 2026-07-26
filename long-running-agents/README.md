@@ -49,7 +49,7 @@ Full escalation table, what each tier does *not* have, and cost models: see
 | [`06-tier3-durable-agents.md`](docs/06-tier3-durable-agents.md) | Deployment, determinism rules, triggers (A2A/cron/Teams), HITL, the three planes |
 | [`07-artifacts-and-code-interpreter.md`](docs/07-artifacts-and-code-interpreter.md) | Blob artifact policy, code interpreter container lifecycle, MCP → code interpreter handoff |
 | [`08-open-items-and-experiments.md`](docs/08-open-items-and-experiments.md) | Consolidated backlog: empirical checks (⚠) to run before build, open decisions (◆), and every correction made while merging the source drafts |
-| [`samples/`](samples/) | Five worked examples: three T1 (declarative agent, isolated executor/reviewer, shared-memory code-interpreter/flashcards) and a T2/T3 hello-world pair that shows the actual progress-narration difference between the two tiers |
+| [`samples/`](samples/) | Six worked examples: three T1 (declarative agent, isolated executor/reviewer, shared-memory code-interpreter/flashcards), a T2 per-user isolation + artifact-harvest demo, and a T2/T3 hello-world pair that shows the actual progress-narration difference between the two tiers |
 
 ## Status at a glance
 
@@ -159,6 +159,19 @@ real request/response cycle through it, not by reading the code:
   items (verified field-for-field against the installed `openai` package),
   no agent-side code required. `docs/05-tier2-hosted-agents.md` §5.1 and
   §5.4 (plus every doc cross-referencing them) are corrected to match.
+- Bigger than a narration gap: **no T2 task ever delivered the agent's
+  actual answer text to an A2A client at all.** `_narrate()`'s fix above
+  still mapped a *completed* task's final `message` item to the same
+  static placeholder ("drafting a response") it used mid-run — and since
+  `GatewayTaskStoreAdapter.get()` also always returns `history=[]`
+  (turn-by-turn history isn't persisted yet), `StatusEvent.detail` on the
+  terminal status update was the *only* path a T2 answer could ever have
+  reached a client, and it never carried one. Found while building
+  `samples/tier2/02-per-user-isolated-storage`, which needs to read the
+  agent's reply back. Fixed with `_detail_for()`: on a terminal state,
+  prefer `resp.output_text` (a real, installed-package-verified `openai`
+  convenience property aggregating the actual answer) over `_narrate()`'s
+  coarse narration.
 
 See `docs/08-open-items-and-experiments.md` section E for the full account
 of each, item by item.
