@@ -11,8 +11,20 @@ import logging
 from typing import Any, ClassVar
 
 from gateway.auth.principal import Principal
-from gateway.upstream.base import Capabilities, ProgressFidelity, Submission, UpstreamRef
-from gateway.upstream.foundry_responses import FoundryResponsesAdapter, _map_state, new_task_id
+from gateway.upstream.base import (
+    Capabilities,
+    InboundFile,
+    ProgressFidelity,
+    Submission,
+    UpstreamRef,
+)
+from gateway.upstream.foundry_responses import (
+    FoundryResponsesAdapter,
+    _build_input,
+    _map_state,
+    _upload_files,
+    new_task_id,
+)
 
 log = logging.getLogger(__name__)
 
@@ -86,13 +98,22 @@ class FoundryHostedAdapter(FoundryResponsesAdapter):
         return True
 
     async def submit(
-        self, *, app: str, principal: Principal, ref: UpstreamRef, text: str, blocking: bool, budget_ms: int
+        self,
+        *,
+        app: str,
+        principal: Principal,
+        ref: UpstreamRef,
+        text: str,
+        files: list[InboundFile],
+        blocking: bool,
+        budget_ms: int,
     ) -> Submission:
         client = self._project.get_openai_client(agent_name=self._agent_name)
+        uploaded = await _upload_files(client, files)
         resp = await client.responses.create(
             background=not blocking,
             conversation=ref.conversation_id,
-            input=text,
+            input=_build_input(text, uploaded),
             extra_headers=self._headers(principal),
             prompt_cache_key=principal.subject,
             safety_identifier=principal.subject,

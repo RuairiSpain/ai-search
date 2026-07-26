@@ -102,7 +102,7 @@ question by reading an old copy:
    between them are items 4, 6 and 7 above. No other content differences
    were found between revisions of the same document.
 
-## E. Corrections applied after the initial build (a2a-sdk adoption, T1 removed from the gateway)
+## E. Corrections applied after the initial build (a2a-sdk adoption, T1 removed from the gateway, bidirectional files)
 
 Unlike section C, these weren't found while merging source drafts — they
 were found building against the real `a2a-sdk` package and a real Postgres,
@@ -168,6 +168,29 @@ way from a stale doc.
    than misrouted. Clients that want idempotent retries need to supply
    their own `taskId` up front. Open item: no gateway-side workaround for a
    client that truly cannot do this exists yet.
+7. **`DurableAdapter`'s wire format predated Phase 3's a2a-sdk
+   verification and was never corrected.** `submit()`/`cancel()` used
+   `"method": "message/send"`/`"tasks/cancel"` (old A2A method-name
+   convention) and a `kind`-discriminated `Part` shape, neither of which
+   `a2a-sdk`'s real JSON-RPC dispatcher accepts (it wants PascalCase
+   `SendMessage`/`CancelTask`, and `Part` has no `kind` field). The response
+   parser also compared task state against the wrong vocabulary — plain
+   lowercase strings like `"submitted"` against what the SDK actually
+   returns, `"TASK_STATE_SUBMITTED"`. Every T3 call would have failed
+   end-to-end against a real T3 upstream built on `agent-framework-a2a`.
+   Found and fixed while wiring in file-part support (Phase 4, item 8
+   below), not by a dedicated T3 review — no real T3 A2A server has been
+   run against this gateway yet, so this fix is verified only as far as
+   "the request now parses correctly against the installed a2a-sdk's own
+   `ParseDict`," not against an actual T3 server's behavior.
+8. **Bidirectional files (Phase 4).** Inbound `Part.raw`/`Part.url` are now
+   extracted and passed to `UpstreamAdapter.submit()`/`resume()` as
+   `InboundFile`s. T2 uploads via the Files API and references the
+   resulting `file_id` in the Responses input; T3 relays the part as-is to
+   its own upstream A2A server. See `01-gateway-config-and-adapter-contract.md`
+   §5. Only inbound was in scope for this phase — outbound T3 artifacts
+   still go through T3's native mechanism rather than the shared blob
+   container, a pre-existing gap this phase didn't touch.
 
 ## D. Duplicate source documents collapsed during merge
 

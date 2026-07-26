@@ -96,13 +96,14 @@ tested end to end (`SendMessage` → `GetTask` → `CancelTask`, through the
 real `a2a-sdk`-mounted routes against a real Postgres): principal
 validation, the IDOR-safe `authorise_context`/`get_or_create_context`, the
 session-creation-race fix, the T2/T3 adapters, the full spec-conformant A2A
-surface, and T2 code-interpreter artifact harvesting (copy to the shared
+surface, T2 code-interpreter artifact harvesting (copy to the shared
 blob container, index in `gw_artifact`, download via a short-lived
-user-delegation SAS).
+user-delegation SAS), and inbound file parts (`Part.raw`/`Part.url`
+extracted and forwarded — T2 uploads via the Files API and references the
+resulting `file_id`; T3 relays the part to its own upstream A2A server —
+see `01-gateway-config-and-adapter-contract.md` §5).
 
 **Known gaps, not hidden:**
-- Inbound file parts (`Part.url`/`Part.raw`) aren't wired to Foundry yet —
-  text-only input for now. Bidirectional file support is the next phase.
 - `steer()` and steering into a `working` task — the adapter methods exist,
   nothing exposes them over the A2A surface yet, and `gw_interjection` is
   unused. Same for T2's `resume()`.
@@ -114,6 +115,12 @@ user-delegation SAS).
 - T3 artifacts still download through their native mechanism, not the
   shared blob container — only T2's code-interpreter citation path is
   harvested in this pass. See docs/07 §2 item 3 and docs/08.
+- `DurableAdapter`'s JSON-RPC wire format was corrected to match the real
+  `a2a-sdk` (method names, `Part` shape, task-state vocabulary — it was
+  wrong before, see docs/08 item E.7), but no real T3 A2A server has been
+  run against this gateway yet. Verified only as far as "parses correctly
+  against the installed a2a-sdk's own `ParseDict`," not against actual T3
+  behavior.
 - The reaper (`gw_task_reaper`, `TaskStore.reap_wedged_tasks`) exists but
   nothing schedules it.
 - `gw_push_config` is defined but never read or written.

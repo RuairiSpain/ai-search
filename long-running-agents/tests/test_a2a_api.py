@@ -14,6 +14,7 @@ some things can only be verified against real Azure.
 from __future__ import annotations
 
 import asyncio
+import base64
 import time
 from uuid import uuid4
 
@@ -32,6 +33,7 @@ from gateway.store.context_store import ContextStore
 from gateway.store.task_store import TaskStore
 from gateway.upstream.base import (
     Capabilities,
+    InboundFile,
     ProgressFidelity,
     StatusEvent,
     Submission,
@@ -57,12 +59,14 @@ class FakeAdapter:
 
     def __init__(self):
         self.cancelled: list[UpstreamRef] = []
+        self.received_files: list[InboundFile] = []
         self._release = asyncio.Event()
 
-    async def submit(self, *, app, principal, ref, text, blocking, budget_ms):
+    async def submit(self, *, app, principal, ref, text, files, blocking, budget_ms):
         # A fresh id per call -- this fake stands in for multiple test
         # functions sharing one persistent local Postgres with no
         # per-test teardown, so a hardcoded id would collide across tests.
+        self.received_files = list(files)
         return Submission(
             task_id=f"task_fake_{uuid4().hex[:8]}",
             context_id="ignored-by-executor",
@@ -78,7 +82,7 @@ class FakeAdapter:
         final_state = TaskState.CANCELED if ref in self.cancelled else TaskState.COMPLETED
         yield StatusEvent(task_id=task_id, state=final_state, sequence=seq, final=True)
 
-    async def resume(self, ref, *, principal, text):
+    async def resume(self, ref, *, principal, text, files):
         raise NotImplementedError
 
     async def steer(self, ref, *, principal, text):
@@ -205,6 +209,50 @@ async def test_send_message_blocks_until_terminal_then_get(app_and_adapter, rsa_
         other_headers = _headers(_bearer_token(rsa_key, oid="ffffffff-ffff-ffff-ffff-ffffffffffff"))
         forbidden = await _rpc(client, "GetTask", {"id": task["id"]}, headers=other_headers, req_id="3")
         assert forbidden["error"]["code"] == -32001  # TASK_NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_send_message_with_file_parts_extracts_and_forwards_files(app_and_adapter, rsa_key):
+    fastapi_app, adapter = app_and_adapter
+    headers = _headers(_bearer_token(rsa_key))
+    adapter._release.set()
+
+    async with AsyncClient(transport=ASGITransport(app=fastapi_app), base_url="http://test") as client:
+        message_id = f"m-{uuid4().hex[:8]}"
+        body = await _rpc(
+            client,
+            "SendMessage",
+            {
+                "message": {
+                    "messageId": message_id,
+                    "role": "ROLE_USER",
+                    "parts": [
+                        {"text": "see attached"},
+                        {
+                            "raw": base64.b64encode(b"csv,data\n1,2").decode(),
+                            "filename": "data.csv",
+                            "mediaType": "text/csv",
+                        },
+                        {
+                            "url": "https://example.com/report.pdf",
+                            "filename": "report.pdf",
+                            "mediaType": "application/pdf",
+                        },
+                    ],
+                }
+            },
+            headers=headers,
+        )
+        assert body["result"]["task"]["status"]["state"] == "TASK_STATE_COMPLETED"
+
+        assert len(adapter.received_files) == 2
+        by_name = {f.name: f for f in adapter.received_files}
+        assert by_name["data.csv"].mime == "text/csv"
+        assert by_name["data.csv"].data == b"csv,data\n1,2"
+        assert by_name["data.csv"].url is None
+        assert by_name["report.pdf"].mime == "application/pdf"
+        assert by_name["report.pdf"].url == "https://example.com/report.pdf"
+        assert by_name["report.pdf"].data is None
 
 
 @pytest.mark.asyncio

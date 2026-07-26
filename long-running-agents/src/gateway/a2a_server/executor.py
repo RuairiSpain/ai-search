@@ -9,11 +9,12 @@ is the sole remaining entry point client requests reach an adapter through:
   * D7 "never optimistic" cancellation — state only changes when the
     upstream confirms, via the follow() loop, not here.
 
-Known gap carried forward from before the SDK swap, not introduced by it:
-inbound file parts (Part.url / Part.raw) are not yet wired to Foundry —
-text-only input for now. Bidirectional file support is the next phase.
-Steering into a `working` task and T2's resume() are also still open —
-see docs/08-open-items-and-experiments.md.
+Inbound file parts (`Part.raw` / `Part.url`) are extracted alongside text
+and handed to the adapter as `InboundFile`s (docs/01 §4 "Bidirectional
+files") — upload/relay is adapter-specific (T2 uploads via the Files API,
+T3 relays the part as-is), so this module only extracts and passes them
+through, never touches bytes itself. Steering into a `working` task and
+T2's resume() are still open — see docs/08-open-items-and-experiments.md.
 """
 from __future__ import annotations
 
@@ -35,6 +36,7 @@ from gateway.store.context_store import ContextStore
 from gateway.store.task_store import TaskStore as GwTaskStore
 from gateway.upstream.base import (
     ArtifactEvent,
+    InboundFile,
     StatusEvent,
     UpstreamAdapter,
     UpstreamRef,
@@ -121,11 +123,13 @@ class GatewayAgentExecutor(AgentExecutor):
         updater = TaskUpdater(event_queue, context.task_id, ctx_row.context_id)
 
         text = _extract_text(context)
+        files = _extract_files(context)
         submission = await self._adapter.submit(
             app=self._app,
             principal=principal,
             ref=ctx_row.upstream_ref(),
             text=text,
+            files=files,
             blocking=self._default_blocking,
             budget_ms=self._budget_ms,
         )
@@ -198,7 +202,10 @@ class GatewayAgentExecutor(AgentExecutor):
 
         if task.status.state == SdkTaskState.TASK_STATE_INPUT_REQUIRED:
             text = _extract_text(context)
-            submission = await self._adapter.resume(ref, principal=principal, text=text)
+            files = _extract_files(context)
+            submission = await self._adapter.resume(
+                ref, principal=principal, text=text, files=files
+            )
             await self._tasks.set_run_id(task.id, submission.ref.run_id)
             await updater.start_work()
             await self._follow_and_relay(
@@ -284,3 +291,32 @@ def _extract_text(context: RequestContext) -> str:
     if context.message is None:
         return ""
     return "\n".join(get_text_parts(context.message.parts))
+
+
+def _extract_files(context: RequestContext) -> list[InboundFile]:
+    """`Part`'s four content variants (`text`/`raw`/`url`/`data`) are one
+    proto oneof, so `HasField` is the correct way to tell them apart —
+    truthy checks on `raw`/`url` would misfire on an explicitly-empty-but-
+    present value. `data` (a structured payload, A2A's DataPart equivalent)
+    is deliberately not treated as a file here; it's a different concern."""
+    if context.message is None:
+        return []
+    files: list[InboundFile] = []
+    for part in context.message.parts:
+        if part.HasField("raw"):
+            files.append(
+                InboundFile(
+                    name=part.filename or "file",
+                    mime=part.media_type or "application/octet-stream",
+                    data=part.raw,
+                )
+            )
+        elif part.HasField("url"):
+            files.append(
+                InboundFile(
+                    name=part.filename or "file",
+                    mime=part.media_type or "application/octet-stream",
+                    url=part.url,
+                )
+            )
+    return files

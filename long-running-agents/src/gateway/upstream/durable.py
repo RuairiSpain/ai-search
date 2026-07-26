@@ -10,11 +10,22 @@ because the T3 A2A server does not stream, it pushes. `event_source` is
 the thin read side of that table so this module never imports the store
 layer's SQL directly (docs/00 design premise #3: adapters stay free of
 storage concerns beyond the UpstreamRef they're handed).
+
+The JSON-RPC calls here talk to the T3 upstream's *own* A2A server, built
+with `agent-framework-a2a` on the same `a2a-sdk` the gateway's own surface
+uses (docs/01 §4) — so the wire shape must match what that SDK's dispatcher
+actually parses: PascalCase method names (`SendMessage`, not
+`message/send`), flat `Part` fields with no `kind` discriminator, and
+`SendMessageConfiguration.returnImmediately` rather than a `blocking` flag.
+An earlier version of this file predated verifying that against the real
+package (Phase 3) and never got corrected here — found and fixed while
+wiring in file-part support (docs/08 item E, Phase 4), not by inspection.
 """
 from __future__ import annotations
 
+import base64
 from collections.abc import AsyncIterator
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import uuid4
 
 import httpx
@@ -23,6 +34,7 @@ from gateway.auth.principal import Principal
 from gateway.upstream.base import (
     ArtifactEvent,
     Capabilities,
+    InboundFile,
     ProgressFidelity,
     StatusEvent,
     SteerResult,
@@ -30,6 +42,40 @@ from gateway.upstream.base import (
     TaskState,
     UpstreamRef,
 )
+
+# a2a-sdk's wire-format task state strings -> our TaskState vocabulary.
+# The task_id/context_id fields already happen to match our own naming
+# (camelCase JSON of the same concepts), but the state enum does not --
+# it's the SDK's own `TASK_STATE_*` names, not our lowercase ones.
+_SDK_STATE_TO_GW: dict[str, TaskState] = {
+    "TASK_STATE_SUBMITTED": TaskState.SUBMITTED,
+    "TASK_STATE_WORKING": TaskState.WORKING,
+    "TASK_STATE_INPUT_REQUIRED": TaskState.INPUT_REQUIRED,
+    "TASK_STATE_COMPLETED": TaskState.COMPLETED,
+    "TASK_STATE_FAILED": TaskState.FAILED,
+    "TASK_STATE_CANCELED": TaskState.CANCELED,
+    "TASK_STATE_REJECTED": TaskState.REJECTED,
+    "TASK_STATE_AUTH_REQUIRED": TaskState.AUTH_REQUIRED,
+}
+
+
+def _parts_for(text: str, files: list[InboundFile]) -> list[dict[str, Any]]:
+    """Builds the A2A `Part` list for an outbound message: the text part,
+    plus one part per file, relayed as-is rather than uploaded anywhere --
+    unlike T2, there's no Foundry Files API in this path, just another A2A
+    endpoint that can carry the same `raw`/`url` part shape onward to
+    whatever the T3 orchestrator's own agent does with it. `raw` is a
+    protobuf `bytes` field, so its JSON form is base64 (verified by
+    round-tripping through the installed a2a-sdk's ParseDict)."""
+    parts: list[dict[str, Any]] = [{"text": text}]
+    for f in files:
+        part: dict[str, Any] = {"filename": f.name, "mediaType": f.mime}
+        if f.data is not None:
+            part["raw"] = base64.b64encode(f.data).decode()
+        else:
+            part["url"] = f.url
+        parts.append(part)
+    return parts
 
 
 class EventSource(Protocol):
@@ -73,7 +119,15 @@ class DurableAdapter:
         return self._instances[0]
 
     async def submit(
-        self, *, app: str, principal: Principal, ref: UpstreamRef, text: str, blocking: bool, budget_ms: int
+        self,
+        *,
+        app: str,
+        principal: Principal,
+        ref: UpstreamRef,
+        text: str,
+        files: list[InboundFile],
+        blocking: bool,
+        budget_ms: int,
     ) -> Submission:
         message_id = uuid4().hex
         resp = await self._client.post(
@@ -81,27 +135,42 @@ class DurableAdapter:
             json={
                 "jsonrpc": "2.0",
                 "id": message_id,
-                "method": "message/send",
+                "method": "SendMessage",
                 "params": {
                     "message": {
                         "messageId": message_id,
-                        "role": "user",
-                        "parts": [{"kind": "text", "text": text}],
+                        "role": "ROLE_USER",
+                        "parts": _parts_for(text, files),
                         "contextId": ref.conversation_id,
                         "metadata": {"principal_subject": principal.subject},
                     },
-                    "configuration": {"blocking": blocking},
+                    # Never block the gateway's own HTTP call on T3's
+                    # potentially multi-day orchestration -- the gateway
+                    # always submits non-blocking regardless of the `blocking`
+                    # flag's own value (default_blocking=False, docs/00 §4);
+                    # returnImmediately=True is what makes on_message_send on
+                    # the T3 side return a submitted/working snapshot instead
+                    # of waiting for a terminal state.
+                    "configuration": {"returnImmediately": True},
                 },
             },
         )
         resp.raise_for_status()
-        result = resp.json()["result"]
-        task_id = result["id"]
+        body = resp.json()
+        if "error" in body:
+            raise RuntimeError(f"T3 SendMessage failed: {body['error']}")
+        task = body["result"].get("task")
+        if task is None:
+            raise RuntimeError(
+                f"T3 SendMessage returned a message instead of a task: {body['result']}"
+            )
+        task_id = task["id"]
+        sdk_state = task.get("status", {}).get("state", "TASK_STATE_SUBMITTED")
         return Submission(
             task_id=task_id,
-            context_id=result.get("contextId", ref.conversation_id or task_id),
-            state=TaskState(result.get("status", {}).get("state", "submitted")),
-            ref=UpstreamRef(run_id=task_id, conversation_id=result.get("contextId")),
+            context_id=task.get("contextId", ref.conversation_id or task_id),
+            state=_SDK_STATE_TO_GW.get(sdk_state, TaskState.WORKING),
+            ref=UpstreamRef(run_id=task_id, conversation_id=task.get("contextId")),
         )
 
     async def follow(
@@ -124,19 +193,21 @@ class DurableAdapter:
             if not batch:
                 await self._events.wait_for_new_event(task_id, timeout_s=30.0)
 
-    async def resume(self, ref: UpstreamRef, *, principal: Principal, text: str) -> Submission:
+    async def resume(
+        self, ref: UpstreamRef, *, principal: Principal, text: str, files: list[InboundFile]
+    ) -> Submission:
         # Maps onto client.raise_event(instance_id, "APPROVAL", payload) on
         # the T3 side, fronted by the same message/send path with a task
         # reference (docs/06 §5.3).
         return await self.submit(
-            app="", principal=principal, ref=ref, text=text, blocking=False, budget_ms=0
+            app="", principal=principal, ref=ref, text=text, files=files, blocking=False, budget_ms=0
         )
 
     async def steer(self, ref: UpstreamRef, *, principal: Principal, text: str) -> SteerResult:
         # ⚠ Verify whether the targeted A2A version permits message/send
         # against a `working` task (docs/02-decisions.md D7). Until
         # verified, treat as queued rather than claim real-time effect.
-        await self.resume(ref, principal=principal, text=text)
+        await self.resume(ref, principal=principal, text=text, files=[])
         return SteerResult(outcome="queued", applies_at="next orchestration step")
 
     async def cancel(self, ref: UpstreamRef, *, principal: Principal) -> None:
@@ -145,7 +216,7 @@ class DurableAdapter:
             json={
                 "jsonrpc": "2.0",
                 "id": uuid4().hex,
-                "method": "tasks/cancel",
+                "method": "CancelTask",
                 "params": {"id": ref.run_id},
             },
         )

@@ -479,3 +479,49 @@ running the thing against a real client, not by reading the SDK's source:
   itself is rejected with a clear error rather than silently misrouted.
   Clients that need idempotent retries should supply their own `taskId` up
   front, which routes a retry through the resume path instead.
+
+## 5. Bidirectional files (Phase 4)
+
+Inbound file parts (`Part.raw` / `Part.url` — bytes or a URL, the same A2A
+`content` oneof `text` belongs to) are extracted alongside text in
+`a2a_server/executor.py` and handed to the adapter as `InboundFile`s, a new
+member of the adapter contract:
+
+```python
+@dataclass(frozen=True)
+class InboundFile:
+    name: str
+    mime: str
+    data: bytes | None = None   # exactly one of data/url is set
+    url: str | None = None
+```
+
+`UpstreamAdapter.submit()`/`resume()` both gained a required `files:
+list[InboundFile]` parameter. What each tier does with it is genuinely
+different, which is why extraction lives in the executor but handling
+stays adapter-specific:
+
+- **T2** uploads each file via the OpenAI-compatible Files API
+  (`client.files.create(file=(name, data, mime), purpose="user_data")`,
+  fetching `url` files first if given a URL rather than inline bytes), then
+  references the resulting `file_id`s in the Responses `input` payload as
+  `input_image` (images) or `input_file` (everything else) content parts.
+  A file never sits in the `/responses` request body as inline base64 —
+  it's uploaded once, referenced by id. ⚠ `purpose="user_data"` is
+  OpenAI's own "flexible file type for any purpose" value; not yet
+  verified against a real Foundry endpoint that this is accepted and
+  actually reaches the Responses API's file-input path (docs/08).
+- **T3** has no Files API in its path — `DurableAdapter` just relays the
+  `Part` as another part in the outbound `SendMessage` call to the T3
+  upstream's own A2A server, `raw` bytes base64-encoded the same way any
+  protobuf `bytes` field serialises to JSON. What the T3 orchestrator's own
+  agent does with a `raw`/`url` part is out of this gateway's hands.
+
+**Found while wiring this in, not by inspection:** `DurableAdapter`'s
+outbound JSON-RPC calls predated Phase 3's a2a-sdk verification and were
+never corrected — wrong method names (`message/send` instead of
+`SendMessage`), a `kind`-discriminated `Part` shape that doesn't exist in
+the real SDK, a `blocking` configuration field that should be
+`returnImmediately`, and task-state strings compared against the wrong
+vocabulary (`"submitted"` vs. the SDK's own `"TASK_STATE_SUBMITTED"`). All
+fixed alongside the file-part work — see docs/08 item E.7.

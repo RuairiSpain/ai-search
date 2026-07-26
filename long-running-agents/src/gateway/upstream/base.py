@@ -57,6 +57,20 @@ class Capabilities:
 
 
 @dataclass(frozen=True)
+class InboundFile:
+    """A file part from an inbound A2A message (`Part.raw` / `Part.url`).
+    Exactly one of `data`/`url` is set, mirroring the two ways a client can
+    hand the gateway a file — inline bytes, or a URL for the adapter to
+    fetch. Never both; the executor's extraction picks whichever the A2A
+    `Part` oneof actually carries (docs/01 §4 "Bidirectional files")."""
+
+    name: str
+    mime: str
+    data: bytes | None = None
+    url: str | None = None
+
+
+@dataclass(frozen=True)
 class UpstreamRef:
     """Everything needed to resume. Persisted against contextId / taskId."""
 
@@ -111,7 +125,7 @@ class SteerResult:
 
 
 class UpstreamAdapter(Protocol):
-    """One interface, three implementations. Polling vs pushing is hidden here."""
+    """One interface, two implementations. Polling vs pushing is hidden here."""
 
     capabilities: Capabilities
 
@@ -122,6 +136,7 @@ class UpstreamAdapter(Protocol):
         principal: Principal,
         ref: UpstreamRef,  # empty on first turn; populated to continue
         text: str,
+        files: list[InboundFile],
         blocking: bool,
         budget_ms: int,
     ) -> Submission: ...
@@ -148,7 +163,7 @@ class UpstreamAdapter(Protocol):
         ...
 
     async def resume(
-        self, ref: UpstreamRef, *, principal: Principal, text: str
+        self, ref: UpstreamRef, *, principal: Principal, text: str, files: list[InboundFile]
     ) -> Submission:
         """Reply to an input-required pause."""
         ...

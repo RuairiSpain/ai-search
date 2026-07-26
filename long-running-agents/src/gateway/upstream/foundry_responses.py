@@ -25,6 +25,7 @@ from gateway.upstream.base import (
     TERMINAL_STATES,
     ArtifactEvent,
     Capabilities,
+    InboundFile,
     ProgressFidelity,
     StatusEvent,
     SteerResult,
@@ -49,6 +50,53 @@ def _map_state(status: str) -> TaskState:
 
 def new_task_id() -> str:
     return f"task_{uuid4().hex}"
+
+
+async def _upload_files(openai_client: Any, files: list[InboundFile]) -> list[tuple[str, str]]:
+    """Uploads inbound files via the OpenAI-compatible Files API, returns
+    (file_id, mime) pairs to reference in the Responses `input` payload.
+
+    Free function, not a method: both `FoundryResponsesAdapter` (which holds
+    its own `_openai`) and `FoundryHostedAdapter` (which gets a fresh client
+    per call from the project client, and never calls super().submit())
+    need this, so it takes the client explicitly rather than assuming one
+    lives on `self`.
+
+    ⚠ `purpose="user_data"` is the OpenAI Files API's own "flexible file
+    type for any purpose" value (docs/01 §4); not yet verified against a
+    real Foundry endpoint that this is accepted and actually reaches the
+    Responses API's file-input path — see docs/08.
+    """
+    uploaded: list[tuple[str, str]] = []
+    for f in files:
+        data = f.data
+        if data is None:
+            assert f.url is not None, "InboundFile requires data or url"
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.get(f.url)
+                resp.raise_for_status()
+                data = resp.content
+        file_obj = await openai_client.files.create(file=(f.name, data, f.mime), purpose="user_data")
+        uploaded.append((file_obj.id, f.mime))
+    return uploaded
+
+
+def _build_input(text: str, uploaded: list[tuple[str, str]]) -> str | list[dict]:
+    """Plain string when there are no files -- preserves the exact request
+    shape already in production use for text-only turns. Once there's at
+    least one file, Responses requires the list-of-content-parts form
+    (docs/01 §4): `input_image` for images (referenced by file_id, so no
+    base64 ever sits in the request body), `input_file` for everything
+    else."""
+    if not uploaded:
+        return text
+    content: list[dict] = [{"type": "input_text", "text": text}]
+    for file_id, mime in uploaded:
+        if mime.startswith("image/"):
+            content.append({"type": "input_image", "file_id": file_id, "detail": "auto"})
+        else:
+            content.append({"type": "input_file", "file_id": file_id})
+    return [{"role": "user", "content": content}]
 
 
 class FoundryResponsesAdapter:
@@ -84,7 +132,15 @@ class FoundryResponsesAdapter:
         self._credential = credential
 
     async def submit(
-        self, *, app: str, principal: Principal, ref: UpstreamRef, text: str, blocking: bool, budget_ms: int
+        self,
+        *,
+        app: str,
+        principal: Principal,
+        ref: UpstreamRef,
+        text: str,
+        files: list[InboundFile],
+        blocking: bool,
+        budget_ms: int,
     ) -> Submission:
         conv_id = ref.conversation_id
         if conv_id is None:
@@ -93,10 +149,11 @@ class FoundryResponsesAdapter:
             )
             conv_id = conv.id
 
+        uploaded = await _upload_files(self._openai, files)
         resp = await self._openai.responses.create(
             background=not blocking,
             conversation=conv_id,
-            input=text,
+            input=_build_input(text, uploaded),
             extra_body={
                 "agent_reference": {"name": self._agent_name, "type": "agent_reference"}
             },
@@ -187,7 +244,9 @@ class FoundryResponsesAdapter:
             mime = resp.headers.get("content-type", "application/octet-stream")
             return resp.content, mime
 
-    async def resume(self, ref: UpstreamRef, *, principal: Principal, text: str) -> Submission:
+    async def resume(
+        self, ref: UpstreamRef, *, principal: Principal, text: str, files: list[InboundFile]
+    ) -> Submission:
         raise NotImplementedError(
             "This adapter's Capabilities.input_required is False by default; "
             "enable a conforming outputSchema (D4) before wiring resume()."
