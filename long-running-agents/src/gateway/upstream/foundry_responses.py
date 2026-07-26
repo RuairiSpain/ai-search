@@ -247,9 +247,41 @@ class FoundryResponsesAdapter:
     async def resume(
         self, ref: UpstreamRef, *, principal: Principal, text: str, files: list[InboundFile]
     ) -> Submission:
-        raise NotImplementedError(
-            "This adapter's Capabilities.input_required is False by default; "
-            "enable a conforming outputSchema (D4) before wiring resume()."
+        """Continues the same conversation with the caller's reply — a
+        second `responses.create()` call against `ref.conversation_id`,
+        structurally identical to `submit()`'s first-turn call once a
+        conversation already exists.
+
+        This is reachable code, not dead code, but it is NOT currently
+        exercised end to end: `Capabilities.input_required` stays `False`
+        (see the class-level `capabilities`), because `_map_state()` has no
+        case that produces `TaskState.INPUT_REQUIRED` — nothing in this
+        adapter's poll loop can currently detect that Foundry is waiting on
+        a reply rather than still working. Enable a conforming
+        `outputSchema` (D4) and teach `_map_state()`/`follow()` to
+        recognise the paused state before flipping `input_required` on;
+        until then this method is only invoked if a future change routes
+        into it some other way.
+        """
+        if ref.conversation_id is None:
+            raise ValueError("resume() requires an existing conversation_id")
+        uploaded = await _upload_files(self._openai, files)
+        resp = await self._openai.responses.create(
+            background=True,
+            conversation=ref.conversation_id,
+            input=_build_input(text, uploaded),
+            extra_body={
+                "agent_reference": {"name": self._agent_name, "type": "agent_reference"}
+            },
+            extra_headers=self._headers(principal),
+            prompt_cache_key=principal.subject,
+            safety_identifier=principal.subject,
+        )
+        return Submission(
+            task_id=new_task_id(),
+            context_id=ref.conversation_id,
+            state=_map_state(resp.status),
+            ref=UpstreamRef(conversation_id=ref.conversation_id, run_id=resp.id),
         )
 
     async def steer(self, ref: UpstreamRef, *, principal: Principal, text: str) -> SteerResult:

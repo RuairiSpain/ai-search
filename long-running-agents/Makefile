@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down migrate run test lint fmt
+.PHONY: install db-up db-down migrate run test lint gwlint fmt
 
 install:
 	pip install -e ".[dev]"
@@ -23,6 +23,12 @@ test:
 lint:
 	ruff check src tests
 	mypy src
+
+# D6's config linter (docs/02-decisions.md). Fails the build on any L0xx
+# safety-rule violation gwlint can actually check from this repo alone —
+# see src/gateway/gwlint.py's module docstring for what it can't and why.
+gwlint:
+	PYTHONPATH=src python -m gateway.gwlint config/apps.yaml
 
 fmt:
 	ruff format src tests

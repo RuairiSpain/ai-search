@@ -95,39 +95,75 @@ This is a working skeleton, not a finished gateway. What's implemented and
 tested end to end (`SendMessage` → `GetTask` → `CancelTask`, through the
 real `a2a-sdk`-mounted routes against a real Postgres): principal
 validation, the IDOR-safe `authorise_context`/`get_or_create_context`, the
-session-creation-race fix, the T2/T3 adapters, the full spec-conformant A2A
-surface, T2 code-interpreter artifact harvesting (copy to the shared
-blob container, index in `gw_artifact`, download via a short-lived
-user-delegation SAS), and inbound file parts (`Part.raw`/`Part.url`
+session-creation-race fix (now with real orphaned-session termination via
+`AgentsOperations.stop_session`, not just a log line), the T2/T3 adapters,
+the full spec-conformant A2A surface including push notifications
+(`GatewayPushConfigStore` + `a2a-sdk`'s own `BasePushNotificationSender`,
+SSRF-allowlisted at write time) and mid-run steering (a gateway-owned
+`POST /apps/{app}/tasks/{task_id}/interject` extension, since A2A itself
+has no client-initiated-message-into-a-working-task concept), T2
+code-interpreter artifact harvesting AND T3 artifact harvesting (same
+shared blob container, same `ArtifactHarvester`, T3 via an orchestrator-
+pushed `download_url`), inbound file parts (`Part.raw`/`Part.url`
 extracted and forwarded — T2 uploads via the Files API and references the
-resulting `file_id`; T3 relays the part to its own upstream A2A server —
-see `01-gateway-config-and-adapter-contract.md` §5).
+resulting `file_id`; T3 relays the part to its own upstream A2A server),
+the wedged-task reaper (now actually scheduled, and now actually able to
+see `working` tasks — see below), and `gwlint`, the D6 CI linter, scoped
+to what's checkable from this repo alone (`make gwlint`).
+
+Driving each of these to "actually verified, not just written" surfaced
+five real, previously-undetected bugs along the way — this is the kind of
+thing that only shows up once you build a genuine test double and run the
+real request/response cycle through it, not by reading the code:
+
+- `FoundryHostedAdapter` never called `FoundryResponsesAdapter.__init__`,
+  so `self._openai` was unconditionally `None` — `follow()`, `steer()`,
+  `cancel()`, and `resume()` (all inherited) would have raised
+  `AttributeError` the first time any of them ran against a real T2 task.
+  Never caught because every test used a `FakeAdapter`, never this class.
+- `TaskStore.append_event()` only updated `gw_task.state` on a **final**
+  status transition — a genuinely `working` task stayed reported as
+  `submitted` for its entire in-flight lifetime. Found via the interject
+  endpoint's own "is this task actually working" check, which could never
+  see `working` because of it.
+- `a2a-sdk`'s `create_rest_routes()` always includes an undocumented
+  `Mount(path='/{tenant}', ...)` multi-tenancy catch-all whose regex
+  matches almost any 2+-segment path and fully shadows any route
+  registered after it — the interject endpoint 404'd on every call until
+  routes were registered before, not after, `add_a2a_routes_to_fastapi()`.
+- `DurableAdapter` never sent the `A2A-Version` header on its outbound
+  calls to the T3 upstream — a real a2a-sdk-backed T3 server (confirmed by
+  actually standing one up as a test double) would reject every request.
+- `DurableAdapter`'s wire format predated the gateway's own `a2a-sdk`
+  verification and was never corrected: wrong method names, a `Part`
+  shape the real SDK doesn't have, a `blocking` field instead of
+  `returnImmediately`, task-state strings compared against the wrong
+  vocabulary. Every T3 call would have failed end to end.
+
+See `docs/08-open-items-and-experiments.md` section E for the full account
+of each, item by item.
 
 **Known gaps, not hidden:**
-- `steer()` and steering into a `working` task — the adapter methods exist,
-  nothing exposes them over the A2A surface yet, and `gw_interjection` is
-  unused. Same for T2's `resume()`.
 - A client-side "blind retry" (same `messageId`, no `taskId`, because the
   original response was lost) can't be transparently resolved to the
   original task under `a2a-sdk`'s per-request task-identity model — it's
-  now rejected with a clear error instead of silently misrouted or
+  rejected with a clear error instead of silently misrouted or
   double-submitted. See docs/08 item E.6.
-- T3 artifacts still download through their native mechanism, not the
-  shared blob container — only T2's code-interpreter citation path is
-  harvested in this pass. See docs/07 §2 item 3 and docs/08.
-- `DurableAdapter`'s JSON-RPC wire format was corrected to match the real
-  `a2a-sdk` (method names, `Part` shape, task-state vocabulary — it was
-  wrong before, see docs/08 item E.7), but no real T3 A2A server has been
-  run against this gateway yet. Verified only as far as "parses correctly
-  against the installed a2a-sdk's own `ParseDict`," not against actual T3
-  behavior.
-- The reaper (`gw_task_reaper`, `TaskStore.reap_wedged_tasks`) exists but
-  nothing schedules it.
-- `gw_push_config` is defined but never read or written.
-- Orphan upstream-session cleanup after a lost session-creation race is a
-  logged warning, not an actual termination call.
-- `gwlint` (the D6 CI linter) doesn't exist as code.
+- The T3 wire-format fix and the `A2A-Version` header fix are verified
+  against a real `a2a-sdk` server acting as a T3 stand-in, which is
+  stronger than isolated `ParseDict` checking but still not a real T3
+  orchestrator — nothing in this codebase has run one yet.
+- T2's `resume()` has a real, working body now, but nothing in the T2 poll
+  loop can currently detect that Foundry is actually waiting on a reply
+  (`Capabilities.input_required` stays `False`) — `_map_state()` has no
+  case for it yet, so the method is reachable but not yet exercised by a
+  live pause.
 - No VNet/private endpoint on Postgres or storage (deliberately deferred).
+- `gwlint` only covers the safety rules (L020, L022, L023, L030, L032)
+  checkable from this repo's own `apps.yaml` and source tree — the rest of
+  the D6 catalogue needs either a live Foundry connection or references
+  files that live in the separate Foundry-agent-deployment repo. Every
+  skipped rule is reported as `SKIP`, not silently omitted.
 
 ## Running it locally
 
@@ -145,6 +181,7 @@ make run          # uvicorn on :8080, see /healthz
 make test          # offline tests always run; Postgres tests skip cleanly
                     # if db-up wasn't run — see tests/conftest.py
 make lint
+make gwlint         # D6 config linter, against config/apps.yaml
 ```
 
 Local runs receive no platform user context from Foundry — isolation bugs

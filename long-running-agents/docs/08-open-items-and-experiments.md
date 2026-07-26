@@ -19,7 +19,7 @@ capability claims.
 | 3 | **T2-FAB-1** — can a hosted-agent container consume `UserEntraToken` passthrough and complete a consent flow, or does it hit `AADSTS50013`? | The single highest-leverage check in the whole plan — a fail **inverts the escalation table** (per-user Fabric access becomes T1-only) | `05-tier2-hosted-agents.md` §4.3 |
 | 4 | Cancel endpoint semantics: shape, billing effect, code-interpreter-container effect | `Capabilities.cancel` for T2 (the only gateway tier built on `FoundryResponsesAdapter`) stays feature-flagged until verified | `02-decisions.md` D7 |
 | 5 | T1 workflow mid-run injection — does `SetVariable` re-read actually see appended conversation items? | D7 feasibility for workflow-level steering | `02-decisions.md` D7 |
-| 6 | A2A protocol version: does `message/send` accept a task in `working` state, or only `input-required`? | If disallowed, interjections need a gateway-local endpoint, not the standard message path | `02-decisions.md` D7 |
+| 6 | ~~A2A protocol version: does `message/send` accept a task in `working` state, or only `input-required`?~~ **Resolved:** disallowed (confirmed against the spec building `a2a_server/executor.py`, Phase 3). The gateway-local endpoint this predicted is built — see item E.9. | ~~If disallowed, interjections need a gateway-local endpoint~~ | `02-decisions.md` D7 |
 | 7 | T2 container sizing: 0.5/1/2 vCPU-GiB list vs. 0.25–4.0 vCPU / 0.5–8.0 GiB range — both documented as current | Capacity planning | `05-tier2-hosted-agents.md` §1 |
 | 8 | Model quota/TPM: per-deployment or shared across a project's agents? | Whether noisy T2 apps need dedicated deployments | `05-tier2-hosted-agents.md` §6.2 |
 | 9 | W3C `traceparent` propagation gateway → Responses call → container span (T2) and gateway → A2A → orchestration → activity (T3) | End-to-end debuggability; **the gap to close first**, per both tier docs | `05-tier2-hosted-agents.md` §6.3, `06-tier3-durable-agents.md` §6.3 |
@@ -102,7 +102,7 @@ question by reading an old copy:
    between them are items 4, 6 and 7 above. No other content differences
    were found between revisions of the same document.
 
-## E. Corrections applied after the initial build (a2a-sdk adoption, T1 removed from the gateway, bidirectional files)
+## E. Corrections applied after the initial build (a2a-sdk adoption, T1 removed from the gateway, bidirectional files, closing the remaining known gaps)
 
 Unlike section C, these weren't found while merging source drafts — they
 were found building against the real `a2a-sdk` package and a real Postgres,
@@ -191,6 +191,90 @@ way from a stale doc.
    §5. Only inbound was in scope for this phase — outbound T3 artifacts
    still go through T3's native mechanism rather than the shared blob
    container, a pre-existing gap this phase didn't touch.
+
+**Phase 5 — closing the remaining known gaps.** The README's "known gaps"
+list (steering, T2 `resume()`, T3 artifact harvesting, the reaper,
+`gw_push_config`, orphan-session cleanup, `gwlint`) turned out not to be
+independent items — building and actually verifying each one surfaced
+real bugs in already-shipped code that no amount of code review had
+caught, because nothing had exercised these paths against anything more
+real than a `FakeAdapter`. In order found:
+
+9. **Mid-run steering, exposed.** A2A has no client-initiated-message-into-
+   a-`working`-task concept (confirmed against the spec while building
+   `a2a_server/executor.py` back in Phase 3), so steering needed a
+   gateway-owned side channel rather than an A2A method:
+   `POST /apps/{app}/tasks/{task_id}/interject`
+   (`a2a_server/interjections.py`), same IDOR posture as every other
+   task-scoped endpoint, backed by a new `InterjectionStore` writing to
+   `gw_interjection` (the table already existed, unused, since the
+   original schema design).
+10. **`TaskStore.append_event()` never updated `gw_task.state` for a
+    non-final transition.** Only a `final` status event (completed/failed/
+    canceled/rejected) touched the `state` column — a genuinely `working`
+    task stayed reported as `submitted` for its entire in-flight lifetime,
+    every single time, since the gateway first started polling/relaying
+    events. Found via the interject endpoint's own "is this task actually
+    working" check, which could never observe `working` because of it.
+    Every other test that touched task state only ever checked a terminal
+    state, which is exactly why this went unnoticed through two prior
+    phases of testing.
+11. **`FoundryHostedAdapter` never called `FoundryResponsesAdapter.__init__`,
+    so `self._openai` was unconditionally `None`.** `follow()`, `steer()`,
+    `cancel()`, and the newly-implemented `resume()` are all *inherited*
+    from `FoundryResponsesAdapter` and reference `self._openai` directly —
+    every one of them would have raised `AttributeError` the first time it
+    ran against a real T2 task. `fetch_artifact_bytes()` had the matching
+    problem with `self._project_endpoint`/`self._credential`, never set at
+    all on this class. Fixed by making `_openai` a property (a fresh
+    per-call client, matching T2's actual client lifecycle) and plumbing
+    the two missing constructor params through from the registry. Never
+    caught because every test exercising the A2A surface used a
+    `FakeAdapter` standing in for the whole `UpstreamAdapter` Protocol,
+    never this class itself — a new offline test
+    (`tests/test_foundry_hosted_adapter.py`) now exercises the real class
+    directly specifically to keep this from recurring.
+12. **`a2a-sdk`'s REST routes always include an undocumented
+    `Mount(path='/{tenant}', ...)` multi-tenancy catch-all** (regex
+    `^/(?P<tenant>[^/]+)/(?P<path>.*)$`, present in `create_rest_routes()`'s
+    output regardless of whether tenancy is used) whose path pattern
+    matches almost any 2+-segment path. Starlette tries routes in
+    registration order and a matching `Mount` fully delegates rather than
+    falling through, so the interject route — registered after
+    `add_a2a_routes_to_fastapi()` in the first draft — 404'd on every
+    single call, silently, because the catch-all Mount claimed the match
+    first and its own sub-app didn't recognise the path. Root-caused only
+    by bisecting real HTTP requests through progressively smaller route
+    sets (`app.routes` introspection alone didn't reveal it — everything
+    LOOKED registered correctly). Fixed by registering gateway-owned
+    routes *before* `add_a2a_routes_to_fastapi()`, not after.
+13. **`DurableAdapter` never sent the `A2A-Version` header on its outbound
+    calls to the T3 upstream.** Standing up a *real* `a2a-sdk`
+    `DefaultRequestHandler` as a T3 test double (`tests/test_durable_adapter_wire_format.py`
+    — stronger verification than item 7's `ParseDict`-only check, since it
+    exercises the SDK's actual server-side dispatch) immediately rejected
+    every request with `VERSION_NOT_SUPPORTED`: the same header-omission
+    bug as item 3 above, just on the outbound side this time, and missed
+    by the item-7 fix because `ParseDict` alone can't detect a header the
+    request handler needs but the parser doesn't. This is the concrete
+    payoff of building a real test double instead of trusting isolated
+    parsing checks.
+14. **T3 artifact harvesting, orphan-session termination, the reaper
+    schedule, and `gwlint`** are now real: `DurableAdapter.fetch_artifact_bytes()`
+    fetches a `download_url` the orchestrator supplies in `upstream_ref`
+    and harvests through the same `ArtifactHarvester` T2 uses;
+    `FoundryHostedAdapter.terminate_session()` calls the real, documented
+    `AgentsOperations.stop_session` (confirmed present on
+    `AIProjectClient.agents` in the installed `azure-ai-projects` package —
+    not a guessed REST endpoint, unlike some other integration points in
+    this codebase); `main.py`'s lifespan now runs a background sweep
+    calling `TaskStore.reap_wedged_tasks` on a timer, with lease
+    renewal wired into task creation and every relayed event
+    (`TaskStore.renew_lease`, `AppConfig.lease_seconds`); and `gwlint`
+    (`src/gateway/gwlint.py`) implements the D6 safety rules actually
+    checkable from this repo alone (L020, L022, L023, L030, L032),
+    reporting every other rule as `SKIP` with a reason rather than
+    silently omitting it.
 
 ## D. Duplicate source documents collapsed during merge
 

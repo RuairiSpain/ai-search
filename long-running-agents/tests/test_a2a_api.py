@@ -18,6 +18,7 @@ import base64
 import time
 from uuid import uuid4
 
+import httpx
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -25,17 +26,21 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from gateway.a2a_server.app import mount_app
+from gateway.a2a_server.push_config import GatewayPushConfigStore
 from gateway.artifacts import ArtifactHarvester
 from gateway.auth.principal import EntraValidator
 from gateway.config import AppConfig, CardCapabilities, CardConfig
 from gateway.store.artifact_store import ArtifactStore
 from gateway.store.context_store import ContextStore
+from gateway.store.interjection_store import InterjectionStore
 from gateway.store.task_store import TaskStore
 from gateway.upstream.base import (
     Capabilities,
     InboundFile,
     ProgressFidelity,
     StatusEvent,
+    SteeringMode,
+    SteerResult,
     Submission,
     TaskState,
     UpstreamRef,
@@ -54,12 +59,18 @@ class FakeAdapter:
     follow() observes the upstream confirm it."""
 
     capabilities = Capabilities(
-        progress=ProgressFidelity.COARSE, push=False, artifacts=True, input_required=False, cancel=True
+        progress=ProgressFidelity.COARSE,
+        push=False,
+        artifacts=True,
+        input_required=False,
+        cancel=True,
+        steering=SteeringMode.CHECKPOINT,
     )
 
     def __init__(self):
         self.cancelled: list[UpstreamRef] = []
         self.received_files: list[InboundFile] = []
+        self.steered: list[str] = []
         self._release = asyncio.Event()
 
     async def submit(self, *, app, principal, ref, text, files, blocking, budget_ms):
@@ -86,7 +97,8 @@ class FakeAdapter:
         raise NotImplementedError
 
     async def steer(self, ref, *, principal, text):
-        raise NotImplementedError
+        self.steered.append(text)
+        return SteerResult(outcome="accepted", applies_at="next step")
 
     async def cancel(self, ref, *, principal):
         self.cancelled.append(ref)
@@ -139,21 +151,32 @@ def validator(rsa_key):
 
 
 @pytest.fixture()
-def app_and_adapter(pg_pool, validator):
+async def app_and_adapter(pg_pool, validator):
     app_cfg = AppConfig(
         name="ticket-triage",
         tier="t2",
         upstream="t2-up",
-        card=CardConfig(capabilities=CardCapabilities(streaming=False)),
+        card=CardConfig(
+            capabilities=CardCapabilities(streaming=False, pushNotifications=True)
+        ),
     )
     adapter = FakeAdapter()
     contexts = ContextStore(pg_pool)
     tasks = TaskStore(pg_pool)
     artifacts = ArtifactStore(pg_pool)
+    interjections = InterjectionStore(pg_pool)
+    push_config_store = GatewayPushConfigStore(pg_pool, allowlist=["push.example.com"])
+    pushed: list[httpx.Request] = []
+
+    def _push_handler(request: httpx.Request) -> httpx.Response:
+        pushed.append(request)
+        return httpx.Response(200)
+
+    push_http_client = httpx.AsyncClient(transport=httpx.MockTransport(_push_handler))
     harvester = ArtifactHarvester(blob_service=None, container_name="artifacts", artifacts=artifacts)  # type: ignore[arg-type]
 
     fastapi_app = FastAPI()
-    mount_app(
+    request_handler = mount_app(
         fastapi_app,
         app_cfg=app_cfg,
         adapter=adapter,
@@ -162,8 +185,19 @@ def app_and_adapter(pg_pool, validator):
         tasks=tasks,
         artifacts=artifacts,
         harvester=harvester,
+        interjections=interjections,
+        push_config_store=push_config_store,
+        push_http_client=push_http_client,
     )
-    return fastapi_app, adapter
+    try:
+        yield fastapi_app, adapter, pushed
+    finally:
+        # Drains in-flight ActiveTask producer/consumer background tasks
+        # before pg_pool's own finalizer closes the pool underneath them --
+        # without this, a task still processing its final event after the
+        # test's last assertion races pool teardown ("pool is closing").
+        await request_handler.aclose()
+        await push_http_client.aclose()
 
 
 async def _rpc(client: AsyncClient, method: str, params: dict, *, headers: dict, req_id: str = "1") -> dict:
@@ -178,7 +212,7 @@ async def _rpc(client: AsyncClient, method: str, params: dict, *, headers: dict,
 
 @pytest.mark.asyncio
 async def test_send_message_blocks_until_terminal_then_get(app_and_adapter, rsa_key):
-    fastapi_app, adapter = app_and_adapter
+    fastapi_app, adapter, _pushed = app_and_adapter
     headers = _headers(_bearer_token(rsa_key))
     # Nothing in this test calls cancel(), and follow() blocks on
     # self._release after the first WORKING event -- release it up front
@@ -213,7 +247,7 @@ async def test_send_message_blocks_until_terminal_then_get(app_and_adapter, rsa_
 
 @pytest.mark.asyncio
 async def test_send_message_with_file_parts_extracts_and_forwards_files(app_and_adapter, rsa_key):
-    fastapi_app, adapter = app_and_adapter
+    fastapi_app, adapter, _pushed = app_and_adapter
     headers = _headers(_bearer_token(rsa_key))
     adapter._release.set()
 
@@ -256,8 +290,63 @@ async def test_send_message_with_file_parts_extracts_and_forwards_files(app_and_
 
 
 @pytest.mark.asyncio
+async def test_push_notification_config_delivers_on_completion(app_and_adapter, rsa_key):
+    fastapi_app, adapter, pushed = app_and_adapter
+    headers = _headers(_bearer_token(rsa_key))
+    # Deliberately NOT releasing yet -- the config must be registered while
+    # the task is still genuinely working, or there's nothing left to
+    # notify about by the time it exists.
+
+    async with AsyncClient(transport=ASGITransport(app=fastapi_app), base_url="http://test") as client:
+        message_id = f"m-{uuid4().hex[:8]}"
+        send_body = await _rpc(
+            client,
+            "SendMessage",
+            {
+                "message": {"messageId": message_id, "role": "ROLE_USER", "parts": [{"text": "hi"}]},
+                "configuration": {"returnImmediately": True},
+            },
+            headers=headers,
+        )
+        task_id = send_body["result"]["task"]["id"]
+
+        blocked = await _rpc(
+            client,
+            "CreateTaskPushNotificationConfig",
+            {"taskId": task_id, "url": "https://not-allowlisted.evil.example/cb"},
+            headers=headers,
+            req_id="2",
+        )
+        assert "error" in blocked, blocked  # L023: SSRF allowlist rejects it
+
+        ok = await _rpc(
+            client,
+            "CreateTaskPushNotificationConfig",
+            {"taskId": task_id, "url": "https://push.example.com/cb", "token": "verify-me"},
+            headers=headers,
+            req_id="3",
+        )
+        assert "error" not in ok, ok
+
+        listed = await _rpc(
+            client, "ListTaskPushNotificationConfigs", {"taskId": task_id}, headers=headers, req_id="4"
+        )
+        assert len(listed["result"]["configs"]) == 1
+
+        adapter._release.set()
+        for _ in range(100):
+            if pushed:
+                break
+            await asyncio.sleep(0.05)  # up to 5s total, headroom under a busy suite
+        else:
+            pytest.fail("no push notification delivered")
+        assert str(pushed[-1].url) == "https://push.example.com/cb"
+        assert pushed[-1].headers["X-A2A-Notification-Token"] == "verify-me"
+
+
+@pytest.mark.asyncio
 async def test_cancel_relays_to_adapter_and_state_converges(app_and_adapter, rsa_key):
-    fastapi_app, adapter = app_and_adapter
+    fastapi_app, adapter, _pushed = app_and_adapter
     headers = _headers(_bearer_token(rsa_key))
 
     async with AsyncClient(transport=ASGITransport(app=fastapi_app), base_url="http://test") as client:
@@ -280,10 +369,84 @@ async def test_cancel_relays_to_adapter_and_state_converges(app_and_adapter, rsa
 
         # D7: never optimistic -- state only flips once follow() observes
         # the upstream confirm it, which happens asynchronously here.
-        for _ in range(50):
+        for _ in range(100):
             get_body = await _rpc(client, "GetTask", {"id": task["id"]}, headers=headers, req_id="3")
             if get_body["result"]["status"]["state"] == "TASK_STATE_CANCELED":
                 break
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # up to 5s total, headroom under a busy suite
         else:
             pytest.fail("task never converged to TASK_STATE_CANCELED")
+
+
+@pytest.mark.asyncio
+async def test_interject_relays_to_adapter_and_is_recorded(app_and_adapter, rsa_key):
+    fastapi_app, adapter, _pushed = app_and_adapter
+    headers = _headers(_bearer_token(rsa_key))
+
+    async with AsyncClient(transport=ASGITransport(app=fastapi_app), base_url="http://test") as client:
+        message_id = f"m-{uuid4().hex[:8]}"
+        send_body = await _rpc(
+            client,
+            "SendMessage",
+            {
+                "message": {"messageId": message_id, "role": "ROLE_USER", "parts": [{"text": "hi"}]},
+                "configuration": {"returnImmediately": True},
+            },
+            headers=headers,
+        )
+        task = send_body["result"]["task"]
+        assert task["status"]["state"] == "TASK_STATE_WORKING"
+
+        # The gw_task row's write lands slightly after the client-visible
+        # SendMessage response (the event reaches subscribers and gets
+        # persisted via two separate paths off the same event, with no
+        # ordering guarantee between them) -- and the interject endpoint
+        # reads gw_task directly, not the SDK's in-memory event stream. A
+        # real caller wouldn't interject in the same instant as submitting
+        # either; poll like any other post-submit convergence in this file.
+        for _ in range(100):
+            get_body = await _rpc(client, "GetTask", {"id": task["id"]}, headers=headers, req_id="1b")
+            if get_body["result"]["status"]["state"] == "TASK_STATE_WORKING":
+                break
+            await asyncio.sleep(0.05)  # up to 5s total, headroom under a busy suite
+        else:
+            pytest.fail("task never converged to TASK_STATE_WORKING in the store")
+
+        resp = await client.post(
+            f"/apps/ticket-triage/tasks/{task['id']}/interject",
+            headers=headers,
+            json={"text": "actually focus on Q3 only"},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["outcome"] == "accepted"
+        assert body["sequence"] == 1
+        assert adapter.steered == ["actually focus on Q3 only"]
+
+        # A different principal must not be able to steer someone else's
+        # task -- 404, not 403 (D1's IDOR posture, same as tasks/get).
+        other_headers = _headers(_bearer_token(rsa_key, oid="ffffffff-ffff-ffff-ffff-ffffffffffff"))
+        forbidden = await client.post(
+            f"/apps/ticket-triage/tasks/{task['id']}/interject",
+            headers=other_headers,
+            json={"text": "nope"},
+        )
+        assert forbidden.status_code == 404
+
+        # Release the task and confirm interjecting into a terminal task
+        # is rejected -- there's nothing left to steer.
+        adapter._release.set()
+        for _ in range(100):
+            get_body = await _rpc(client, "GetTask", {"id": task["id"]}, headers=headers, req_id="2")
+            if get_body["result"]["status"]["state"] == "TASK_STATE_COMPLETED":
+                break
+            await asyncio.sleep(0.05)  # up to 5s total, headroom under a busy suite
+        else:
+            pytest.fail("task never converged to TASK_STATE_COMPLETED")
+
+        late = await client.post(
+            f"/apps/ticket-triage/tasks/{task['id']}/interject",
+            headers=headers,
+            json={"text": "too late"},
+        )
+        assert late.status_code == 409

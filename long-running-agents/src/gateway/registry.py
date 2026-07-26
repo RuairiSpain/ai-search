@@ -56,6 +56,8 @@ class Registry:
                 project_client=project,
                 agent_name=upstream.agent_name,
                 identity_mode=upstream.identity,
+                project_endpoint=upstream.project_endpoint,
+                credential=self._credential,
             )
         if upstream.tier == "t3":
             return DurableAdapter(

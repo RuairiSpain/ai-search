@@ -110,13 +110,29 @@ CREATE TABLE IF NOT EXISTS gw_interjection (
 CREATE INDEX IF NOT EXISTS gw_interjection_pending
     ON gw_interjection (task_id) WHERE state = 'pending';
 
+-- Task-scoped, not context-scoped: a2a-sdk's own PushNotificationConfigStore
+-- interface (TaskPushNotificationConfig) keys registrations by task_id, and
+-- a client can register more than one config per task, hence the separate
+-- `id` primary key rather than (task_id, url). `token` is a client-supplied
+-- verification value the SDK's own BasePushNotificationSender echoes back
+-- as the X-A2A-Notification-Token header on delivery -- not a secret the
+-- gateway mints, so a plain column (not a Key Vault reference) matches
+-- what the SDK's design actually assumes. IDOR is enforced upstream, not
+-- here: every request path touching this table already calls
+-- task_store.get(task_id, context) first (verified against the installed
+-- a2a-sdk's DefaultRequestHandlerV2), so ownership is established before
+-- gw_push_config is ever read or written.
 CREATE TABLE IF NOT EXISTS gw_push_config (
-    context_id  TEXT NOT NULL REFERENCES gw_context(context_id),
-    url         TEXT NOT NULL,        -- SSRF-allowlisted at write time
-    token_ref   TEXT,                 -- Key Vault reference, not the secret
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (context_id, url)
+    id               TEXT PRIMARY KEY,
+    task_id          TEXT NOT NULL REFERENCES gw_task(task_id),
+    url              TEXT NOT NULL,   -- SSRF-allowlisted at write time (L023)
+    token            TEXT,
+    auth_scheme      TEXT,
+    auth_credentials TEXT,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX IF NOT EXISTS gw_push_config_by_task ON gw_push_config (task_id);
 
 -- Dedupe on the A2A messageId rather than inventing an Idempotency-Key
 -- header. task_id is nullable and linked in a second step: the dedupe

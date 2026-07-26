@@ -19,6 +19,14 @@ class ProgressPayload(BaseModel):
     task_id: str
     kind: str  # "status" | "artifact"
     sequence: int
+    # kind="status": {"state": <TaskState value>, "final": bool, "detail"?: str}
+    # kind="artifact": {"artifact_id", "name", "mime", "uri"?: str,
+    #   "upstream_ref"?: {"download_url": str}} -- either the orchestrator
+    #   already copied the file to the shared blob container and sets
+    #   `uri` directly, or it hands the gateway a fetchable `download_url`
+    #   in `upstream_ref` and DurableAdapter.fetch_artifact_bytes() +
+    #   ArtifactHarvester do the copy (docs/01 §5, docs/07). Never both --
+    #   `uri` set takes priority and skips harvesting.
     payload: dict
 
 

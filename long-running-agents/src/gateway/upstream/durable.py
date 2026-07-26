@@ -29,6 +29,7 @@ from typing import Any, Protocol
 from uuid import uuid4
 
 import httpx
+from a2a.utils import constants as a2a_constants
 
 from gateway.auth.principal import Principal
 from gateway.upstream.base import (
@@ -42,6 +43,16 @@ from gateway.upstream.base import (
     TaskState,
     UpstreamRef,
 )
+
+# Every outbound call to the T3 upstream's own A2A server must carry this
+# -- its own `validate_version` decorator (verified against the installed
+# a2a-sdk) defaults a request with no version header to protocol 0.3 and
+# rejects it outright. Missing entirely until a real a2a-sdk-backed test
+# double (not just ParseDict) surfaced it as VERSION_NOT_SUPPORTED on
+# every single call (docs/08 item E.7) -- the same bug class as the one
+# already fixed on the gateway's own inbound surface in
+# a2a_server/context.py, just on the outbound side this time.
+_A2A_HEADERS = {a2a_constants.VERSION_HEADER: a2a_constants.PROTOCOL_VERSION_1_0}
 
 # a2a-sdk's wire-format task state strings -> our TaskState vocabulary.
 # The task_id/context_id fields already happen to match our own naming
@@ -132,6 +143,7 @@ class DurableAdapter:
         message_id = uuid4().hex
         resp = await self._client.post(
             f"{self._base_url()}/",
+            headers=_A2A_HEADERS,
             json={
                 "jsonrpc": "2.0",
                 "id": message_id,
@@ -193,6 +205,39 @@ class DurableAdapter:
             if not batch:
                 await self._events.wait_for_new_event(task_id, timeout_s=30.0)
 
+    async def fetch_artifact_bytes(self, upstream_ref: dict) -> tuple[bytes, str]:
+        """Harvests a T3 artifact into the shared blob container, same as
+        T2's containers-endpoint fetch — `_follow_and_relay()` calls this
+        whenever a relayed `ArtifactEvent.uri` is still `None`
+        (gateway.a2a_server.executor), via `getattr(self._adapter,
+        "fetch_artifact_bytes", None)`. Before this existed, that getattr
+        always returned `None` for `DurableAdapter`, so a T3 artifact
+        pushed with `upstream_ref` but no pre-set `uri` was silently
+        dropped -- never added to the task, never an error either
+        (docs/08).
+
+        Unlike T2, the gateway has no REST convention of its own for
+        fetching a T3 artifact's bytes -- T3 runs arbitrary orchestrator
+        code with its own interim storage, so the orchestrator must push
+        a fetchable URL itself. ⚠ Verify this contract (a `download_url`
+        key in `upstream_ref`, plain unauthenticated GET) against a real
+        T3 orchestrator; nothing in this codebase runs one yet — see
+        docs/08 item E on the wire-format fix found in the same file.
+        """
+        url = upstream_ref.get("download_url")
+        if not url:
+            raise RuntimeError(
+                "T3 ArtifactEvent.upstream_ref missing 'download_url' -- the "
+                "orchestrator must push a fetchable URL for the gateway to "
+                "harvest, or copy the file to the shared blob container "
+                "itself and set ArtifactEvent.uri directly instead."
+            )
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            mime = resp.headers.get("content-type", "application/octet-stream")
+            return resp.content, mime
+
     async def resume(
         self, ref: UpstreamRef, *, principal: Principal, text: str, files: list[InboundFile]
     ) -> Submission:
@@ -213,6 +258,7 @@ class DurableAdapter:
     async def cancel(self, ref: UpstreamRef, *, principal: Principal) -> None:
         await self._client.post(
             f"{self._base_url()}/",
+            headers=_A2A_HEADERS,
             json={
                 "jsonrpc": "2.0",
                 "id": uuid4().hex,

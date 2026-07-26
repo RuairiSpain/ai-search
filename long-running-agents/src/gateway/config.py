@@ -53,6 +53,11 @@ class AppConfig(BaseModel):
     foundry_agent: str | None = None
     preview: Literal["allow", "deny"] = "deny"
     card: CardConfig = Field(default_factory=CardConfig)
+    # Wedged-task reaper (docs/08): renewed on every event relayed through
+    # follow(), so a task only goes lease-expired when events genuinely stop
+    # arriving. Per-tier/per-app because a T3 multi-day HITL pause and a T2
+    # sub-hour turn have very different "gone quiet too long" thresholds.
+    lease_seconds: int = 300
 
 
 class UpstreamConfig(BaseModel):
@@ -73,6 +78,17 @@ class GatewayConfig(BaseModel):
     auth: AuthConfig
     apps: list[AppConfig]
     upstreams: list[UpstreamConfig]
+    # L023: push-notification callback URLs must resolve to a host on this
+    # list, checked at registration time (gw_push_config write) and by
+    # gwlint at build time. Empty means push notifications are effectively
+    # unusable — deliberately fail closed rather than allow an
+    # unconstrained SSRF-capable callback URL.
+    push_notification_allowlist: list[str] = Field(default_factory=list)
+    # Reaper sweep cadence and grace window (docs/03 "gw_task_reaper",
+    # docs/08). Grace absorbs clock skew / final-heartbeat delay on top of
+    # each task's own lease_seconds.
+    reaper_interval_seconds: int = 60
+    reaper_lease_grace_seconds: int = 60
 
     def app(self, name: str) -> AppConfig:
         for app in self.apps:

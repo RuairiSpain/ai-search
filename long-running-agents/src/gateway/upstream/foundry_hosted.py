@@ -55,15 +55,41 @@ class FoundryHostedAdapter(FoundryResponsesAdapter):
         agent_name: str,
         identity_mode: str = "per_user",
         poll_interval_s: float = 1.5,
+        project_endpoint: str | None = None,
+        credential: Any | None = None,
     ):
-        # Note: does NOT call FoundryResponsesAdapter.__init__ — the T2
-        # OpenAI-shaped client is obtained per-call from the project
-        # client (get_openai_client), not held once at construction.
+        # Note: does NOT call FoundryResponsesAdapter.__init__ — `_openai`
+        # is a property below (a fresh per-call client, matching T2's
+        # actual client lifecycle), which a plain instance assignment from
+        # the base __init__ would shadow incompatibly.
         self._project = project_client
         self._agent_name = agent_name
         self._identity_mode = identity_mode
         self._interval = poll_interval_s
-        self._openai = None  # unused; submit() below overrides the base class's entirely
+        # Only needed for fetch_artifact_bytes() (inherited, unchanged) —
+        # same purpose as in the base class, just plumbed through
+        # separately since __init__ doesn't chain to it. Previously never
+        # set at all on this class, so fetch_artifact_bytes() would have
+        # raised AttributeError on first use, same bug class as _openai
+        # below.
+        self._project_endpoint = project_endpoint
+        self._credential = credential
+
+    @property
+    def _openai(self) -> Any:
+        """Fresh per access, not cached at construction — matches T2's
+        actual client lifecycle (docs/05: sessions/tokens are per-call
+        state, not held). Fixes a real bug: `follow()`/`resume()`/
+        `steer()`/`cancel()` are all inherited from `FoundryResponsesAdapter`
+        and reference `self._openai` directly. Before this property existed,
+        `self._openai` was unconditionally `None` on every
+        `FoundryHostedAdapter` instance (only `submit()` and `artifact_url()`
+        are overridden here), so every one of those calls would have raised
+        `AttributeError` the first time it actually ran against a real T2
+        task — never caught by tests, which all stand a `FakeAdapter` in
+        for the whole `UpstreamAdapter` Protocol rather than exercising
+        this class."""
+        return self._project.get_openai_client(agent_name=self._agent_name)
 
     def _headers(self, principal: Principal) -> dict[str, str]:
         h = dict(self._PREVIEW)
@@ -93,8 +119,7 @@ class FoundryHostedAdapter(FoundryResponsesAdapter):
         return True
 
     async def _ping(self, *, headers: dict[str, str] | None = None) -> bool:
-        client = self._project.get_openai_client(agent_name=self._agent_name)
-        await client.models.list(extra_headers=headers or dict(self._PREVIEW))
+        await self._openai.models.list(extra_headers=headers or dict(self._PREVIEW))
         return True
 
     async def submit(
@@ -108,9 +133,8 @@ class FoundryHostedAdapter(FoundryResponsesAdapter):
         blocking: bool,
         budget_ms: int,
     ) -> Submission:
-        client = self._project.get_openai_client(agent_name=self._agent_name)
-        uploaded = await _upload_files(client, files)
-        resp = await client.responses.create(
+        uploaded = await _upload_files(self._openai, files)
+        resp = await self._openai.responses.create(
             background=not blocking,
             conversation=ref.conversation_id,
             input=_build_input(text, uploaded),
@@ -137,3 +161,15 @@ class FoundryHostedAdapter(FoundryResponsesAdapter):
             path=artifact_id,
             headers=self._headers(principal),
         )
+
+    async def terminate_session(self, session_id: str) -> None:
+        """Stops the orphaned session left behind when this request loses
+        a session-creation race (docs/05 §6.3, `ContextStore.record_upstream_ref`).
+        Optional adapter capability, duck-typed by the caller (`getattr(adapter,
+        "terminate_session", None)` in the executor) the same way
+        `fetch_artifact_bytes` is — real, documented `azure-ai-projects`
+        operation (`AgentsOperations.stop_session`, confirmed present on
+        `AIProjectClient.agents` in the installed package, not a guessed
+        REST endpoint like some other unverified integration points in
+        this codebase)."""
+        await self._project.agents.stop_session(agent_name=self._agent_name, session_id=session_id)

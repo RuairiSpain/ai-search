@@ -71,6 +71,7 @@ class GatewayAgentExecutor(AgentExecutor):
         harvester: ArtifactHarvester,
         default_blocking: bool,
         budget_ms: int,
+        lease_seconds: int,
     ):
         self._app = app
         self._tier = tier
@@ -80,6 +81,7 @@ class GatewayAgentExecutor(AgentExecutor):
         self._harvester = harvester
         self._default_blocking = default_blocking
         self._budget_ms = budget_ms
+        self._lease_seconds = lease_seconds
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         principal = principal_from(context.call_context)
@@ -107,6 +109,7 @@ class GatewayAgentExecutor(AgentExecutor):
             state=GwTaskState.SUBMITTED,
             run_id=None,
         )
+        await self._tasks.renew_lease(context.task_id, self._lease_seconds)
         if message_id:
             await self._tasks.link_inbound_message(message_id, context.task_id)
 
@@ -138,11 +141,7 @@ class GatewayAgentExecutor(AgentExecutor):
             ctx_row.context_id, principal, submission.ref
         )
         if not won:
-            log.warning(
-                "session-creation race on context %s: discarding the upstream "
-                "session this request just created (docs/05 §6.3)",
-                ctx_row.context_id,
-            )
+            await self._terminate_orphaned_session(ctx_row.context_id, submission.ref)
 
         await updater.start_work()
         await self._follow_and_relay(
@@ -152,6 +151,42 @@ class GatewayAgentExecutor(AgentExecutor):
             principal=principal,
             updater=updater,
         )
+
+    async def _terminate_orphaned_session(self, context_id: str, ref: UpstreamRef) -> None:
+        """The upstream session/instance this request just created lost
+        the session-creation race (docs/05 §6.3) — some concurrent request
+        for the same context won and its ref is now the one of record.
+        Attempt to actually terminate the orphan rather than just leak it,
+        via the adapter's own optional `terminate_session` hook (duck-typed
+        the same way `fetch_artifact_bytes` is — not every tier has
+        anything to terminate; T3 instances aren't a race-prone resource
+        the way a T2 session is)."""
+        terminate = getattr(self._adapter, "terminate_session", None)
+        if terminate is None or not ref.session_id:
+            log.warning(
+                "session-creation race on context %s: discarding the upstream "
+                "session this request just created (docs/05 §6.3) -- no "
+                "terminate_session hook available for this tier, so it will "
+                "leak until reclaimed some other way",
+                context_id,
+            )
+            return
+        try:
+            await terminate(ref.session_id)
+            log.warning(
+                "session-creation race on context %s: terminated the orphaned "
+                "upstream session %s this request just created (docs/05 §6.3)",
+                context_id,
+                ref.session_id,
+            )
+        except Exception:
+            log.exception(
+                "session-creation race on context %s: failed to terminate "
+                "orphaned session %s -- it will leak until reclaimed some "
+                "other way",
+                context_id,
+                ref.session_id,
+            )
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         principal = principal_from(context.call_context)
@@ -207,6 +242,7 @@ class GatewayAgentExecutor(AgentExecutor):
                 ref, principal=principal, text=text, files=files
             )
             await self._tasks.set_run_id(task.id, submission.ref.run_id)
+            await self._tasks.renew_lease(task.id, self._lease_seconds)
             await updater.start_work()
             await self._follow_and_relay(
                 task_id=task.id,
@@ -237,6 +273,11 @@ class GatewayAgentExecutor(AgentExecutor):
             ref, task_id=task_id, principal=principal, from_sequence=0
         )
         async for event in events:
+            # Heartbeat: a lease only expires once events genuinely stop
+            # arriving, not on a fixed clock unrelated to actual upstream
+            # progress. Every event relayed here -- status or artifact --
+            # pushes gw_task_reaper's deadline back out.
+            await self._tasks.renew_lease(task_id, self._lease_seconds)
             if isinstance(event, ArtifactEvent):
                 if event.uri is None and fetch_bytes is not None:
                     event = await self._harvester.harvest(

@@ -24,6 +24,9 @@ dependencies = [
     "a2a-sdk[http-server]>=1.1.0",
 ]
 
+[project.scripts]
+gwlint = "gateway.gwlint:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.2",

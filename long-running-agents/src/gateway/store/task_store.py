@@ -64,6 +64,14 @@ def _event_from_row(row: asyncpg.Record) -> StatusEvent | ArtifactEvent:
         mime=payload["mime"],
         sequence=row["sequence"],
         uri=payload.get("uri"),
+        # T3's webhook can push either a pre-harvested `uri` (the
+        # orchestrator already copied the file to the shared blob
+        # container itself) or an `upstream_ref` for the gateway to
+        # harvest via DurableAdapter.fetch_artifact_bytes() -- the same
+        # harvest path _follow_and_relay() already runs for T2. Without
+        # this, `upstream_ref` was silently dropped on the floor and a
+        # T3 artifact with no pre-set `uri` could never be harvested.
+        upstream_ref=payload.get("upstream_ref"),
     )
 
 
@@ -134,6 +142,25 @@ class TaskStore:
                 run_id,
             )
 
+    async def renew_lease(self, task_id: str, lease_seconds: int) -> None:
+        """Extends lease_expires_at from now, not from the previous expiry —
+        a lease is "still alive, push the deadline out," not an accumulating
+        grant. Called on task creation and on every event relayed through
+        follow() (gateway.a2a_server.executor), so `gw_task_reaper` only
+        fires once events genuinely stop arriving, not on a fixed clock
+        unrelated to actual progress."""
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE gw_task
+                SET lease_expires_at = now() + make_interval(secs => $2),
+                    heartbeat_at = now()
+                WHERE task_id = $1
+                """,
+                task_id,
+                lease_seconds,
+            )
+
     async def link_inbound_message(self, message_id: str, task_id: str) -> None:
         """Second step of dedupe_inbound: once the task actually exists,
         link the message that caused it — for audit ("what task did this
@@ -150,7 +177,17 @@ class TaskStore:
         self, task_id: str, sequence: int, kind: str, payload: dict
     ) -> None:
         """Idempotent: (task_id, sequence) is the primary key, so a
-        duplicate webhook callback is a no-op."""
+        duplicate webhook callback is a no-op.
+
+        Every "status" event updates `gw_task.state`, not only a `final`
+        one — a non-final transition (e.g. submitted -> working) is still
+        a real state change tasks/get must reflect. This was previously
+        gated on `final`, so `gw_task.state` never left its initial value
+        for the entire in-flight lifetime of any task, only ever updating
+        once at completion; found via the interject endpoint's "is this
+        task actually working" check, which could never see `working`
+        because of it (docs/08). "artifact" events carry no task state and
+        never touch this column."""
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """
@@ -163,7 +200,7 @@ class TaskStore:
                 kind,
                 json.dumps(payload),
             )
-            if kind == "status" and payload.get("final"):
+            if kind == "status":
                 await conn.execute(
                     "UPDATE gw_task SET state = $2, last_sequence = $3, updated_at = now() "
                     "WHERE task_id = $1",

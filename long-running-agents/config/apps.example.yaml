@@ -14,16 +14,33 @@ auth:
   # NEVER email/upn/preferred_username: mutable, and addresses get recycled.
   subject_claim: oid
 
+# L023 (gwlint, D6): required whenever any app's card declares
+# pushNotifications: true — GatewayPushConfigStore fails registration
+# closed against an empty allowlist, so this isn't optional once a client
+# might actually try to register a callback.
+push_notification_allowlist:
+  - push.example.com
+
 apps:
   - name: ticket-triage
     tier: t2
     upstream: triage-hosted
     default_mode: long
+    # T2 (hosted agents) is itself a preview feature end to end (docs/05
+    # §3 — FoundryHostedAdapter always sends Foundry-Features:
+    # HostedAgents=V1Preview). preview: deny would mean "GA only," which
+    # a T2 app can never satisfy — see D10's "preview: deny means tier 1
+    # only" note in docs/02-decisions.md.
+    preview: allow
 
   - name: deep-research
     tier: t3
     upstream: research-pool
     default_mode: long
+    # T3's whole stack is prerelease (agent-framework-a2a/-durabletask/
+    # -azurefunctions, all pinned --pre — docs/01 §3), so preview: deny
+    # is unsatisfiable here too, same reasoning as ticket-triage above.
+    preview: allow
     card:
       description: Long-running research agent
       capabilities: { streaming: false, pushNotifications: true }
