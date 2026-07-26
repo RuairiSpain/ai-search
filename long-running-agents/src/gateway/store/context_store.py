@@ -1,7 +1,6 @@
 """gw_context: per-user, per-app conversation continuity, and THE
-authorisation boundary for tier 1 (docs/04 "there is no platform
-backstop") and the outermost layer for every tier (docs/02-decisions.md
-D1).
+authorisation boundary and outermost layer for every gateway tier
+(docs/02-decisions.md D1).
 
 Two rules enforced here, both load-bearing:
 
@@ -96,6 +95,44 @@ class ContextStore:
                 # Astronomically unlikely token collision; regenerate once.
                 return await self.new_context(app, principal)
             return _row_to_context(row)
+
+    async def get_or_create_context(
+        self, context_id: str, app: str, principal: Principal
+    ) -> ContextRow:
+        """Used by the a2a-sdk integration, where `context_id` is already
+        resolved by the SDK before our code runs — either client-supplied
+        (A2A lets a client propose a contextId to group related tasks) or
+        freshly minted by the SDK's own UUID generator when the client
+        omitted one. Either way we no longer choose the id ourselves, which
+        is a deliberate, spec-conformant loosening of D1's letter ("the
+        gateway creates it") while preserving its actual security property:
+        ownership is still principal-scoped and atomic, so a client can
+        never claim a context_id that already belongs to someone else.
+
+        Atomic INSERT-or-authorise, not check-then-act: attempt to create
+        the row with this exact id first. If that id is free, we now own
+        it — success. If it's taken (by us or by someone else), only THEN
+        check ownership via authorise_context's principal-scoped query.
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO gw_context (context_id, app, principal_subject)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (context_id) DO NOTHING
+                RETURNING *
+                """,
+                context_id,
+                app,
+                principal.subject,
+            )
+            if row is not None:
+                return _row_to_context(row)
+
+        owned = await self.authorise_context(context_id, principal)
+        if owned is None:
+            raise PermissionError(f"context {context_id!r} is not owned by this principal")
+        return owned
 
     async def authorise_context(self, context_id: str, principal: Principal) -> ContextRow | None:
         """THE control (D1). A client-supplied contextId that is not

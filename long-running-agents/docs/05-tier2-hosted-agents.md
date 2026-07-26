@@ -223,7 +223,7 @@ identifier is.
 ### 3.2 Config
 
 ```yaml
-# apps.yaml — auth block, shared across T1 and T2 apps
+# apps.yaml — auth block, shared across every configured app (T2/T3)
 auth:
   tenant_id: ${GATEWAY_TENANT_ID}
   audience: api://a2a-gateway     # the GATEWAY's own app registration

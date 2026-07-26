@@ -3,10 +3,10 @@ interpreter container lives ~1h) into the gateway's own blob store,
 indexes them in gw_artifact, and mints short-lived download URLs.
 
 docs/07-artifacts-and-code-interpreter.md §2, §3, §5. Scope note: this
-harvests T1 code-interpreter artifacts, the fully-specified case with a
-worked example in the docs. T2's artifact_url() still serves downloads
-directly from the Session Files API (already identity-scoped upstream);
-copying T2/T3 artifacts into this same blob store, per docs/07 §2 item 3
+harvests T2 code-interpreter citation artifacts, the fully-specified case
+with a worked example in the docs. T2's artifact_url() still serves Session
+Files downloads directly from that API (already identity-scoped upstream);
+copying those into this same blob store too, per docs/07 §2 item 3
 ("one store, one contract"), is still open — see
 docs/08-open-items-and-experiments.md.
 """

@@ -14,10 +14,10 @@ capability claims.
 
 | # | Check | Blocks | Doc |
 |---|---|---|---|
-| 1 | **T1-ISO-1** — does `x-ms-user-identity` actually scope conversation reads, or is `gw_context` the entire boundary? | D1 review weight | `02-decisions.md` D1 |
-| 2 | **T1-ISO-2** — is user/procedural memory isolated per identity? | D2, possible simplification (delete gateway-side memory store) | `02-decisions.md` D2 |
+| 1 | **ISO-1** — does `x-ms-user-identity` actually scope conversation reads, or is `gw_context` the entire boundary? | D1 review weight | `02-decisions.md` D1 |
+| 2 | **ISO-2** — is user/procedural memory isolated per identity? | D2, possible simplification (delete gateway-side memory store) | `02-decisions.md` D2 |
 | 3 | **T2-FAB-1** — can a hosted-agent container consume `UserEntraToken` passthrough and complete a consent flow, or does it hit `AADSTS50013`? | The single highest-leverage check in the whole plan — a fail **inverts the escalation table** (per-user Fabric access becomes T1-only) | `05-tier2-hosted-agents.md` §4.3 |
-| 4 | Cancel endpoint semantics: shape, billing effect, code-interpreter-container effect | `Capabilities.cancel` for T1 stays feature-flagged until verified | `02-decisions.md` D7 |
+| 4 | Cancel endpoint semantics: shape, billing effect, code-interpreter-container effect | `Capabilities.cancel` for T2 (the only gateway tier built on `FoundryResponsesAdapter`) stays feature-flagged until verified | `02-decisions.md` D7 |
 | 5 | T1 workflow mid-run injection — does `SetVariable` re-read actually see appended conversation items? | D7 feasibility for workflow-level steering | `02-decisions.md` D7 |
 | 6 | A2A protocol version: does `message/send` accept a task in `working` state, or only `input-required`? | If disallowed, interjections need a gateway-local endpoint, not the standard message path | `02-decisions.md` D7 |
 | 7 | T2 container sizing: 0.5/1/2 vCPU-GiB list vs. 0.25–4.0 vCPU / 0.5–8.0 GiB range — both documented as current | Capacity planning | `05-tier2-hosted-agents.md` §1 |
@@ -101,6 +101,73 @@ question by reading an old copy:
    arrived in two near-identical generations; the only functional deltas
    between them are items 4, 6 and 7 above. No other content differences
    were found between revisions of the same document.
+
+## E. Corrections applied after the initial build (a2a-sdk adoption, T1 removed from the gateway)
+
+Unlike section C, these weren't found while merging source drafts — they
+were found building against the real `a2a-sdk` package and a real Postgres,
+after the initial hand-rolled-router version of the gateway already worked.
+Recorded for the same reason as section C: don't re-discover these the hard
+way from a stale doc.
+
+1. **T1 removed as a gateway tier.** `src/gateway/config.py`'s
+   `AppConfig.tier`/`UpstreamConfig.tier` are now `Literal["t2", "t3"]`;
+   `registry.py` no longer builds a T1 adapter; `api/a2a.py` (the old
+   hand-rolled JSON-RPC router) is deleted. T1 is fronted by Foundry's own
+   native incoming A2A endpoint instead — see `00-tier-model-and-concepts.md`
+   and `04-tier1-prompt-agents.md`'s new scope banner. `T1-ISO-1`/`T1-ISO-2`
+   were renamed to `ISO-1`/`ISO-2` throughout (they're platform-behavior
+   checks, not really tier-specific — see item A.1/A.2 above).
+2. **The gateway's client-facing A2A surface now runs on `a2a-sdk`**
+   (`src/gateway/a2a_server/`), replacing the hand-rolled JSON-RPC dispatch.
+   Scoped to T2/T3 only, per item 1. See `01-gateway-config-and-adapter-contract.md`
+   §4 for what this bought and the three integration pitfalls below — none
+   of them are in any SDK changelog or docstring; each was found only by
+   running a real client (or a test standing in for one) against the
+   mounted routes.
+3. **Missing `A2A-Version` header on the call context.** A custom
+   `ServerCallContextBuilder` that doesn't populate `state["headers"]` gets
+   every request treated as protocol 0.3 and rejected — the SDK's own
+   `DefaultServerCallContextBuilder` does this, but nothing forces a custom
+   builder to. `GatewayCallContextBuilder` was missing it, so every real
+   client call would have failed: a clean HTTP 200 wrapping a JSON-RPC
+   `VersionNotSupportedError`, easy to miss in casual testing since nothing
+   about the transport layer complains. Fixed in
+   `src/gateway/a2a_server/context.py`.
+4. **Duplicate initial-task creation.** The executor created the `gw_task`
+   row directly (so it can carry `app`/`tier`, which aren't part of the
+   generic A2A `Task` schema) *and* enqueued an SDK `new_task()` event for
+   the same id — which the SDK's own `TaskManager` sees as a second,
+   redundant creation and logs as an error ("Task already exists, ignoring
+   task replacement") on every single send. Fixed by dropping the redundant
+   enqueue: the direct DB row is sufficient for the SDK's own requirement
+   (a row must exist before it will accept a `TaskStatusUpdateEvent`), it
+   never needed a matching `Task` event too.
+5. **Cancellation ordering.** `a2a-sdk`'s `ActiveTask.cancel()`
+   force-cancels the task's running `AgentExecutor.execute()` coroutine
+   *before* awaiting `AgentExecutor.cancel()`. A design (the original one
+   here) that expects the `follow()` loop to observe and persist the
+   upstream's cancellation confirmation never gets the chance — and writing
+   the terminal state through `TaskUpdater`/the event queue from inside
+   `cancel()` doesn't work either, because the producer's own teardown may
+   be concurrently closing that exact queue (confirmed via the SDK's own
+   log line: "Queue was closed during enqueuing. Event dropped."). Fixed by
+   having `cancel()` persist the terminal state directly against the store,
+   right after `adapter.cancel()` confirms — see the D7 implementation note
+   in `02-decisions.md`.
+6. **Per-request task identity breaks blind retries.** `a2a-sdk` mints a
+   fresh `task_id` per `message/send` whenever the client's message omits
+   one; there's no supported way to redirect that request's `ActiveTask` to
+   a *different*, already-existing task after the fact (`TaskManager`
+   rejects an event whose id doesn't match the id it was constructed with).
+   The original dedupe-retry design assumed the gateway could hand a
+   client-blind retry back its original task under a fabricated event —
+   confirmed to crash the request instead. Fixed: the upstream submission
+   is still never repeated (D7's actual idempotency property, unaffected),
+   but a retry with no `taskId` is now rejected with a clear error rather
+   than misrouted. Clients that want idempotent retries need to supply
+   their own `taskId` up front. Open item: no gateway-side workaround for a
+   client that truly cannot do this exists yet.
 
 ## D. Duplicate source documents collapsed during merge
 

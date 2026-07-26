@@ -20,7 +20,6 @@ from gateway.store.task_store import TaskStore
 from gateway.upstream.base import UpstreamAdapter
 from gateway.upstream.durable import DurableAdapter
 from gateway.upstream.foundry_hosted import FoundryHostedAdapter
-from gateway.upstream.foundry_responses import FoundryResponsesAdapter
 
 log = logging.getLogger(__name__)
 
@@ -51,15 +50,6 @@ class Registry:
             self._adapters[upstream.id] = self._build_adapter(upstream)
 
     def _build_adapter(self, upstream) -> UpstreamAdapter:
-        if upstream.tier == "t1":
-            project = AIProjectClient(endpoint=upstream.project_endpoint, credential=self._credential)
-            client = project.get_openai_client(agent_name=upstream.agent_name)
-            return FoundryResponsesAdapter(
-                openai_client=client,
-                agent_name=upstream.agent_name,
-                project_endpoint=upstream.project_endpoint,
-                credential=self._credential,
-            )
         if upstream.tier == "t2":
             project = AIProjectClient(endpoint=upstream.project_endpoint, credential=self._credential)
             return FoundryHostedAdapter(

@@ -1,5 +1,14 @@
 # Tier 1 — Prompt Agents
 
+**Out of scope for this gateway.** T1 is not one of the tiers
+`src/gateway/` implements — see `00-tier-model-and-concepts.md`. A T1 agent
+gets Foundry's own native incoming A2A endpoint directly; nothing in this
+subproject's config, adapters, or `a2a_server/` mounts it. This document is
+kept as reference for whoever builds *that* front door (or exposes a T1
+agent as an MCP server / short-lived agent for M365/Teams, the direction
+this project settled on for T1 — see `08-open-items-and-experiments.md`),
+not as a description of gateway behavior.
+
 The no-code contract. See `00-tier-model-and-concepts.md` for the
 escalation table that decides whether an app belongs here.
 
@@ -27,7 +36,7 @@ single-tenant, optionally backed by your own Cosmos DB) and **memory**
 | Missing | Consequence |
 |---|---|
 | `agent_session_id` | nothing to pin; `UpstreamRef.session_id` stays `None` |
-| `x-ms-user-identity` delegation | applies per D1, but "endpoint-scoped data" isn't proven to cover conversations — verify with T1-ISO-1 |
+| `x-ms-user-identity` delegation | applies per D1, but "endpoint-scoped data" isn't proven to cover conversations — verify with ISO-1 |
 | Session Files API | artifacts come from **code interpreter container files**, not a session store — see `07-artifacts-and-code-interpreter.md` |
 
 The isolation unit for tier 1 is therefore the **conversation ID**, and

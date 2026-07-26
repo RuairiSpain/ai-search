@@ -264,24 +264,49 @@ weeks. This is the resolution to what earlier drafts of the gateway spec
 listed as "open item #1" (see `08-open-items-and-experiments.md` for the
 history) and to D3's gateway↔T3 transport question in `02-decisions.md`.
 
+**Verify this against the installed `a2a-sdk` before writing real code —
+it moves fast.** An earlier draft of this snippet imported
+`A2AFastAPIApplication` from `a2a.server.apps`; that class does not exist
+in `a2a-sdk` 1.1.2 (confirmed by introspecting the installed package while
+building the gateway's own A2A surface — see
+`01-gateway-config-and-adapter-contract.md` §4 and
+`08-open-items-and-experiments.md` item E.2). The actual shape is
+protobuf-based route-builder functions mounted onto a FastAPI app directly,
+not a single application-builder class:
+
 ```python
 # a2a/server.py
-from a2a.server.apps import A2AFastAPIApplication
 from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.routes import (
+    add_a2a_routes_to_fastapi,
+    create_agent_card_routes,
+    create_jsonrpc_routes,
+    create_rest_routes,
+)
 from agent_framework.a2a import A2AExecutor
+from fastapi import FastAPI
 
 from .store import agentsrv_task_store      # agentsrv.* schema — see §6.3
 
 handler = DefaultRequestHandler(
     agent_executor=A2AExecutor(agent=research_agent),
     task_store=agentsrv_task_store,          # projection, NOT system of record
+    agent_card=card,                         # streaming: false — be honest
 )
 
-a2a_app = A2AFastAPIApplication(
-    agent_card=card,                         # streaming: false — be honest
-    http_handler=handler,
-).build()
+app = FastAPI()
+add_a2a_routes_to_fastapi(
+    app,
+    agent_card_routes=create_agent_card_routes(card),
+    jsonrpc_routes=create_jsonrpc_routes(handler, rpc_url="/"),
+    rest_routes=create_rest_routes(handler),
+)
 ```
+
+This is the same pattern the gateway's own `src/gateway/a2a_server/app.py`
+uses for its client-facing surface (which fronts T2/T3, not T3's own
+upstream server shown here) — worth reading side by side if this is your
+first time in the SDK's route-builder API.
 
 **Declare `streaming: false` on the card.** An upstream card advertising
 streaming while the gateway polls makes the gateway's own card lie to

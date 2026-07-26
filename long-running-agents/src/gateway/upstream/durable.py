@@ -3,7 +3,7 @@
 docs/01-gateway-config-and-adapter-contract.md §2 "T3 — MAF + Durable
 Task", docs/06-tier3-durable-agents.md §4.1.
 
-Unlike T1/T2, this adapter does not poll: `submit()`/`resume()`/`cancel()`
+Unlike T2, this adapter does not poll: `submit()`/`resume()`/`cancel()`
 call the T3 A2A server over plain HTTP, and `follow()` reads events that a
 webhook receiver (gateway/api/webhooks.py) already wrote to gw_event —
 because the T3 A2A server does not stream, it pushes. `event_source` is
@@ -111,7 +111,7 @@ class DurableAdapter:
         `task_id` (the gateway's own id — the T3 orchestrator posts to
         `/callback/tasks/{task_id}/events` using the id we handed back
         from submit(), so this is already the right key; `ref` is unused
-        here but kept for Protocol symmetry with T1/T2). No polling of the
+        here but kept for Protocol symmetry with T2). No polling of the
         upstream — T3 pushes (docs/06 §4.1)."""
         seq = from_sequence
         while True:

@@ -116,3 +116,15 @@ class ArtifactStore:
                 principal_subject,
             )
             return _row_to_artifact(row) if row else None
+
+    async def list_for_task(self, task_id: str) -> list[ArtifactRow]:
+        """No principal check here by design: callers reach this only after
+        the task itself has already been authorised (e.g. building a
+        Task.artifacts projection inside the a2a-sdk TaskStore.get(), which
+        enforces D1 before ever calling this)."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM gw_artifact WHERE task_id = $1 AND state = 'stored' ORDER BY created_at",
+                task_id,
+            )
+            return [_row_to_artifact(r) for r in rows]

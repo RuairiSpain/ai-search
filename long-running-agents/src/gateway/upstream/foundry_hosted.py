@@ -1,5 +1,6 @@
-"""T2 adapter — hosted agent. Identical to T1 apart from headers and the
-session id; that small delta is the whole point of the shared interface.
+"""T2 adapter — hosted agent. Identical to the shared FoundryResponsesAdapter
+base apart from headers and the session id; that small delta is the whole
+point of the shared interface.
 
 docs/01-gateway-config-and-adapter-contract.md §2 "T2 — hosted agent",
 docs/05-tier2-hosted-agents.md §3 (identity delegation reference impl).
@@ -50,7 +51,7 @@ class FoundryHostedAdapter(FoundryResponsesAdapter):
         self._agent_name = agent_name
         self._identity_mode = identity_mode
         self._interval = poll_interval_s
-        self._openai = None  # unused; submit() below overrides the T1 path entirely
+        self._openai = None  # unused; submit() below overrides the base class's entirely
 
     def _headers(self, principal: Principal) -> dict[str, str]:
         h = dict(self._PREVIEW)

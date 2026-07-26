@@ -1,4 +1,4 @@
-"""The adapter contract. One interface, three implementations (T1/T2/T3) —
+"""The adapter contract. One interface, two implementations (T2/T3) —
 polling vs. pushing is hidden behind it. This is the churn firewall: the
 rest of the gateway never imports an Azure package, only these types.
 
@@ -33,7 +33,7 @@ TERMINAL_STATES = frozenset(
 
 
 class ProgressFidelity(str, Enum):
-    COARSE = "coarse"  # state transitions only  (T1, T2 default)
+    COARSE = "coarse"  # state transitions only  (T2 default)
     FINE = "fine"  # per-step narration      (T3 always; T2 opt-in — gw.progress.v1)
 
 
@@ -41,7 +41,7 @@ class SteeringMode(str, Enum):
     """Steering is always cooperative and checkpoint-granular. Nothing
     interrupts a model mid-generation."""
 
-    NONE = "none"  # T1 single response
+    NONE = "none"  # no steering support
     DEFERRED = "deferred"  # queued, applied on the next turn
     CHECKPOINT = "checkpoint"  # applied at the next node / step
 
@@ -61,8 +61,8 @@ class UpstreamRef:
     """Everything needed to resume. Persisted against contextId / taskId."""
 
     session_id: str | None = None  # T2 agent_session_id
-    conversation_id: str | None = None  # T1/T2 Foundry conversation
-    run_id: str | None = None  # T1/T2 response.id | T3 instance id
+    conversation_id: str | None = None  # T2 Foundry conversation
+    run_id: str | None = None  # T2 response.id | T3 instance id
     container_id: str | None = None  # code interpreter container, if explicit
     instance_url: str | None = None  # T3 worker affinity (BYO-compute only)
 
@@ -85,7 +85,7 @@ class ArtifactEvent:
     sequence: int
     uri: str | None = None  # by reference. Never inline bytes.
     # Transient fetch info an adapter needs to retrieve the bytes later
-    # (e.g. {"container_id", "file_id"} for T1 code interpreter — docs/07
+    # (e.g. {"container_id", "file_id"} for T2 code interpreter — docs/07
     # §3). IDs only, never bytes; stripped before this event reaches a
     # client (see gateway.api.a2a.sse_event_stream).
     upstream_ref: dict | None = None
@@ -136,11 +136,11 @@ class UpstreamAdapter(Protocol):
     ) -> AsyncIterator[StatusEvent | ArtifactEvent]:
         """Async iterator regardless of implementation.
 
-        T1/T2 poll and synthesise events. T3 relays pushed events.
+        T2 polls and synthesises events. T3 relays pushed events.
         `from_sequence` makes reconnection resumable.
 
         `task_id` is the GATEWAY's task_id (gw_task.task_id) — not
-        `ref.run_id`, which is the upstream's own id and, for T1/T2, a
+        `ref.run_id`, which is the upstream's own id and, for T2, a
         different value. Every yielded event must be stamped with
         `task_id`, because gw_event.task_id and gw_artifact.task_id are
         foreign keys against gw_task, not against the upstream.

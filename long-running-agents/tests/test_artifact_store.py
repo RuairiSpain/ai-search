@@ -26,7 +26,7 @@ async def _make_task(pg_pool, principal: Principal) -> str:
         task_id=task_id,
         context_id=ctx.context_id,
         app="ticket-triage",
-        tier="t1",
+        tier="t2",
         state=TaskState.WORKING,
         run_id="resp_123",
     )

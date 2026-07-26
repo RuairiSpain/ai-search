@@ -1,5 +1,14 @@
 # Gateway Configuration and Upstream Adapter Contract
 
+**T1 is not configured here.** `apps:`/`upstreams:` below only ever declare
+`tier: t2` or `tier: t3` — see `00-tier-model-and-concepts.md` for why. A T1
+prompt agent is reached through Foundry's own native incoming A2A endpoint,
+not through this file.
+
+The gateway's client-facing A2A surface itself is built on `a2a-sdk`
+(`src/gateway/a2a_server/`) rather than the hand-rolled JSON-RPC dispatch
+this doc originally specified — see §4 below.
+
 ## 1. `apps.yaml` / `upstreams.yaml`
 
 ```yaml
@@ -28,23 +37,9 @@ apps:
     tier: t2
     upstream: triage-hosted
     default_mode: long
-
-  - name: quick-summary
-    tier: t1
-    upstream: foundry-weu
-    default_mode: short
-    sync_budget_ms: 8000
-
-  - name: payments-triage
-    tier: t1
     preview: deny                   # allow | deny (default: deny) — see D10
 
 upstreams:
-  - id: foundry-weu
-    tier: t1
-    project_endpoint: ${FOUNDRY_PROJECT_ENDPOINT}
-    agent_name: quick-summary-agent
-
   - id: triage-hosted
     tier: t2
     project_endpoint: ${FOUNDRY_PROJECT_ENDPOINT}
@@ -83,8 +78,8 @@ One source of truth per concern — the gateway references the Foundry agent
 ```yaml
 apps:
   - name: writer
-    tier: t1
-    upstream: foundry-weu
+    tier: t2
+    upstream: triage-hosted
     foundry_agent: writer        # the name in azure.yaml — not a copy of it
     default_mode: short
     sync_budget_ms: 8000
@@ -114,14 +109,14 @@ class TaskState(str, Enum):
 
 
 class ProgressFidelity(str, Enum):
-    COARSE = "coarse"   # state transitions only  (T1, T2 default)
+    COARSE = "coarse"   # state transitions only  (T2 default)
     FINE = "fine"        # per-step narration      (T3 always; T2 opt-in — §5.4 of tier2 doc)
 
 
 class SteeringMode(str, Enum):
     """Steering is always cooperative and checkpoint-granular. Nothing
     interrupts a model mid-generation."""
-    NONE = "none"             # T1 single response
+    NONE = "none"             # no steering support
     DEFERRED = "deferred"     # queued, applied on the next turn
     CHECKPOINT = "checkpoint" # applied at the next node / step
 
@@ -154,8 +149,8 @@ class Principal:
 class UpstreamRef:
     """Everything needed to resume. Persisted against contextId / taskId."""
     session_id: str | None = None       # T2 agent_session_id
-    conversation_id: str | None = None  # T1/T2 Foundry conversation
-    run_id: str | None = None           # T1/T2 response.id | T3 instance id
+    conversation_id: str | None = None  # T2 Foundry conversation
+    run_id: str | None = None           # T2 response.id | T3 instance id
     container_id: str | None = None     # code interpreter container, if explicit
     instance_url: str | None = None     # T3 worker affinity (BYO-compute only)
 
@@ -198,7 +193,7 @@ class SteerResult:
 
 
 class UpstreamAdapter(Protocol):
-    """One interface, three implementations. Polling vs pushing is hidden here."""
+    """One interface, two implementations. Polling vs pushing is hidden here."""
 
     capabilities: Capabilities
 
@@ -222,7 +217,7 @@ class UpstreamAdapter(Protocol):
     ) -> AsyncIterator[StatusEvent | ArtifactEvent]:
         """Async iterator regardless of implementation.
 
-        T1/T2 poll and synthesise events. T3 relays pushed events.
+        T2 polls and synthesises events. T3 relays pushed events.
         `from_sequence` makes reconnection resumable.
         """
         ...
@@ -258,7 +253,13 @@ class UpstreamAdapter(Protocol):
     async def health(self) -> bool: ...
 ```
 
-### T1 — prompt agent, background responses
+### Shared base — Foundry Responses polling
+
+T2's adapter is built on a shared base class that owns the actual
+Responses-API poll loop, artifact-citation detection, and container-file
+fetch logic. It is not registered as a standalone gateway tier — nothing
+mounts it directly — but the shape is worth keeping visible here because
+it's what T2 subclasses:
 
 ```python
 class FoundryResponsesAdapter:
@@ -308,8 +309,8 @@ synchronously under a 100-second timeout.
 
 ### T2 — hosted agent (the delta)
 
-Identical to T1 apart from headers and the session id. That small delta is
-the whole point of the shared interface.
+Identical to the shared base apart from headers and the session id. That
+small delta is the whole point of the shared interface.
 
 ```python
 class FoundryHostedAdapter(FoundryResponsesAdapter):
@@ -420,3 +421,61 @@ monthly.
 Do not use the Assistants API (threads / runs / messages) anywhere. It
 retires **26 August 2026** and does not support incoming A2A. Blocked always
 by the linter (`L032`, see D6 in `02-decisions.md`).
+
+## 4. The gateway's own A2A surface: `a2a-sdk`
+
+The gateway's client-facing A2A surface (`message/send`, `tasks/get`,
+`tasks/cancel`, streaming) is built on `a2a-sdk`'s server-side pieces
+(`src/gateway/a2a_server/`), not a hand-rolled JSON-RPC dispatch. The SDK's
+actual v1.1.2 API differs substantially from what an earlier draft of this
+project sketched (it's protobuf-based: `a2a.types.a2a_pb2`, and route
+mounting goes through `DefaultRequestHandler` + route-builder functions —
+`create_agent_card_routes`, `create_jsonrpc_routes`, `create_rest_routes` —
+not a single `A2AFastAPIApplication` class). Verify against the installed
+package before writing integration code; do not trust an SDK code snippet
+you haven't run.
+
+What this buys, concretely:
+
+- **Conformant wire format.** JSON-RPC method names, `Task`/`Message`/`Part`
+  shapes, and state vocabulary come from the SDK, not a bespoke schema — a
+  generic A2A client can talk to this gateway.
+- **`TaskStore` as the enforcement seam.** The gateway implements its own
+  `TaskStore` (`GatewayTaskStoreAdapter`) rather than adopting the SDK's own
+  `DatabaseTaskStore` — `gw_task`/`gw_context` stay the one system of
+  record, and `TaskStore.get()` is where D1's IDOR control actually lives:
+  a task whose context isn't the calling principal's own returns `None`
+  ("not found"), never "forbidden."
+- **`AgentExecutor` as the adapter bridge.** `GatewayAgentExecutor` wraps
+  the existing `UpstreamAdapter` protocol (§2 above) — `submit`/`follow`/
+  `resume`/`cancel` don't change shape, they're just driven from a
+  different caller.
+
+Three integration details worth carrying forward, each found only by
+running the thing against a real client, not by reading the SDK's source:
+
+- **`A2A-Version` header.** The SDK's own request-version validator reads
+  `context.state["headers"]`; a `ServerCallContextBuilder` that doesn't
+  populate it gets every request treated as protocol 0.3 and rejected. Any
+  custom `ServerCallContextBuilder` must set `state["headers"]` itself —
+  it is not free from `ServerCallContext(state={...})`.
+- **Cancellation ordering.** `ActiveTask.cancel()` force-cancels the
+  running `AgentExecutor.execute()` coroutine *before* awaiting
+  `AgentExecutor.cancel()`. A design that expects the original `follow()`
+  loop to observe and persist the upstream's cancellation confirmation
+  never gets the chance — that coroutine is already gone. `cancel()` must
+  persist the terminal state itself, directly against the store, not via
+  the event queue the executor also owns (writing to a queue that the
+  producer's own `finally` is concurrently closing silently drops the
+  event).
+- **Per-request task identity, not per-message.** `RequestContextBuilder`
+  mints a fresh `task_id` on every `message/send` whose message omits one —
+  there is no built-in way to redirect that request's `ActiveTask` to a
+  *different*, already-existing task after the fact. A client-side
+  "blind retry" (same `messageId`, no `taskId`, because the original
+  response was lost) can't be transparently resolved to the original task
+  under this model. The gateway still dedupes the *upstream* submission
+  (D7 — the retry never re-triggers `adapter.submit()`), but the retry
+  itself is rejected with a clear error rather than silently misrouted.
+  Clients that need idempotent retries should supply their own `taskId` up
+  front, which routes a retry through the resume path instead.

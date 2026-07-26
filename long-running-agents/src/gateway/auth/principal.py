@@ -7,7 +7,7 @@ docs/05-tier2-hosted-agents.md §3.3 "The anti-pattern this replaces".
 The resulting Principal.subject is used for three independent purposes:
   1. gw_context.principal_subject   -- the gateway's own authorisation boundary
   2. x-ms-user-identity              -- Foundry per-user sandbox delegation (T2)
-  3. prompt_cache_key / safety_identifier on every Responses call (T1/T2, D1)
+  3. prompt_cache_key / safety_identifier on every Responses call (T2, D1)
 """
 from __future__ import annotations
 

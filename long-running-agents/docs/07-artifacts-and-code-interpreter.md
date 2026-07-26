@@ -5,6 +5,16 @@ Every tier's artifact channel funnels through the same store, the same
 `gw_artifact` index (`03-postgres-schema.md`), and the same `artifact_url()`
 adapter method (`01-gateway-config-and-adapter-contract.md`).
 
+**Scope note:** T1 is not a gateway tier (`00-tier-model-and-concepts.md`),
+so sections below marked "(T1)" describe a mechanism, not a tier this
+codebase fronts — the code-interpreter container poll-and-harvest loop they
+describe is real and implemented, it just lives on `FoundryHostedAdapter`
+(T2) in this codebase now, inherited from the shared `FoundryResponsesAdapter`
+base (`src/gateway/upstream/foundry_responses.py`). The T1-vs-T2 comparisons
+here are kept because the underlying reasoning (why blob storage, not a
+session) is unchanged by that — read "T1" in this doc as "whichever tier is
+actually harvesting citations through this base class."
+
 ## 1. Why not a T2 session as the artifact store
 
 Hosted-agent sessions look tempting because identity scoping is already

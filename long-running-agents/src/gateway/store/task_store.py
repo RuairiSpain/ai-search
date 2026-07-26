@@ -93,6 +93,14 @@ class TaskStore:
             row = await conn.fetchrow("SELECT * FROM gw_task WHERE task_id = $1", task_id)
             return _row_to_task(row) if row else None
 
+    async def list_task_ids_for_context(self, context_id: str) -> list[str]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT task_id FROM gw_task WHERE context_id = $1 ORDER BY created_at DESC",
+                context_id,
+            )
+            return [r["task_id"] for r in rows]
+
     async def dedupe_inbound(self, message_id: str) -> bool:
         """True if this messageId is new (proceed); False if it's a
         retry we've already handled (docs/02-decisions.md D7 "Submit
@@ -107,6 +115,24 @@ class TaskStore:
                 return True
             except asyncpg.UniqueViolationError:
                 return False
+
+    async def get_linked_task_id(self, message_id: str) -> str | None:
+        """Read side of link_inbound_message — lets a deduped retry (D7) be
+        told which real task its original send produced, instead of the
+        executor fabricating state for a phantom new task_id."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT task_id FROM gw_inbound_message WHERE message_id = $1", message_id
+            )
+            return row["task_id"] if row else None
+
+    async def set_run_id(self, task_id: str, run_id: str | None) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE gw_task SET run_id = $2, updated_at = now() WHERE task_id = $1",
+                task_id,
+                run_id,
+            )
 
     async def link_inbound_message(self, message_id: str, task_id: str) -> None:
         """Second step of dedupe_inbound: once the task actually exists,

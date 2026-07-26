@@ -1,9 +1,15 @@
-"""T1 adapter — prompt agent, background Responses.
+"""Shared polling/harvest plumbing for Foundry's Responses API.
 
-docs/01-gateway-config-and-adapter-contract.md §2 "T1 — prompt agent,
-background responses". The Foundry SDK surface is version-sensitive by
-design (docs/00 design premise #3); `_openai` is typed loosely on purpose
-so a client swap doesn't ripple past this file.
+Originally the T1 (prompt agent) adapter; T1 is no longer a gateway tier
+(docs/00-tier-model-and-concepts.md §4 — it gets Foundry's native incoming
+A2A directly). This class survives as `FoundryHostedAdapter`'s (T2) base:
+the poll loop, artifact-citation detection, and container-file fetch logic
+are identical between a plain Responses call and a hosted-agent one — only
+headers, the session id, and `submit()` differ, which T2 overrides.
+
+The Foundry SDK surface is version-sensitive by design (docs/00 design
+premise #3); `_openai` is typed loosely on purpose so a client swap
+doesn't ripple past this file.
 """
 from __future__ import annotations
 
@@ -46,8 +52,9 @@ def new_task_id() -> str:
 
 
 class FoundryResponsesAdapter:
-    """Tier 1. Ephemeral execution, durable state only in the Foundry
-    conversation. See docs/04-tier1-prompt-agents.md.
+    """Base class for Foundry Responses-API polling. Not registered as a
+    standalone gateway tier — see module docstring. `FoundryHostedAdapter`
+    (T2) is the only subclass actually wired into the registry.
     """
 
     capabilities = Capabilities(
@@ -106,7 +113,7 @@ class FoundryResponsesAdapter:
 
     def _headers(self, principal: Principal) -> dict[str, str]:
         # D1: x-ms-user-identity is documented as applying beyond hosted
-        # agents. Send it here too, pending T1-ISO-1 verification
+        # agents. Send it here too, pending ISO-1 verification
         # (docs/02-decisions.md D1, docs/08 item A.1).
         return {"x-ms-user-identity": principal.user_identity_header()}
 
@@ -182,12 +189,12 @@ class FoundryResponsesAdapter:
 
     async def resume(self, ref: UpstreamRef, *, principal: Principal, text: str) -> Submission:
         raise NotImplementedError(
-            "T1 Capabilities.input_required is False by default; enable a "
-            "conforming outputSchema (D4) before wiring resume()."
+            "This adapter's Capabilities.input_required is False by default; "
+            "enable a conforming outputSchema (D4) before wiring resume()."
         )
 
     async def steer(self, ref: UpstreamRef, *, principal: Principal, text: str) -> SteerResult:
-        # D7: T1 single response offers DEFERRED steering only — the
+        # D7: a single Responses call offers DEFERRED steering only — the
         # running response never re-reads appended conversation items.
         await self._openai.conversations.items.create(
             conversation_id=ref.conversation_id,
@@ -205,9 +212,11 @@ class FoundryResponsesAdapter:
 
     async def artifact_url(self, ref: UpstreamRef, artifact_id: str, *, principal: Principal) -> str:
         raise NotImplementedError(
-            "T1 artifacts are harvested to blob by the poll loop; download "
-            "URLs are minted from gw_artifact, not requested live from "
-            "Foundry. See docs/07-artifacts-and-code-interpreter.md."
+            "This base adapter's code-interpreter artifacts are harvested to "
+            "blob by the poll loop; download URLs are minted from "
+            "gw_artifact, not requested live from Foundry. Subclasses with a "
+            "native download API (e.g. T2's Session Files) should override "
+            "this. See docs/07-artifacts-and-code-interpreter.md."
         )
 
     async def health(self) -> bool:

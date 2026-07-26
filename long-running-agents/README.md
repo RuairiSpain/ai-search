@@ -1,24 +1,37 @@
 # Long-Running Agents — A2A Gateway on Microsoft Foundry
 
-A single A2A ([Agent2Agent protocol](https://a2a-protocol.org/)) gateway that fronts
-Microsoft Foundry agents of three different shapes — prompt agents, hosted
-(containerised) agents, and Durable-Task orchestrations — behind one uniform
+An A2A ([Agent2Agent protocol](https://a2a-protocol.org/)) gateway, built on
+`a2a-sdk`, that fronts Microsoft Foundry **hosted agents (T2)** and
+**Durable-Task orchestrations (T3)** behind one uniform, spec-conformant
 task/message contract, for one or more chat clients.
+
+A third Foundry agent shape, prompt agents (T1), is deliberately **not**
+fronted by this gateway — see "Why three tiers, two gateway tiers" below.
 
 This folder is the merged, de-duplicated project plan assembled from thirteen
 source documents (some in 2–3 revisions) written during design. Where later
 revisions corrected or superseded earlier ones, this plan keeps only the
 final position and notes the correction. See
 [`docs/08-open-items-and-experiments.md`](docs/08-open-items-and-experiments.md)
-for a full list of what changed between drafts.
+for a full list of what changed between drafts — including, later, what
+changed once the gateway was built and run against a real `a2a-sdk` and a
+real Postgres (section E).
 
-## Why three tiers
+## Why three tiers, two gateway tiers
 
 | Tier | What runs | Owns orchestration | Identity model | Typical use |
 |---|---|---|---|---|
-| **T1 — Prompt agent** | Stateless model+tools call on Foundry's managed inference plane | Foundry (or a portal Workflow) | Conversation ID, gateway-owned | No-code agents, cheapest to run and to front |
+| **T1 — Prompt agent** *(not fronted by this gateway)* | Stateless model+tools call on Foundry's managed inference plane | Foundry (or a portal Workflow) | Conversation ID, Foundry-owned | No-code agents, cheapest to run and to front |
 | **T2 — Hosted agent** | Your container, in a per-session VM-isolated Foundry sandbox with persistent `$HOME` | Your code (Microsoft Agent Framework) | `x-ms-user-identity` delegation into a per-user sandbox | Custom logic, multi-agent orchestration, file output, sub-hour work |
 | **T3 — Durable agent** | Azure Durable Functions / Durable Task, MAF + `a2a-sdk` | Your code, deterministic orchestrators | No platform partition — your app's managed identity, principal carried explicitly | Multi-day HITL, scheduled/cron work, crash-safe long processes |
+
+T1 doesn't need anything this gateway adds: no per-user sandbox to multiplex,
+no streaming beyond a single response, no artifacts channel beyond
+code-interpreter citations. Foundry already exposes T1 agents over its own
+native, incoming A2A endpoint — point T1 clients there directly, or expose a
+T1 agent as an MCP server / short-lived agent (e.g. for M365/Teams) instead
+of routing it through this gateway. `config/apps.yaml` here only ever
+declares `tier: t2` or `tier: t3`.
 
 Full escalation table, what each tier does *not* have, and cost models: see
 [`docs/00-tier-model-and-concepts.md`](docs/00-tier-model-and-concepts.md).
@@ -28,10 +41,10 @@ Full escalation table, what each tier does *not* have, and cost models: see
 | Doc | Covers |
 |---|---|
 | [`00-tier-model-and-concepts.md`](docs/00-tier-model-and-concepts.md) | Design premises, tier model, escalation table, identity chain overview |
-| [`01-gateway-config-and-adapter-contract.md`](docs/01-gateway-config-and-adapter-contract.md) | `apps.yaml`/`upstreams.yaml`, the `UpstreamAdapter` protocol, T1/T2/T3 adapter implementations, version pins |
+| [`01-gateway-config-and-adapter-contract.md`](docs/01-gateway-config-and-adapter-contract.md) | `apps.yaml`/`upstreams.yaml`, the `UpstreamAdapter` protocol, T2/T3 adapter implementations, version pins, and §4: the gateway's `a2a-sdk` integration |
 | [`02-decisions.md`](docs/02-decisions.md) | D1–D10: finalised design decisions with rationale and rejected alternatives |
 | [`03-postgres-schema.md`](docs/03-postgres-schema.md) | Full `gw_*` schema, cross-replica event fan-in, Azure Postgres/Entra notes |
-| [`04-tier1-prompt-agents.md`](docs/04-tier1-prompt-agents.md) | Prompt agent YAML, workflows, code interpreter, onboarding |
+| [`04-tier1-prompt-agents.md`](docs/04-tier1-prompt-agents.md) | *Out of scope for this gateway* — prompt agent YAML, workflows, code interpreter, onboarding, kept as reference for T1's own front door |
 | [`05-tier2-hosted-agents.md`](docs/05-tier2-hosted-agents.md) | Deployment, `azure.yaml`, identity delegation reference implementation, Fabric IQ, multi-agent patterns, progress events |
 | [`06-tier3-durable-agents.md`](docs/06-tier3-durable-agents.md) | Deployment, determinism rules, triggers (A2A/cron/Teams), HITL, the three planes |
 | [`07-artifacts-and-code-interpreter.md`](docs/07-artifacts-and-code-interpreter.md) | Blob artifact policy, code interpreter container lifecycle, MCP → code interpreter handoff |
@@ -40,17 +53,17 @@ Full escalation table, what each tier does *not* have, and cost models: see
 ## Status at a glance
 
 **Decided and specifiable now:** tier model and routing, adapter `Protocol`
-interface, Postgres schema, identity delegation pattern (T1/T2), SSE
-transport, `input-required` contract, retention policy, linter rule
-catalogue, mid-run steering design, agent-version retention, preview/GA
-profiles, artifact storage policy, T3 trigger model (A2A-to-A2A + webhook
-push, not SSE).
+interface, Postgres schema, identity delegation pattern (T2), the gateway's
+`a2a-sdk`-based client-facing surface, `input-required` contract, retention
+policy, linter rule catalogue, mid-run steering design, agent-version
+retention, preview/GA profiles, artifact storage policy, T3 trigger model
+(A2A-to-A2A + webhook push, not SSE).
 
 **Not yet verified — run as spikes, don't block scaffolding on them:**
-conversation/memory isolation enforcement (T1-ISO-1/2), Fabric IQ passthrough
-on hosted agents (T2-FAB-1), cancel semantics/billing, workflow mid-run
-injection, trace propagation, concurrent-turn serialisation, payload limits,
-T3 session-TTL vs. conversation-retention conflict.
+conversation/memory isolation enforcement (ISO-1/2), Fabric IQ passthrough
+on hosted agents (T2-FAB-1), cancel semantics/billing, trace propagation,
+concurrent-turn serialisation, payload limits, T3 session-TTL vs.
+conversation-retention conflict.
 
 See [`docs/08-open-items-and-experiments.md`](docs/08-open-items-and-experiments.md)
 for the full, prioritised list.
@@ -62,10 +75,12 @@ long-running-agents/
 ├── docs/                  # the merged plan (see Document map above)
 ├── src/gateway/           # the gateway itself — Python, FastAPI
 │   ├── auth/              # EntraValidator / Principal (docs/00 §5, docs/05 §3)
-│   ├── upstream/          # UpstreamAdapter + T1/T2/T3 implementations (docs/01)
-│   ├── store/             # gw_context / gw_task / gw_event / gw_artifact (docs/03)
-│   ├── api/                # A2A surface (message/send, tasks/get, tasks/cancel,
-│   │                       # SSE follow, artifact download) + T3 webhook receiver
+│   ├── upstream/          # UpstreamAdapter + T2/T3 implementations (docs/01)
+│   ├── store/              # gw_context / gw_task / gw_event / gw_artifact (docs/03)
+│   ├── a2a_server/          # client-facing A2A surface, built on a2a-sdk:
+│   │                        # AgentExecutor, TaskStore adapter, agent card,
+│   │                        # FastAPI mounting (docs/01 §4) — one mount per
+│   │                        # T2/T3 app, plus the T3 webhook receiver
 │   ├── artifacts.py        # ArtifactHarvester: container files -> blob -> SAS (docs/07)
 │   ├── config.py          # apps.yaml loader
 │   ├── registry.py        # builds adapters + harvester from config at startup
@@ -77,20 +92,28 @@ long-running-agents/
 ```
 
 This is a working skeleton, not a finished gateway. What's implemented and
-tested end to end (message/send → tasks/get → SSE stream → tasks/cancel,
-against a real Postgres): principal validation, the IDOR-safe
-`authorise_context`, the session-creation-race fix, the T1/T2/T3 adapters,
-the full A2A surface, and T1 code-interpreter artifact harvesting (copy to
-the shared blob container, index in `gw_artifact`, download via a
-short-lived user-delegation SAS).
+tested end to end (`SendMessage` → `GetTask` → `CancelTask`, through the
+real `a2a-sdk`-mounted routes against a real Postgres): principal
+validation, the IDOR-safe `authorise_context`/`get_or_create_context`, the
+session-creation-race fix, the T2/T3 adapters, the full spec-conformant A2A
+surface, and T2 code-interpreter artifact harvesting (copy to the shared
+blob container, index in `gw_artifact`, download via a short-lived
+user-delegation SAS).
 
 **Known gaps, not hidden:**
-- `steer()` / mid-run interjections (D7) — the adapter methods exist,
-  nothing exposes them over HTTP yet, and `gw_interjection` is unused.
-- T2/T3 artifacts still download through their native store (Session
-  Files API / T3's own mechanism), not the shared blob container — only
-  T1's code-interpreter path is harvested in this pass. See docs/07 §2
-  item 3 and docs/08.
+- Inbound file parts (`Part.url`/`Part.raw`) aren't wired to Foundry yet —
+  text-only input for now. Bidirectional file support is the next phase.
+- `steer()` and steering into a `working` task — the adapter methods exist,
+  nothing exposes them over the A2A surface yet, and `gw_interjection` is
+  unused. Same for T2's `resume()`.
+- A client-side "blind retry" (same `messageId`, no `taskId`, because the
+  original response was lost) can't be transparently resolved to the
+  original task under `a2a-sdk`'s per-request task-identity model — it's
+  now rejected with a clear error instead of silently misrouted or
+  double-submitted. See docs/08 item E.6.
+- T3 artifacts still download through their native mechanism, not the
+  shared blob container — only T2's code-interpreter citation path is
+  harvested in this pass. See docs/07 §2 item 3 and docs/08.
 - The reaper (`gw_task_reaper`, `TaskStore.reap_wedged_tasks`) exists but
   nothing schedules it.
 - `gw_push_config` is defined but never read or written.

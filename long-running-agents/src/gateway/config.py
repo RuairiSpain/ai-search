@@ -2,6 +2,14 @@
 docs/02-decisions.md "azure.yaml <-> gateway YAML" table) and resolves
 `${VAR}` substitutions from the process environment.
 
+T1 (prompt agents) is not a gateway tier: it's short/synchronous by
+nature and gets Foundry's own native incoming A2A directly, with no
+per-user isolation multiplexing to broker and no streaming/artifacts to
+add. This gateway exists specifically for what Foundry's native A2A
+endpoint doesn't do — streaming, artifacts, and safe per-user identity
+multiplexing (docs/00-tier-model-and-concepts.md) — which is exactly T2
+and T3.
+
 `${{ ... }}` (double-brace, server-side Foundry substitution) is left
 untouched here — that syntax is never resolved by the gateway, only by
 Foundry at runtime. Mixing the two up puts a secret in the wrong plane.
@@ -38,7 +46,7 @@ class CardConfig(BaseModel):
 
 class AppConfig(BaseModel):
     name: str
-    tier: Literal["t1", "t2", "t3"]
+    tier: Literal["t2", "t3"]
     upstream: str
     default_mode: Literal["short", "long"] = "short"
     sync_budget_ms: int = 8000
@@ -49,8 +57,8 @@ class AppConfig(BaseModel):
 
 class UpstreamConfig(BaseModel):
     id: str
-    tier: Literal["t1", "t2", "t3"]
-    # T1 / T2
+    tier: Literal["t2", "t3"]
+    # T2
     project_endpoint: str | None = None
     agent_name: str | None = None
     identity: Literal["per_user", "service"] = "per_user"

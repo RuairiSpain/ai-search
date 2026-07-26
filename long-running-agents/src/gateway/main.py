@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 
-from gateway.api.a2a import build_router
+from gateway.a2a_server.app import mount_app
 from gateway.api.webhooks import build_webhook_router
 from gateway.config import get_config
 from gateway.registry import Registry
@@ -54,12 +54,29 @@ async def lifespan(app: FastAPI):
     app.state.registry = registry
     app.state.last_health = health
 
-    app.include_router(build_router(config, registry, contexts, tasks, artifacts, registry.harvester))
+    # One A2A-conformant surface per configured app (T2/T3 only — docs/00
+    # §4). Each app gets its own AgentExecutor/TaskStore/AgentCard, all
+    # sharing the one Postgres-backed store layer above.
+    request_handlers = [
+        mount_app(
+            app,
+            app_cfg=app_cfg,
+            adapter=registry.adapter_for_app(app_cfg.name),
+            validator=registry.validator,
+            contexts=contexts,
+            tasks=tasks,
+            artifacts=artifacts,
+            harvester=registry.harvester,
+        )
+        for app_cfg in config.apps
+    ]
     app.include_router(build_webhook_router(tasks), prefix="/callback")
 
     try:
         yield
     finally:
+        for handler in request_handlers:
+            await handler.aclose()
         await db.close()
 
 

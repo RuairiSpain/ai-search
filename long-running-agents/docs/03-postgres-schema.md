@@ -12,7 +12,7 @@ CREATE TABLE gw_context (
     app               TEXT NOT NULL,
     principal_subject TEXT NOT NULL,
     session_id        TEXT,          -- T2 agent_session_id
-    conversation_id   TEXT,          -- T1/T2 Foundry conversation
+    conversation_id   TEXT,          -- T2 Foundry conversation
     instance_url      TEXT,          -- T3 affinity pin (BYO-compute only; unused with DTS)
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_seen_at      TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -32,7 +32,7 @@ CREATE TABLE gw_task (
     task_id           TEXT PRIMARY KEY,
     context_id        TEXT NOT NULL REFERENCES gw_context(context_id),
     app               TEXT NOT NULL,
-    tier              TEXT NOT NULL CHECK (tier IN ('t1','t2','t3')),
+    tier              TEXT NOT NULL CHECK (tier IN ('t2','t3')),
     state             TEXT NOT NULL,
     run_id            TEXT,
     last_sequence     INT  NOT NULL DEFAULT 0,

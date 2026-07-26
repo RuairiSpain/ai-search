@@ -3,6 +3,18 @@
 **Scope of the gateway:** the gateway only. Agent orchestration internals are
 out of scope for the gateway itself — it fronts them.
 
+**T1 is not a gateway tier.** The tier model and escalation table below cover
+all three tiers, because "which tier does my agent need" is a decision that
+applies regardless of what this specific gateway implements. But this
+gateway's own client-facing A2A surface (`src/gateway/a2a_server/`, built on
+`a2a-sdk`) only mounts T2 and T3 apps. A T1 prompt agent doesn't need
+anything this gateway adds — no session/sandbox to multiplex per user, no
+streaming beyond what a single response gives you, no artifacts channel
+beyond code-interpreter citations — and Foundry already exposes T1 agents
+over its own native, incoming A2A endpoint directly. Point T1 clients there
+instead of at this gateway. See §5 for what that means for the identity
+chain specifically.
+
 ---
 
 ## 1. Design premises
@@ -24,7 +36,7 @@ out of scope for the gateway itself — it fronts them.
 
 | Tier | Upstream | Progress source | Identity delta |
 |---|---|---|---|
-| **T1** | Prompt agent, `background=True` | gateway poll loop | conversation ID, gateway-owned (no session, no persistent filesystem) |
+| **T1** *(not fronted by this gateway — see above)* | Prompt agent, `background=True` | Foundry's own native incoming A2A | conversation ID, Foundry-owned (no session, no persistent filesystem) |
 | **T2** | Hosted agent | gateway poll loop, or `FINE` via app-emitted events (§5.4 of tier2 doc) | + `x-ms-user-identity` delegation |
 | **T3** | MAF + Durable Task | pushed events via webhook callback | app's own managed identity; principal carried explicitly, no platform partition |
 
@@ -64,7 +76,7 @@ needs a policy, see D5 in `02-decisions.md`).
 ### Tier 2 settles the stickiness question
 
 Session state lives in Foundry keyed by identity, not in a gateway replica.
-No gateway→instance affinity is needed for T1/T2; APIM round-robin is safe.
+No gateway→instance affinity is needed for T2; APIM round-robin is safe.
 Affinity is only relevant for T3-without-DTS (bring-your-own-compute); with
 Durable Task Scheduler, any worker resumes any orchestration, so pinning
 defeats the scaling model. **Correction applied during merge:** an earlier
@@ -123,7 +135,11 @@ protocol by default, so **every one of them can be exposed as an A2A
 endpoint**. Tier 1 is the cheapest tier for the gateway to front, both in
 compute cost and in adapter complexity.
 
-## 5. Identity chain — end to end (T1/T2)
+## 5. Identity chain — end to end (T2)
+
+This is the gateway's own identity chain, so it only exists for T2 (the only
+gateway tier that delegates a per-user Foundry sandbox). T1 never transits
+the gateway at all — see the scope note above — so it has no chain here.
 
 ```
 ┌─────────────┐

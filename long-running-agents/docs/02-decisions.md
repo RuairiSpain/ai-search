@@ -3,6 +3,15 @@
 **Status:** decisions accepted; items marked ⚠ require an empirical check
 before build — tracked centrally in `08-open-items-and-experiments.md`.
 
+**Scope note:** these decisions were made across all three tiers, and most
+still apply that way — D1's isolation model, D7's steering/cancellation
+semantics, and D10's preview gating are relevant to a T1 agent wherever it's
+actually fronted. But T1 is not a gateway tier (`00-tier-model-and-concepts.md`),
+so where a decision below is specifically about *this gateway's* runtime
+behavior, only its T2/T3 half is something the code in `src/gateway/`
+actually implements — a T1 mention is design intent for T1's own front door
+(Foundry's native A2A endpoint), not something to look for in this codebase.
+
 ---
 
 ## D1 — Conversation isolation
@@ -16,7 +25,7 @@ string that scopes endpoint-scoped data to a specific end user, requiring the
 `agents/endpoints/UserIdentityImpersonation/action` RBAC permission. That
 means the same delegation header applies to T1 — send it on every call.
 ⚠ "Endpoint-scoped data" is not defined precisely enough to assume it covers
-conversations — verify with test **T1-ISO-1** before relying on it.
+conversations — verify with test **ISO-1** before relying on it.
 
 ### Where the conversation ID comes from
 
@@ -44,6 +53,19 @@ Never conflate them.
 Many conversations per user is already supported: one `gw_context` row per
 conversation, all sharing a `principal_subject`.
 
+**Implementation note (a2a-sdk integration):** `a2a-sdk` resolves
+`contextId` before the gateway's own code runs — either taken from the
+client's message, or minted by the SDK's own generator when the client
+omits one. The gateway no longer gets to unilaterally choose the id the way
+the sentence above describes literally. `ContextStore.get_or_create_context`
+implements the practical equivalent instead: an atomic INSERT-or-authorise
+against `gw_context` (`ON CONFLICT DO NOTHING RETURNING *`, falling back to
+`authorise_context` if the row already exists). This loosens D1's letter
+("the gateway creates it") while preserving the property that actually
+matters — ownership stays principal-scoped and atomic, so a client can never
+claim a `contextId` that belongs to someone else, satisfied whether the
+gateway or the client happened to pick the string.
+
 ### Layer 3: metadata stamp
 
 Conversations accept metadata at creation. Stamp a salted hash of the
@@ -68,7 +90,7 @@ not, and costs one cheap call.
 Both replace the deprecated `user` field. Use the same value as
 `x-ms-user-identity`.
 
-### ⚠ Test T1-ISO-1 (run before writing adapter code)
+### ⚠ Test ISO-1 (run before writing adapter code)
 
 1. As the gateway identity, create conversation A with
    `x-ms-user-identity: alice`.
@@ -86,7 +108,7 @@ it determines the review weight on the mapping code.
 
 **Decision:** platform *session* memory only. User and procedural memory
 live in the gateway's Postgres, keyed by `principal_subject`, until
-**T1-ISO-2** proves platform scoping.
+**ISO-2** proves platform scoping.
 
 **Rejected: a per-request key round-tripped through the client.** The
 proposal was for the gateway to mint a key, hand it to the UI, and have the
@@ -118,7 +140,7 @@ data-subject requests regardless.
 Session memory is safe to use now: it is scoped to a conversation, and
 conversation scoping is already the boundary D1 enforces.
 
-### ⚠ Test T1-ISO-2
+### ⚠ Test ISO-2
 
 Write a user memory as `alice`, read as `bob`, with and without
 `x-ms-user-identity`. If isolated, promote user memory to the platform and
@@ -290,6 +312,18 @@ whether it stops billing, and what it does to an attached code interpreter
 container. Until verified, `Capabilities.cancel` for T1 stays behind a
 feature flag and `tasks/cancel` returns `canceled` only after the upstream
 confirms — never optimistically.
+
+**Implementation note (a2a-sdk integration):** "never optimistically" does
+not mean "let the original follow loop notice it." `a2a-sdk`'s
+`ActiveTask.cancel()` force-cancels the task's running `AgentExecutor.execute()`
+coroutine *before* awaiting `AgentExecutor.cancel()` — so the loop that
+would normally observe the upstream's status transition and relay it is
+already gone by the time `cancel()` runs. The confirmation this decision
+requires is `adapter.cancel()` returning successfully; `GatewayAgentExecutor.cancel()`
+persists the terminal state directly against the store right after that
+call, rather than through the event queue the executor also owns (which the
+producer's own teardown may be concurrently closing — an event enqueued
+there is silently dropped, not merely delayed).
 
 ### Mid-run steering — supported, tier-dependent, cooperative
 
