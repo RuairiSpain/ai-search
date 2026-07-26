@@ -1,0 +1,52 @@
+# Example gateway configuration. Copy to apps.yaml and edit.
+# Field-by-field reference: docs/01-gateway-config-and-adapter-contract.md §1
+
+auth:
+  tenant_id: ${GATEWAY_TENANT_ID}
+  # Audience of the GATEWAY's own app registration.
+  # NOT https://ai.azure.com — the client authenticates to us, not to Foundry.
+  audience: api://a2a-gateway
+  # Claim used as the stable subject. oid is immutable per user per tenant.
+  # NEVER email/upn/preferred_username: mutable, and addresses get recycled.
+  subject_claim: oid
+
+apps:
+  - name: quick-summary
+    tier: t1
+    upstream: foundry-weu
+    default_mode: short
+    sync_budget_ms: 8000
+    preview: deny
+
+  - name: ticket-triage
+    tier: t2
+    upstream: triage-hosted
+    default_mode: long
+
+  - name: deep-research
+    tier: t3
+    upstream: research-pool
+    default_mode: long
+    card:
+      description: Long-running research agent
+      capabilities: { streaming: false, pushNotifications: true }
+      # streaming: false — the T3 A2A server pushes via webhook, it does
+      # not hold an SSE connection. See docs/06-tier3-durable-agents.md §4.1.
+
+upstreams:
+  - id: foundry-weu
+    tier: t1
+    project_endpoint: ${FOUNDRY_PROJECT_ENDPOINT}
+    agent_name: quick-summary-agent
+
+  - id: triage-hosted
+    tier: t2
+    project_endpoint: ${FOUNDRY_PROJECT_ENDPOINT}
+    agent_name: triage-agent
+    identity: per_user            # per_user (default) | service
+
+  - id: research-pool
+    tier: t3
+    protocol: a2a
+    instances: ["https://rs-1.internal", "https://rs-2.internal"]
+    health: /healthz

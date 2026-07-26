@@ -54,3 +54,91 @@ T3 session-TTL vs. conversation-retention conflict.
 
 See [`docs/08-open-items-and-experiments.md`](docs/08-open-items-and-experiments.md)
 for the full, prioritised list.
+
+## Code layout
+
+```
+long-running-agents/
+├── docs/                  # the merged plan (see Document map above)
+├── src/gateway/           # the gateway itself — Python, FastAPI
+│   ├── auth/              # EntraValidator / Principal (docs/00 §5, docs/05 §3)
+│   ├── upstream/          # UpstreamAdapter + T1/T2/T3 implementations (docs/01)
+│   ├── store/             # gw_context / gw_task / gw_event (docs/03)
+│   ├── api/                # A2A surface + T3 webhook receiver
+│   ├── config.py          # apps.yaml loader
+│   ├── registry.py        # builds adapters from config at startup
+│   └── main.py            # FastAPI app, startup health probes
+├── migrations/0001_init.sql
+├── tests/                 # offline unit tests + Postgres integration tests
+├── infra/                 # Bicep + az CLI provisioning (below)
+└── docker-compose.yml     # local Postgres
+```
+
+This is a working skeleton, not a finished gateway: `tasks/get`, `tasks/cancel`
+and the SSE follow endpoint are stubbed with `HTTPException(501, ...)` and a
+comment pointing at what to wire up (they need a `gw_task → gw_context` join
+that's straightforward but was left as an exercise rather than guessed at).
+Everything else — principal validation, the IDOR-safe `authorise_context`,
+the session-creation-race fix, the T1/T2/T3 adapters, the Postgres schema —
+is implemented and tested.
+
+## Running it locally
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+make install
+make db-up       # docker-compose Postgres
+make migrate      # applies migrations/0001_init.sql
+cp .env.example .env      # then fill in GATEWAY_TENANT_ID, FOUNDRY_PROJECT_ENDPOINT
+cp config/apps.example.yaml config/apps.yaml   # then edit
+make run          # uvicorn on :8080, see /healthz
+```
+
+```bash
+make test          # offline tests always run; Postgres tests skip cleanly
+                    # if db-up wasn't run — see tests/conftest.py
+make lint
+```
+
+Local runs receive no platform user context from Foundry — isolation bugs
+in the T2 path are invisible here by design (docs/05 §3.6). Trust the
+isolation tests only against a deployed agent.
+
+## Deploying the infra
+
+```bash
+cd infra
+cp config/variables.bicepparam config/variables.local.bicepparam   # edit: tenant, Foundry endpoint, your objectId
+./deploy.sh rg-a2a-gateway-dev westeurope config/variables.local.bicepparam
+
+# apply the schema (uses your own az login, over an Entra token — no passwords)
+./scripts/apply-db-migrations.sh rg-a2a-gateway-dev
+
+# build and push the real gateway image, point the Container App at it
+./deploy.sh --build rg-a2a-gateway-dev westeurope config/variables.local.bicepparam
+```
+
+`infra/main.bicep` provisions: a user-assigned managed identity, Log
+Analytics + Application Insights, an Azure Database for PostgreSQL Flexible
+Server (Entra-only auth), a Storage account with the shared `artifacts`
+blob container and its D5 lifecycle policy, a Key Vault, an Azure Container
+Registry, and a Container Apps environment + the gateway Container App.
+
+It deliberately does **not** provision the Foundry project or any agents —
+those are a separate deployment (docs/04–06, `azd ai agent init` /
+`create_version()`) — and it does **not** grant the gateway's identity
+`UserIdentityImpersonation` on any agent, because that permission targets a
+resource (the Foundry agent endpoint) that doesn't exist yet at this point.
+That's the one genuinely manual step per agent, and it's the single most
+important one to not skip (docs/05 §6.2 — skipping it silently degrades
+every user into one shared T2 sandbox):
+
+```bash
+./infra/scripts/grant-agent-access.sh rg-a2a-gateway-dev \
+  $(az cognitiveservices account show -g <foundry-rg> -n <foundry-account> --query id -o tsv)
+```
+
+Run it once per Foundry account after deploying agents into it. The
+gateway's own startup probe (`FoundryHostedAdapter.health()`) fails
+readiness if this grant is missing or hasn't propagated yet, rather than
+letting the first real user hit a silent isolation hole.

@@ -1,0 +1,49 @@
+[project]
+name = "a2a-gateway"
+version = "0.1.0"
+description = "A2A gateway fronting Foundry prompt agents (T1), hosted agents (T2), and durable orchestrations (T3)."
+requires-python = ">=3.11"
+readme = "README.md"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "pyyaml>=6.0",
+    "httpx>=0.27",
+    "asyncpg>=0.29",
+    "PyJWT[crypto]>=2.8",
+    "azure-identity>=1.17",
+    "azure-storage-blob>=12.20",
+    # Foundry SDK surface used by the T1/T2 adapters. Pinned per
+    # docs/01-gateway-config-and-adapter-contract.md §3 — bump deliberately.
+    "azure-ai-projects>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "mypy>=1.10",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.mypy]
+python_version = "3.11"
+packages = ["gateway"]
+ignore_missing_imports = true
