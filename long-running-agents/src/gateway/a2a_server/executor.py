@@ -22,7 +22,7 @@ import logging
 from collections.abc import AsyncIterator
 from dataclasses import replace
 
-from a2a.helpers.proto_helpers import get_text_parts, new_url_part
+from a2a.helpers.proto_helpers import get_text_parts, new_text_message, new_url_part
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
@@ -294,7 +294,17 @@ class GatewayAgentExecutor(AgentExecutor):
                         name=event.name,
                     )
                 continue
-            await updater.update_status(_GW_TO_SDK_STATE[event.state])
+            # `event.detail` is the gw.progress.v1 narration text (docs/05
+            # §5.4, docs/06 §5.4) -- T2's own poll loop never populates it
+            # (FoundryResponsesAdapter.follow() has no narration source),
+            # but T3's DurableAdapter does, relayed here via `message` so it
+            # actually reaches the wire instead of only ever updating
+            # `state`. Previously dropped entirely: this call passed no
+            # `message`, so a client had no way to distinguish a narrating
+            # upstream from a silent one -- same event vocabulary, same
+            # code path, but only T3 ever has anything to put in `detail`.
+            message = new_text_message(event.detail) if event.detail else None
+            await updater.update_status(_GW_TO_SDK_STATE[event.state], message=message)
 
     async def _relay_deduped_retry(self, message_id: str) -> None:
         """A retry of a message we've already accepted (D7 "submit

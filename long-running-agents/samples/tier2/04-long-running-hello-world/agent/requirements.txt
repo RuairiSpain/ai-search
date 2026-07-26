@@ -1,0 +1,4 @@
+# Versions intentionally not pinned here -- see the single pin table in
+# ../../../docs/01-gateway-config-and-adapter-contract.md §3.
+azure-identity
+agent-framework-foundry

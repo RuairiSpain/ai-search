@@ -276,6 +276,31 @@ real than a `FakeAdapter`. In order found:
     reporting every other rule as `SKIP` with a reason rather than
     silently omitting it.
 
+15. **`samples/` added, and a real narration bug found + fixed while
+    building it.** `GatewayAgentExecutor._follow_and_relay`
+    (`src/gateway/a2a_server/executor.py`) called
+    `TaskUpdater.update_status(state)` with no `message` for every event of
+    every tier — `StatusEvent.detail`, the `gw.progress.v1` narration text
+    computed and stored in `gw_event`, never reached the A2A wire. Fixed by
+    building a `Message` via `a2a.helpers.proto_helpers.new_text_message`
+    when `detail` is set and passing it through, verified against the real
+    installed `a2a-sdk` package (`TaskUpdater.update_status`'s
+    `message: Message | None` parameter) before writing the fix, not
+    assumed. Found while building `samples/tier3/01-durable-hello-world-status`,
+    whose whole premise depends on a client actually seeing narration text.
+    Building the T2 counterpart (`samples/tier2/04-long-running-hello-world`)
+    surfaced the mirror-image, NOT-fixed gap: `FoundryResponsesAdapter.follow()`
+    never populates `StatusEvent.detail` in the first place, so
+    `FoundryHostedAdapter.capabilities`'s claim of "COARSE promoted to FINE
+    by the gw.progress.v1 filter" (docs/05 §5.4) describes a decision that
+    was never implemented, not current behavior. Left undone here — parsing
+    custom events out of a Foundry Responses poll loop is materially bigger
+    and touches an unverified part of the SDK surface, unlike the T3 fix's
+    four lines against a signature already confirmed real. `samples/README.md`
+    and the five sample READMEs underneath it are the map; the top-level
+    `README.md`'s bug list and `docs/02-decisions.md`'s samples-structure
+    section both point here.
+
 ## D. Duplicate source documents collapsed during merge
 
 For traceability: these upload sets were identical or near-identical

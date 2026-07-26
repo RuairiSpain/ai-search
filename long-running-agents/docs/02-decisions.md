@@ -497,6 +497,14 @@ it knowingly. Document it as the "regulated app" profile.
 
 ## Documentation and samples structure (target, for once the codebase exists)
 
+**Update:** `samples/` now partially exists — see `samples/README.md`.
+Built so far, marked ✅ below: `tier1/01` (folded together with what this
+list originally split out as `02-mcp-tool`, since the MCP toolbox is one
+piece of the same basic-agent sample rather than its own), `tier1/03`,
+`tier1/08`, `tier2/04`, `tier3/01` (the T3 entry doubles as this list's
+`04-a2a-server`, since a T3 sample can't avoid building its own A2A server
+surface). Everything else below is still target-only.
+
 ```
 docs/
   README.md                     # what this is, 5-minute path to a running agent
@@ -521,11 +529,11 @@ docs/
     a2a-surface.md
     postgres-schema.md
 samples/
-  tier1/  01-basic  02-mcp-tool  03-code-interpreter  04-artifact-harvest
+  tier1/  01-basic ✅  02-mcp-tool  03-code-interpreter ✅  04-artifact-harvest
           05-input-required  06-session-memory  07-workflow-sequential
-          08-workflow-executor-reviewer  09-workflow-hitl  10-structured-output
-  tier2/  01-hosted-basic  02-per-user-isolation  03-session-files  04-long-running
-  tier3/  01-durable-agent  02-multi-agent-orchestration  03-hitl-durable  04-a2a-server
+          08-workflow-executor-reviewer ✅  09-workflow-hitl  10-structured-output
+  tier2/  01-hosted-basic  02-per-user-isolation  03-session-files  04-long-running ✅
+  tier3/  01-durable-agent ✅  02-multi-agent-orchestration  03-hitl-durable  04-a2a-server
   gateway/  01-local-dev  02-end-to-end
 ```
 

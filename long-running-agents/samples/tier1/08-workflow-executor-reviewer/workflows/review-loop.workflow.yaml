@@ -1,0 +1,106 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+#
+# Executor/reviewer with a bounded retry loop, adapted from the pattern in
+# docs/04-tier1-prompt-agents.md "Tier 1 -> tier 1: workflows". Two
+# deliberate departures from that doc's example, both explained in this
+# sample's README:
+#
+#   1. invoke_reviewer omits `conversationId` -- the docs/04 example shares
+#      one conversation across both agents; this sample does not, because
+#      the whole point here is a reviewer with no shared history.
+#   2. A round counter caps the rework loop at `Env.MaxRounds` (default 3)
+#      instead of looping unbounded, per docs/04's own warning: "Always cap
+#      the loop. Group-chat and retry patterns without a round limit burn
+#      tokens indefinitely."
+kind: workflow
+trigger:
+  kind: OnConversationStart
+  id: trigger_wf
+actions:
+  - kind: SetVariable
+    id: init_ticket
+    variable: Local.Ticket
+    value: =UserMessage(System.LastMessageText)
+
+  - kind: SetVariable
+    id: init_round
+    variable: Local.Round
+    value: =0
+
+  - kind: SetVariable
+    id: init_feedback
+    variable: Local.Feedback
+    value: =Blank()
+
+  - kind: InvokeAzureAgent
+    id: invoke_executor
+    agent:
+      name: executor
+    conversationId: =System.ConversationId       # executor keeps its own history across rounds
+    input:
+      # First round: the raw ticket. Later rounds: the ticket plus the
+      # reviewer's [REWORK] feedback, so the executor can address it.
+      messages: =If(IsBlank(Local.Feedback), Local.Ticket, Local.Feedback)
+    output:
+      messages: Local.Draft
+    autoSend: false
+
+  - kind: InvokeAzureAgent
+    id: invoke_reviewer
+    agent:
+      name: reviewer
+    # No conversationId: the platform opens a fresh, empty conversation for
+    # every call, so this agent never accumulates history across rounds and
+    # never sees the executor's conversation. Only `input.messages` reaches
+    # it -- here, just the current draft.
+    input:
+      messages: =Local.Draft
+    output:
+      messages: Local.Review
+    autoSend: false
+
+  - kind: SetVariable
+    id: increment_round
+    variable: Local.Round
+    value: =Local.Round + 1
+
+  - kind: ConditionGroup
+    id: gate_on_review
+    conditions:
+      - id: needs_rework
+        condition: >-
+          =And(
+            !IsBlank(Find("[REWORK]", Upper(Last(Local.Review).Text))),
+            Local.Round < Env.MaxRounds
+          )
+        actions:
+          - kind: SetVariable
+            id: carry_feedback
+            variable: Local.Feedback
+            value: =Last(Local.Review).Text
+          - kind: GoTo
+            id: retry
+            target: invoke_executor
+      - id: exhausted_without_approval
+        condition: >-
+          =And(
+            !IsBlank(Find("[REWORK]", Upper(Last(Local.Review).Text))),
+            Local.Round >= Env.MaxRounds
+          )
+        actions:
+          # The deliberate failure path: return the reviewer's last verdict
+          # rather than looping forever or silently shipping an unapproved
+          # draft. See README "The deliberate failure path".
+          - kind: SendActivity
+            id: emit_unresolved
+            activity: >-
+              =Concatenate(
+                "NEEDS_INPUT: reviewer did not approve after ",
+                Text(Env.MaxRounds),
+                " round(s). Last feedback: ",
+                Last(Local.Review).Text
+              )
+    elseActions:
+      - kind: SendActivity
+        id: emit_approved
+        activity: =Last(Local.Draft).Text

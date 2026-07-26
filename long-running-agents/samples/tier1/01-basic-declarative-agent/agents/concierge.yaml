@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+kind: prompt
+name: concierge
+displayName: Order Concierge
+description: Answers customer questions about existing orders using MCP tools.
+
+model:
+  deployment: ${FOUNDRY_MODEL_DEPLOYMENT}
+  options:
+    temperature: 0.2      # low: this agent answers factual lookups, not prose
+    topP: 0.95
+
+instructionsFile: ./concierge.instructions.md
+
+skills:
+  - house-style
+
+toolboxes:
+  - concierge-tools        # order-lookup MCP tools, defined in azure.yaml
+
+# No `memory` block: this is the single-turn, no-history sample on purpose
+# (contrast with 03-code-interpreter-shared-memory). Conversation-scoped
+# history is still available via the `conversation` the caller passes —
+# that's platform session state, not the `memory` service, and needs no
+# declaration here.

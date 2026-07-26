@@ -49,6 +49,7 @@ Full escalation table, what each tier does *not* have, and cost models: see
 | [`06-tier3-durable-agents.md`](docs/06-tier3-durable-agents.md) | Deployment, determinism rules, triggers (A2A/cron/Teams), HITL, the three planes |
 | [`07-artifacts-and-code-interpreter.md`](docs/07-artifacts-and-code-interpreter.md) | Blob artifact policy, code interpreter container lifecycle, MCP → code interpreter handoff |
 | [`08-open-items-and-experiments.md`](docs/08-open-items-and-experiments.md) | Consolidated backlog: empirical checks (⚠) to run before build, open decisions (◆), and every correction made while merging the source drafts |
+| [`samples/`](samples/) | Five worked examples: three T1 (declarative agent, isolated executor/reviewer, shared-memory code-interpreter/flashcards) and a T2/T3 hello-world pair that shows the actual progress-narration difference between the two tiers |
 
 ## Status at a glance
 
@@ -139,6 +140,15 @@ real request/response cycle through it, not by reading the code:
   shape the real SDK doesn't have, a `blocking` field instead of
   `returnImmediately`, task-state strings compared against the wrong
   vocabulary. Every T3 call would have failed end to end.
+- `GatewayAgentExecutor._follow_and_relay` called
+  `TaskUpdater.update_status(state)` with no `message` — so
+  `StatusEvent.detail`, the actual `gw.progress.v1` narration text T3
+  pushes via webhook, was computed and stored but never reached the A2A
+  wire, for either tier. Found while building `samples/tier3/
+  01-durable-hello-world-status`, whose entire premise is that T3
+  narrates and a client can see it; confirmed the fix against the real
+  installed `a2a-sdk` (`update_status`'s `message: Message | None` param)
+  before writing it, not assumed.
 
 See `docs/08-open-items-and-experiments.md` section E for the full account
 of each, item by item.
@@ -158,6 +168,16 @@ of each, item by item.
   (`Capabilities.input_required` stays `False`) — `_map_state()` has no
   case for it yet, so the method is reachable but not yet exercised by a
   live pause.
+- T2's `progress=FINE` promotion (docs/05 §5.4: an agent emits
+  `gw.progress.v1` custom events, "a filter in `follow()` — no new
+  transport") is a decided design that was never actually built —
+  `FoundryResponsesAdapter.follow()` never populates `StatusEvent.detail`,
+  so `FoundryHostedAdapter.capabilities` claiming COARSE-promoted-to-FINE
+  is aspirational, not current behavior. Found while building
+  `samples/tier2/04-long-running-hello-world`; documented, not fixed here
+  — unlike the T3 message-passthrough bug above, this needs new parsing
+  logic against an unverified part of the Responses polling surface, not
+  a four-line fix. See that sample's README for the full account.
 - No VNet/private endpoint on Postgres or storage (deliberately deferred).
 - `gwlint` only covers the safety rules (L020, L022, L023, L030, L032)
   checkable from this repo's own `apps.yaml` and source tree — the rest of
