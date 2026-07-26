@@ -13,15 +13,20 @@ filling in the rest later doesn't require renaming anything.
 | [`tier1/01-basic-declarative-agent`](tier1/01-basic-declarative-agent/) | T1 | A single declarative prompt agent: instructions in markdown, a skill, an MCP toolbox. The "classic Foundry agent" shape. |
 | [`tier1/08-workflow-executor-reviewer`](tier1/08-workflow-executor-reviewer/) | T1 | Executor → reviewer, both defined entirely in markdown/YAML. The reviewer runs in an **isolated conversation** — no history, no memory of the executor's turn. |
 | [`tier1/03-code-interpreter-shared-memory`](tier1/03-code-interpreter-shared-memory/) | T1 | Code interpreter does a math calculation from the user's prompt; a second agent **shares the same conversation and memory scope** and reformats the result into an ELI5 preschool multiple-choice flashcard. Deliberately the mirror image of the sample above. |
-| [`tier2/04-long-running-hello-world`](tier2/04-long-running-hello-world/) | T2 | One hosted agent, ~5 minutes of work, fronted by this gateway. No `gw.progress.v1` events emitted, so the client only ever sees `submitted` → `working` → `completed` — no narration in between. |
-| [`tier3/01-durable-hello-world-status`](tier3/01-durable-hello-world-status/) | T3 | The same ~5 minute hello world, this time as a durable orchestration that pushes `gw.progress.v1` narration at each step via webhook. Same client, visibly different experience. |
+| [`tier2/04-long-running-hello-world`](tier2/04-long-running-hello-world/) | T2 | One hosted agent, ~5 minutes of work, fronted by this gateway. Narration is automatic and coarse: one line naming the tool call in progress ("running tool: slow_then_greet"), unchanged for the whole run, derived from the platform's own `Response.output` — no agent-side code. |
+| [`tier3/01-durable-hello-world-status`](tier3/01-durable-hello-world-status/) | T3 | The same ~5 minute hello world, this time as a durable orchestration that pushes explicit, author-chosen narration at each of five steps via webhook. Same client, visibly finer-grained experience. |
 
-The T2/T3 pair is the point: identical wall-clock behavior, and the only
-difference visible to a client is whether the agent chose to narrate. That
-difference is a property of *how the agent is built*, not of the gateway —
-see docs/05 §5.4 and docs/06 §5.4, both of which push the same
-`gw.progress.v1` event schema through different transports (T2: filtered
-out of the gateway's own poll loop; T3: webhook).
+The T2/T3 pair is the point: identical wall-clock behavior, both tiers
+narrate, but through genuinely different mechanisms with different
+granularity ceilings. T2's narration (docs/05 §5.4) is derived
+automatically from standard Responses-API output items — real, verified,
+and zero agent effort, but it can only ever describe tool-call boundaries,
+never what happens inside one. T3's narration (docs/06 §5.4) is an
+explicit `gw.progress.v1` payload the orchestrator's own code chooses to
+push via webhook — real per-step control, at the cost of having to write
+that code. Both land as the same `StatusEvent.detail` field on the gateway
+side and reach the wire through the same `TaskUpdater.update_status(...,
+message=...)` call — one rendering path, two different sources.
 
 ## Why T1 has three samples and T2/T3 have one each
 

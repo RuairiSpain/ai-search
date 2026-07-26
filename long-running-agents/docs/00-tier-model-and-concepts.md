@@ -123,12 +123,16 @@ Give this to developers. Any single "yes" means tier 1 is the wrong home.
   broad. Code interpreter gives T1 a real (if fragile) artifact channel — see
   `07-artifacts-and-code-interpreter.md`. The row now turns on artifact
   *durability*, not mere file emission.
-- *"Does the UI need per-step progress narration?" → T3* is stale. T2 can
-  emit its own `gw.progress.v1` events from application code and reach
-  `FINE` fidelity without T3's infrastructure (tier2 doc §5.4). That was
-  the main remaining argument for defaulting to T3, and it no longer holds.
-  Some apps currently pointed at T3 belong in T2 — rewrite existing
-  escalation guidance that still cites this row.
+- *"Does the UI need per-step progress narration?" → T3* is stale, but for
+  a narrower reason than an earlier revision of this note claimed: T2 does
+  **not** have an agent-emitted `gw.progress.v1` event API (that was never
+  real — see tier2 doc §5.4's correction), but it does get automatic,
+  best-effort narration derived from the platform's own `Response.output`
+  items with zero agent code (same section). If a T2 app's escalation
+  reasoning specifically needs guaranteed, author-controlled step
+  narration, T3's explicit `gw.progress.v1` webhook push is still the only
+  tier that provides it — only route on this row to T2 when "some
+  narration, automatically, best-effort" is actually good enough.
 
 Tier 1 has one advantage worth stating: prompt agents support the responses
 protocol by default, so **every one of them can be exposed as an A2A

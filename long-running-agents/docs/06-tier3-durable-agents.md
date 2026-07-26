@@ -531,8 +531,15 @@ async def notify(payload: dict) -> None:
     )
 ```
 
-Same `gw.progress.v1` schema as T2 (`05-tier2-hosted-agents.md` §5.4). One
-event vocabulary across all three tiers, one client rendering path.
+This `gw.progress.v1` payload (`webhooks.py`'s real `ProgressPayload`
+contract) is specific to T3 — see `05-tier2-hosted-agents.md` §5.4's
+correction: T2 has no agent-emitted event schema at all, it gets
+automatic narration derived from the platform's own `Response.output`
+instead. Different mechanism, same destination: both land as
+`StatusEvent.detail: str | None` on the gateway side and both reach the
+A2A wire through the same `TaskUpdater.update_status(state, message=...)`
+call — one client rendering path even though the two tiers produce the
+text differently.
 
 ### 5.5 Artifacts
 

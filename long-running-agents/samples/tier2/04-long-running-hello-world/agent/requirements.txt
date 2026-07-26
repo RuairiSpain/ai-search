@@ -2,3 +2,4 @@
 # ../../../docs/01-gateway-config-and-adapter-contract.md §3.
 azure-identity
 agent-framework-foundry
+azure-ai-agentserver-responses

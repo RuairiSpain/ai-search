@@ -11,9 +11,12 @@
 
 The exact same ~5 minutes of "work" as
 `../../tier2/04-long-running-hello-world`, run through the same gateway,
-watched with the same client script — except this agent **narrates**. Run
-both samples back to back; the only difference you should see is what
-shows up in `status.message` between `SUBMITTED` and `COMPLETED`.
+watched with the same client script. Both samples narrate now — the
+difference is *what kind*: T2's narration is automatic and coarse (one
+line describing which tool is running, unable to see inside it), T3's is
+explicit and fine-grained (the orchestrator's own code decides what each
+step is called and when to report it). Run both back to back and compare
+what shows up in `status.message` between `SUBMITTED` and `COMPLETED`.
 
 ## What you'll actually see
 
@@ -46,11 +49,14 @@ today, not aspirational — see the diff in
 `src/gateway/a2a_server/executor.py` and the note in
 `docs/08-open-items-and-experiments.md`.
 
-Compare with `../../tier2/04-long-running-hello-world/README.md`, which
-found the mirror-image gap on the T2 side (`detail` is never populated in
-the first place there) and — correctly — did *not* fix it, since that fix
-is a materially bigger, unverified change (parsing custom events out of a
-Foundry Responses poll loop that doesn't exist yet).
+Building the T2 counterpart (`../../tier2/04-long-running-hello-world`)
+found a second, deeper problem on that side: `detail` was never populated
+in the first place there, *and* the mechanism docs/05 §5.4 described for
+populating it (`ctx.emit_custom_event`, a `gw.progress.v1` filter in
+`follow()`) turned out not to exist in any installed package. That's since
+been fixed too, with a different, real mechanism — narration automatically
+derived from `Response.output` — see that sample's README and
+`docs/08-open-items-and-experiments.md` item 16 for the full account.
 
 ## How the narration actually reaches the gateway
 

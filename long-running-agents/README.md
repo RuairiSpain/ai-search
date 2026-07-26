@@ -149,6 +149,16 @@ real request/response cycle through it, not by reading the code:
   narrates and a client can see it; confirmed the fix against the real
   installed `a2a-sdk` (`update_status`'s `message: Message | None` param)
   before writing it, not assumed.
+- T2's `progress=FINE` promotion, described as `ctx.emit_custom_event`
+  writing a `gw.progress.v1` custom event the gateway would filter for, was
+  never real — confirmed by downloading and inspecting the actual
+  installed `agent-framework-foundry` and `azure-ai-agentserver-responses`
+  packages: neither has any such API. Fixed with a mechanism that *is*
+  real: `FoundryResponsesAdapter.follow()` now derives narration
+  automatically from `Response.output`'s standard tool-call/reasoning
+  items (verified field-for-field against the installed `openai` package),
+  no agent-side code required. `docs/05-tier2-hosted-agents.md` §5.1 and
+  §5.4 (plus every doc cross-referencing them) are corrected to match.
 
 See `docs/08-open-items-and-experiments.md` section E for the full account
 of each, item by item.
@@ -168,16 +178,11 @@ of each, item by item.
   (`Capabilities.input_required` stays `False`) — `_map_state()` has no
   case for it yet, so the method is reachable but not yet exercised by a
   live pause.
-- T2's `progress=FINE` promotion (docs/05 §5.4: an agent emits
-  `gw.progress.v1` custom events, "a filter in `follow()` — no new
-  transport") is a decided design that was never actually built —
-  `FoundryResponsesAdapter.follow()` never populates `StatusEvent.detail`,
-  so `FoundryHostedAdapter.capabilities` claiming COARSE-promoted-to-FINE
-  is aspirational, not current behavior. Found while building
-  `samples/tier2/04-long-running-hello-world`; documented, not fixed here
-  — unlike the T3 message-passthrough bug above, this needs new parsing
-  logic against an unverified part of the Responses polling surface, not
-  a four-line fix. See that sample's README for the full account.
+- T2's progress narration stays declared `COARSE`, not `FINE`, even after
+  the fix above — it's genuinely best-effort (one line per output item,
+  not per fine-grained step, and nothing at all before the first item
+  appears), and `Capabilities.progress` reports what the adapter actually
+  has rather than fabricating granularity (docs/00 design premise #4).
 - No VNet/private endpoint on Postgres or storage (deliberately deferred).
 - `gwlint` only covers the safety rules (L020, L022, L023, L030, L032)
   checkable from this repo's own `apps.yaml` and source tree — the rest of

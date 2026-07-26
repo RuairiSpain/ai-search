@@ -48,6 +48,51 @@ def _map_state(status: str) -> TaskState:
     return _STATE_MAP.get(status, TaskState.WORKING)
 
 
+# Narration derived from the polled Response's own `output` items --
+# `Response.output: List[ResponseOutputItem]`, a real, standard field
+# verified directly against the installed `openai` package (the actual
+# runtime type of `_openai`: `AIProjectClient.get_openai_client()` is typed
+# `-> AsyncOpenAI`, confirmed in `azure-ai-projects`'s own source). This
+# replaces docs/05-tier2-hosted-agents.md §5.4's `ctx.emit_custom_event`/
+# `gw.progress.v1` custom-event story, which turned out not to correspond
+# to anything in the real, installed `agent-framework-foundry` or
+# `azure-ai-agentserver-responses` packages -- see docs/08 item 16 for the
+# full account. This mechanism needs no agent-side opt-in: it's derived
+# from the tool-call/reasoning/message items the platform already attaches
+# to every polled Response, for every T2 agent automatically.
+_NARRATION: dict[str, Any] = {
+    "function_call": lambda item: f"running tool: {item.name}",
+    "mcp_call": lambda item: f"running tool: {item.name} (mcp: {item.server_label})",
+    "code_interpreter_call": lambda item: "running code interpreter",
+    "web_search_call": lambda item: "searching the web",
+    "file_search_call": lambda item: "searching files",
+    "azure_ai_search_call": lambda item: "searching",
+    "reasoning": lambda item: "thinking",
+    "message": lambda item: "drafting a response",
+    "output_message": lambda item: "drafting a response",
+}
+
+
+def _narrate(resp: Any) -> str | None:
+    """Best-effort, coarse-grained narration: which output item the model is
+    currently on, not fine-grained progress within it. `resp.output` is
+    ordered by the platform, so the last item is the most recent one --
+    still `in_progress` if the poll landed mid-step, already `completed` if
+    it landed just after. Either way it's the most useful single line to
+    show. Returns `None` (never a stale guess) for item types with no
+    narration mapped, or when `output` is empty (nothing has started yet)."""
+    items = getattr(resp, "output", None) or []
+    if not items:
+        return None
+    describe = _NARRATION.get(getattr(items[-1], "type", ""))
+    if describe is None:
+        return None
+    try:
+        return describe(items[-1])
+    except AttributeError:
+        return None
+
+
 def new_task_id() -> str:
     return f"task_{uuid4().hex}"
 
@@ -106,6 +151,12 @@ class FoundryResponsesAdapter:
     """
 
     capabilities = Capabilities(
+        # COARSE, not FINE, even though follow() does narrate (via
+        # _narrate()) -- it's best-effort: a poll landing before any tool
+        # call has started, or an agent that never calls a tool at all,
+        # gets no narration line. FINE would claim a per-step guarantee
+        # this doesn't make (docs/00 design premise #4: "the gateway
+        # reports what it actually has, not fabricated granularity").
         progress=ProgressFidelity.COARSE,
         push=False,
         artifacts=True,  # code interpreter container files, ~1h TTL — docs/07
@@ -186,6 +237,7 @@ class FoundryResponsesAdapter:
                 task_id=task_id,
                 state=state,
                 sequence=seq,
+                detail=_narrate(resp),
                 final=state in TERMINAL_STATES,
             )
             for artifact in self._new_artifacts(resp, task_id, seq):

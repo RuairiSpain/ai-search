@@ -398,8 +398,9 @@ Two constraints from the durable layer:
 
 - Streaming is request/response underneath; token streaming needs a side
   channel (Redis Stream or equivalent) if you ever want it. Fine-grained
-  *progress* is delivered via the same `gw.progress.v1` push-activity
-  pattern as T2, not via a stream.
+  *progress* is delivered via the `gw.progress.v1` push-activity pattern
+  (tier3 doc §5.4), not via a stream — T3-specific; T2's own progress
+  narration is a different, automatic mechanism (tier2 doc §5.4).
 - Durable Task Scheduler caps entity state at 1 MB. Artifacts must be blob
   URIs in session state, never inline. Reinforces `ArtifactEvent.uri`.
 
@@ -416,7 +417,8 @@ monthly.
 | `agent-framework-durabletask` | `--pre` | T3, preview |
 | `agent-framework-a2a` | `--pre` | T3 A2A server side, preview |
 | `agent-framework-azurefunctions` | `--pre` | T3 on Flex Consumption |
-| `agent-framework-foundry` | prerelease | T2 `FoundryChatClient`, `ResponsesHostServer` |
+| `agent-framework-foundry` | prerelease | T2 `FoundryChatClient` (agent-authoring surface only — no hosting server; see next row) |
+| `azure-ai-agentserver-responses` | prerelease | T2 container-side hosting: `ResponsesAgentServerHost` (tier2 doc §5.1 — corrected from an earlier draft's `ResponsesHostServer`, which doesn't exist in any installed package, docs/08 item 16) |
 
 Do not use the Assistants API (threads / runs / messages) anywhere. It
 retires **26 August 2026** and does not support incoming A2A. Blocked always

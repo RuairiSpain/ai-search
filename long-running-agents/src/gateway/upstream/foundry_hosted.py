@@ -37,8 +37,14 @@ class Forbidden(Exception):
 
 class FoundryHostedAdapter(FoundryResponsesAdapter):
     capabilities = Capabilities(
-        progress=ProgressFidelity.COARSE,  # promoted to FINE by the gw.progress.v1
-        push=False,  # filter in follow() — docs/05 §5.4; no separate transport
+        # COARSE, same reasoning as the base class -- narration here is
+        # `_narrate()`, inherited from FoundryResponsesAdapter.follow(),
+        # derived from the polled Response's own `output` items. NOT the
+        # `gw.progress.v1`/`ctx.emit_custom_event` mechanism docs/05 §5.4
+        # used to describe -- that API doesn't exist in any installed
+        # package (docs/08 item 16).
+        progress=ProgressFidelity.COARSE,
+        push=False,  # no separate transport; T2 is always polled
         artifacts=True,
         input_required=False,
         cancel=True,

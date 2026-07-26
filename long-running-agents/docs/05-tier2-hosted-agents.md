@@ -509,12 +509,27 @@ trip.
 
 ### 5.1 Protocol host
 
+⚠ **Corrected:** an earlier draft of this snippet imported
+`ResponsesHostServer` from `agent_framework.foundry.hosting`. That class
+does not exist — confirmed by downloading and inspecting the real,
+installed `agent-framework-foundry` package (1.10.3): it has no `hosting`
+submodule at all, only client/agent-authoring surface
+(`FoundryChatClient`, `FoundryAgent`, evals). The real hosting server lives
+in a different, separate package — `azure-ai-agentserver-responses`,
+`azure.ai.agentserver.responses.hosting`, exporting
+`ResponsesAgentServerHost` — found while fixing the gateway's own T2
+progress-narration gap (`docs/08-open-items-and-experiments.md` item 16,
+`samples/tier2/04-long-running-hello-world`). Same class of mistake as the
+`A2AFastAPIApplication` correction in `06-tier3-durable-agents.md` §4.1:
+verify against the installed package before writing real code, every time
+— this surface moves fast and source drafts go stale.
+
 ```python
 # src/triage/main.py
 import os
 
 from agent_framework.foundry import FoundryChatClient
-from agent_framework.foundry.hosting import ResponsesHostServer   # prerelease
+from azure.ai.agentserver.responses.hosting import ResponsesAgentServerHost
 from azure.identity.aio import DefaultAzureCredential
 
 from workflow import build_triage_workflow
@@ -532,9 +547,15 @@ workflow = build_triage_workflow(chat)
 
 # store=False: the hosting layer already persists conversation history.
 # Leaving it True duplicates every turn into your own store.
-server = ResponsesHostServer(workflow, default_options={"store": False})
+server = ResponsesAgentServerHost(workflow, default_options={"store": False})
 app = server.app          # listens on :8088, serves /responses + health probe
 ```
+
+⚠ The constructor signature and `default_options`/`.app` attribute above
+are carried over from the pre-correction draft and are **not** re-verified
+against `ResponsesAgentServerHost`'s actual signature — only the import
+path and class name are confirmed. Check both before trusting this beyond
+a smoke test.
 
 ### 5.2 Toolbox client
 
@@ -642,45 +663,53 @@ Cost note: every agent in a pipeline consumes tokens independently. A
 four-agent pipeline is roughly four times a single agent. Use a smaller
 deployment for specialists.
 
-### 5.4 Progress events — making T2 `FINE`
+### 5.4 Progress narration — what T2 actually has
 
-**This is a decision, not an open experiment.** T1 and T2 default to
-`COARSE` progress, and per-step narration used to be the main argument for
-escalating to T3. But the agent is your code — emit events and T2 becomes
-`FINE` without T3's infrastructure. A ~15-line convention, decided before
-the sample library so every T2 author writes to the same contract:
+⚠ **Corrected.** An earlier draft of this section proposed an agent-side
+`ctx.emit_custom_event({"schema": "gw.progress.v1", ...})` convention,
+with the gateway's `follow()` filtering the response stream for that
+schema and promoting `Capabilities.progress` to `FINE`. Building the
+gateway's own fix for "T2 shows no useful state messages"
+(`samples/tier2/04-long-running-hello-world`,
+`docs/08-open-items-and-experiments.md` item 16) went looking for
+`emit_custom_event` and `ResponsesHostServer` (§5.1's own since-corrected
+snippet) in the real, installed `agent-framework-foundry` and
+`azure-ai-agentserver-responses` packages and found neither — there is no
+agent-side custom-event API to call. The convention below never shipped
+anywhere; nothing in this codebase or the packages it depends on ever
+implemented it.
 
-```python
-# src/triage/progress.py
-import json, time
+**What actually exists, and what the gateway now does with it:**
+`Response.output` — a real, standard field on every polled Response,
+confirmed against the installed `openai` package's `ResponseOutputItem`
+union (the `_openai` client `AIProjectClient.get_openai_client()` returns
+is a genuine `openai.AsyncOpenAI`, not a Foundry-specific type) — is an
+ordered list of items the platform attaches to the response as the agent
+works: `function_call`, `mcp_call`, `code_interpreter_call`,
+`web_search_call`, `reasoning`, `message`, and others, each with its own
+`type` and (for calls) a `name`/`status`. `FoundryResponsesAdapter.follow()`
+(`src/gateway/upstream/foundry_responses.py`) reads the most recent item on
+every poll and derives a short narration line from it — "running tool:
+fabric_query", "running code interpreter", "thinking" — with **no
+agent-side code required at all**. Every T2 agent gets this automatically,
+for free, purely from tool-call/reasoning items the platform already
+produces.
 
-SCHEMA = "gw.progress.v1"
-
-async def emit(ctx, step: str, **detail):
-    """Emit a gateway-parsable progress event on the response stream.
-
-    The gateway's T2 adapter filters for `schema == SCHEMA` and converts
-    each into a StatusEvent, promoting Capabilities.progress to FINE.
-    """
-    await ctx.emit_custom_event({
-        "schema": SCHEMA,
-        "step": step,
-        "ts": time.time(),
-        "detail": detail,
-    })
-```
-
-```python
-    # in an executor
-    await emit(ctx, "fabric_query", entity="customer_history")
-    rows = await fabric.query(...)
-    await emit(ctx, "fabric_query_done", rows=len(rows))
-```
-
-Gateway side, this is a filter in `follow()` — no new transport, and the
-`sequence` column already makes it resumable. T3 uses the same
-`gw.progress.v1` schema pushed via a webhook activity (tier3 doc §5.4) —
-one event vocabulary across every tier that can narrate.
+This is deliberately still declared `COARSE`, not `FINE`
+(`FoundryResponsesAdapter.capabilities`): it's best-effort and
+coarse-grained by nature — one line per *item* (which tool is running), not
+per *step within* a tool call, and an agent that calls no tools at all (or
+whose poll lands before the first item appears) gets no narration line.
+T3's `gw.progress.v1` webhook push (tier3 doc §5.4) is still the real thing
+that convention originally promised: orchestrator-authored, step-level
+narration the agent author chooses explicitly. T2's mechanism and T3's are
+not the same event vocabulary — they arrive at the gateway through
+different code paths (T2: derived every poll from `resp.output`; T3:
+explicit webhook payload) — but both end up as the same
+`StatusEvent.detail: str | None`, and both now actually reach the A2A wire
+via `TaskUpdater.update_status(state, message=...)`
+(`src/gateway/a2a_server/executor.py`) — that pass-through was also missing
+until the same fix, for every tier, not just T2 — see docs/08 item 15.
 
 ### 5.5 Session filesystem
 

@@ -301,6 +301,55 @@ real than a `FakeAdapter`. In order found:
     `README.md`'s bug list and `docs/02-decisions.md`'s samples-structure
     section both point here.
 
+16. **T2 progress narration, fixed for real — and the API it was supposed
+    to use turned out not to exist.** Item 15 above left T2's "no useful
+    state messages" gap undone, reasoning that fixing it meant "parsing
+    custom events out of a Foundry Responses poll loop" against unverified
+    SDK surface. Following up on that: downloaded and inspected the real,
+    installed `agent-framework-foundry` package (1.10.3) looking for the
+    `ctx.emit_custom_event`/`ResponsesHostServer` API
+    `05-tier2-hosted-agents.md` §5.1 and §5.4 described — neither exists.
+    `agent-framework-foundry` has no `hosting` submodule at all, only
+    client/agent-authoring surface. The real T2 container-hosting package
+    is a completely different one, `azure-ai-agentserver-responses`
+    (`azure.ai.agentserver.responses.hosting.ResponsesAgentServerHost`),
+    confirmed by downloading and inspecting it directly — and it has no
+    generic "custom application event" concept either, only the standard
+    OpenAI Responses event vocabulary (`ResponseStreamEventType`).
+
+    So the `gw.progress.v1`/`emit_custom_event` convention this project's
+    docs described as "a decision, not an open experiment" was never
+    real anywhere — not built, not buildable against any installed
+    package as described. Both `05-tier2-hosted-agents.md` §5.1 (import
+    path/class name) and §5.4 (the whole convention) are corrected, along
+    with the pin table (`01-gateway-config-and-adapter-contract.md` §3),
+    the escalation-table note (`00-tier-model-and-concepts.md` §4), and
+    the T3 doc's now-inaccurate "same schema as T2" cross-reference
+    (`06-tier3-durable-agents.md` §5.4).
+
+    The actual fix, grounded in a mechanism that does exist and is already
+    verified elsewhere in this same investigation: `Response.output` — a
+    real field on the `openai` package's `Response` model
+    (`AIProjectClient.get_openai_client()` is typed `-> AsyncOpenAI`,
+    confirmed in `azure-ai-projects`'s own source, so `_openai` genuinely
+    is a standard `openai.AsyncOpenAI` client) — is an ordered list of
+    `ResponseOutputItem`s (`function_call`, `mcp_call`,
+    `code_interpreter_call`, `reasoning`, `message`, ...) the platform
+    attaches to every polled response as the agent works, with real,
+    verified field names (`name`, `server_label`, `status`) confirmed
+    against the installed `openai` package's own generated types.
+    `FoundryResponsesAdapter.follow()` (`src/gateway/upstream/
+    foundry_responses.py`) now derives a short narration line from the
+    most recent output item on every poll (`_narrate()`) and sets it as
+    `StatusEvent.detail` — automatically, for every T2 agent, no
+    agent-side opt-in code required, unlike the fabricated convention this
+    replaces. `Capabilities.progress` stays `COARSE` deliberately: this is
+    best-effort per-*item* narration ("running tool: X"), not a guaranteed
+    per-step stream the way T3's explicit webhook push is — `FINE` would
+    overclaim. Tests: `tests/test_foundry_progress_narration.py`, item
+    shapes verified field-for-field against the installed `openai`
+    package, not guessed.
+
 ## D. Duplicate source documents collapsed during merge
 
 For traceability: these upload sets were identical or near-identical

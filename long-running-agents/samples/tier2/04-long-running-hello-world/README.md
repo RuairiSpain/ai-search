@@ -1,4 +1,4 @@
-# T2 sample 04 — long-running hello world (COARSE progress only)
+# T2 sample 04 — long-running hello world (COARSE, automatic progress)
 
 | | |
 |---|---|
@@ -9,61 +9,63 @@
 
 ## What this shows
 
-The dumbest possible T2 agent: it does one thing (sleep ~5 minutes) and
-then says "Hello, world!" No tools, no multi-agent orchestration, nothing —
-this sample exists purely to show **what a client sees while a T2 task is
-in flight when the agent never narrates its own progress**.
+A near-minimal T2 agent: it calls exactly one tool (`slow_then_greet`,
+which takes ~5 minutes) and then says "Hello, world!" No multi-agent
+orchestration, no application code calling any progress API — this sample
+shows **what a client sees while a T2 task is in flight, narrated entirely
+by the platform's own tool-call bookkeeping, with zero agent-side effort**.
 
 Run this side by side with `../../tier3/01-durable-hello-world-status`,
 which is the *identical* 5-minute wait, fronted by the same gateway, using
-the same client script. The only difference is what the agent chooses to
-report — and that difference is entirely visible on the wire.
+the same client script. Both narrate — the difference is *how much*, and
+*who controls it*.
 
 ## What you'll actually see
 
 ```
 $ python client/watch_task.py "say hello"
 [00:00] TASK_STATE_SUBMITTED
-[00:02] TASK_STATE_WORKING
-[00:32] TASK_STATE_WORKING
-[01:02] TASK_STATE_WORKING
-[01:32] TASK_STATE_WORKING
-  ...                              <- identical WORKING, every 30s, for ~5 minutes
+[00:02] TASK_STATE_WORKING  "running tool: slow_then_greet"
+[00:32] TASK_STATE_WORKING  "running tool: slow_then_greet"
+[01:02] TASK_STATE_WORKING  "running tool: slow_then_greet"
+  ...                              <- SAME line, every 30s, for ~5 minutes
 [05:01] TASK_STATE_COMPLETED  "Hello, world!"
 ```
 
-Every poll returns the same bare state. There is no `status.message` on
-any of the intermediate `WORKING` updates — nothing to distinguish minute 1
-from minute 4. This is real gateway behavior, not a simplification for the
-sample, for **two compounding reasons**, both worth understanding:
+One narration line, repeated verbatim for the whole run: the gateway knows
+*which* tool call the agent is inside, but not what that tool call is
+actually doing internally — `slow_then_greet` is opaque to the platform
+once it starts, so "running tool: slow_then_greet" at minute 1 and at
+minute 4 are indistinguishable. Contrast with T3
+(`../../tier3/01-durable-hello-world-status`), where the *orchestrator's
+own code* chooses to report five distinct sub-steps explicitly.
 
-1. **This particular agent** (`agent/main.py`) never emits a
-   `gw.progress.v1` custom event — it just sleeps. Nothing to report even
-   in principle.
-2. **Even an agent that did emit one wouldn't help yet.** `docs/05 §5.4`
-   documents "T2 `FINE`" as a decision: an agent emits `gw.progress.v1`
-   events on its response stream, and "this is a filter in `follow()` — no
-   new transport" on the gateway side. That filter does not exist in this
-   codebase today — `FoundryResponsesAdapter.follow()`
-   (`src/gateway/upstream/foundry_responses.py`) constructs every
-   `StatusEvent` with `detail` left at its default `None`, always, and
-   `FoundryHostedAdapter.capabilities` (`foundry_hosted.py`) still declares
-   `progress=ProgressFidelity.COARSE` with a comment claiming "promoted to
-   FINE by the gw.progress.v1" mechanism — a mechanism that was decided,
-   documented, and never built. This sample is what surfaces that: a T2
-   agent's progress fidelity is COARSE-only *by gateway design*, not just
-   because this particular hello-world agent is lazy. Building that filter
-   is real future work, tracked as a fresh item, not attempted here — see
-   `docs/08-open-items-and-experiments.md`.
+## Why this is what T2 actually does
 
-Contrast with T3, where the equivalent gap **was** just closed (this
-sample's build surfaced and fixed a real bug: `GatewayAgentExecutor`
-previously dropped `StatusEvent.detail` on the floor for every tier — see
-`../../tier3/01-durable-hello-world-status/README.md` "What you'll
-actually see"). T2's gap is one layer further upstream — the adapter never
-produces a `detail` to drop in the first place — which is why fixing it is
-out of scope here and T2's story stays "no useful state messages" even
-after that fix.
+`FoundryResponsesAdapter.follow()` (`src/gateway/upstream/
+foundry_responses.py`) derives narration from `Response.output` — a real,
+standard field the platform attaches to every polled response, listing
+what the model has called so far (`function_call`, `mcp_call`,
+`code_interpreter_call`, `reasoning`, `message`, ...). `_narrate()` reads
+the most recent item and produces a short line from it — automatically,
+for **every** T2 agent, no agent-side code required. This is genuinely
+real and genuinely automatic, which is *better* than what an earlier
+version of this sample (and of `docs/05-tier2-hosted-agents.md` §5.4)
+described: an agent-emitted `gw.progress.v1` custom event that authors
+would have had to remember to call. That API turned out not to exist
+anywhere — confirmed by downloading and inspecting the real, installed
+`agent-framework-foundry` and `azure-ai-agentserver-responses` packages —
+see `docs/08-open-items-and-experiments.md` item 16 for the full account,
+and `docs/05` §5.1/§5.4 for the corrected reference material.
+
+What this mechanism can't do is narrate *inside* a single tool call — it
+only sees tool-call boundaries, not whatever that tool is doing while it
+runs. That's exactly why `Capabilities.progress` stays declared `COARSE`,
+not `FINE`, even now: it's real, automatic narration, but coarse-grained by
+what it can observe, not by any remaining gap in the gateway. An agent
+that calls several short tools in sequence would narrate each one as it
+starts; this sample's single long-running tool call is the case where that
+still leaves one static line for five minutes.
 
 ## Structure
 
@@ -71,7 +73,7 @@ after that fix.
 04-long-running-hello-world/
 ├── README.md
 ├── agent/
-│   ├── main.py            # protocol host -- sleeps, never narrates
+│   ├── main.py            # protocol host -- one slow tool call, no progress code
 │   └── requirements.txt
 ├── apps.yaml.snippet.yaml  # add to config/apps.yaml
 └── client/
