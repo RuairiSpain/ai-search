@@ -22,6 +22,7 @@ from a2a.types.a2a_pb2 import (
     Artifact,
     ListTasksRequest,
     ListTasksResponse,
+    Message,
     Part,
     Task,
     TaskStatus,
@@ -35,6 +36,7 @@ from gateway.a2a_server.context import principal_from
 from gateway.artifacts import ArtifactHarvester
 from gateway.store.artifact_store import ArtifactStore
 from gateway.store.context_store import ContextStore
+from gateway.store.message_store import MessageStore
 from gateway.store.task_store import TaskStore as GwTaskStore
 from gateway.upstream.base import TaskState as GwTaskState
 
@@ -60,11 +62,13 @@ class GatewayTaskStoreAdapter(SdkTaskStoreInterface):
         gw_tasks: GwTaskStore,
         gw_contexts: ContextStore,
         gw_artifacts: ArtifactStore,
+        gw_messages: MessageStore,
         harvester: ArtifactHarvester,
     ):
         self._gw_tasks = gw_tasks
         self._gw_contexts = gw_contexts
         self._gw_artifacts = gw_artifacts
+        self._gw_messages = gw_messages
         self._harvester = harvester
 
     async def get(self, task_id: str, context: ServerCallContext) -> Task | None:
@@ -79,16 +83,20 @@ class GatewayTaskStoreAdapter(SdkTaskStoreInterface):
             return None
 
         artifacts = await self._project_artifacts(task_id)
+        history, status_message = await self._project_messages(
+            task_id, task_row.current_message_id
+        )
+        status = TaskStatus(
+            state=_GW_TO_SDK_STATE.get(GwTaskState(task_row.state), SdkTaskState.TASK_STATE_UNSPECIFIED)
+        )
+        if status_message is not None:
+            status.message.CopyFrom(status_message)
         return Task(
             id=task_row.task_id,
             context_id=task_row.context_id,
-            status=TaskStatus(state=_GW_TO_SDK_STATE.get(GwTaskState(task_row.state), SdkTaskState.TASK_STATE_UNSPECIFIED)),
+            status=status,
             artifacts=artifacts,
-            # Full turn-by-turn history isn't persisted yet — see
-            # docs/08-open-items-and-experiments.md. tasks/get still
-            # returns current status + artifacts correctly; only replaying
-            # the conversation's message text is the gap.
-            history=[],
+            history=history,
         )
 
     async def save(self, task: Task, context: ServerCallContext) -> None:
@@ -117,6 +125,21 @@ class GatewayTaskStoreAdapter(SdkTaskStoreInterface):
             "status",
             {"state": gw_state.value, "final": gw_state.value in {"completed", "failed", "canceled", "rejected"}},
         )
+
+        # a2a-sdk's TaskManager hands this method the full, already-merged
+        # history + current status.message on every call (see this class's
+        # docstring above) -- persist both, and record which message is
+        # "current" so get() can split them back apart correctly (docs/08
+        # item 17: a completed task's answer lives in status.message and
+        # is never later demoted into history, since no further save()
+        # call happens after a terminal state).
+        messages = list(task.history)
+        current_message_id = None
+        if task.status.HasField("message"):
+            messages.append(task.status.message)
+            current_message_id = task.status.message.message_id
+        await self._gw_messages.append_messages(task.id, messages)
+        await self._gw_tasks.set_current_message_id(task.id, current_message_id)
 
     async def list(
         self, params: ListTasksRequest, context: ServerCallContext
@@ -159,3 +182,19 @@ class GatewayTaskStoreAdapter(SdkTaskStoreInterface):
                 )
             )
         return artifacts
+
+    async def _project_messages(
+        self, task_id: str, current_message_id: str | None
+    ) -> tuple[list[Message], Message | None]:
+        """Splits persisted messages back into (history, status.message),
+        mirroring the invariant a2a-sdk's TaskManager maintains in memory:
+        `history` is every message once superseded, `status.message` is the
+        current one. `current_message_id` (persisted by save(), see above)
+        is what makes this a lookup rather than a guess -- a bare
+        "last row wins" heuristic would be wrong the moment a later status
+        update carries no message of its own (narration disappears, nothing
+        replaces it, so nothing should be treated as "current")."""
+        messages = await self._gw_messages.list_for_task(task_id)
+        if current_message_id and messages and messages[-1].message_id == current_message_id:
+            return messages[:-1], messages[-1]
+        return messages, None

@@ -33,6 +33,7 @@ from gateway.config import AppConfig, CardCapabilities, CardConfig
 from gateway.store.artifact_store import ArtifactStore
 from gateway.store.context_store import ContextStore
 from gateway.store.interjection_store import InterjectionStore
+from gateway.store.message_store import MessageStore
 from gateway.store.task_store import TaskStore
 from gateway.upstream.base import (
     Capabilities,
@@ -72,6 +73,13 @@ class FakeAdapter:
         self.received_files: list[InboundFile] = []
         self.steered: list[str] = []
         self._release = asyncio.Event()
+        # Opt-in narration for history/status.message tests (docs/08 item
+        # 17): unset by default, so every existing test's event count and
+        # sequencing is unchanged. narration_steps yields one extra WORKING
+        # event per entry, each carrying `detail`, before the release wait;
+        # final_detail sets `detail` on the terminal event.
+        self.narration_steps: list[str] = []
+        self.final_detail: str | None = None
 
     async def submit(self, *, app, principal, ref, text, files, blocking, budget_ms):
         # A fresh id per call -- this fake stands in for multiple test
@@ -88,10 +96,15 @@ class FakeAdapter:
     async def follow(self, ref, *, task_id, principal, from_sequence=0):
         seq = from_sequence + 1
         yield StatusEvent(task_id=task_id, state=TaskState.WORKING, sequence=seq)
+        for step_detail in self.narration_steps:
+            seq += 1
+            yield StatusEvent(task_id=task_id, state=TaskState.WORKING, sequence=seq, detail=step_detail)
         await self._release.wait()
         seq += 1
         final_state = TaskState.CANCELED if ref in self.cancelled else TaskState.COMPLETED
-        yield StatusEvent(task_id=task_id, state=final_state, sequence=seq, final=True)
+        yield StatusEvent(
+            task_id=task_id, state=final_state, sequence=seq, final=True, detail=self.final_detail
+        )
 
     async def resume(self, ref, *, principal, text, files):
         raise NotImplementedError
@@ -164,6 +177,7 @@ async def app_and_adapter(pg_pool, validator):
     contexts = ContextStore(pg_pool)
     tasks = TaskStore(pg_pool)
     artifacts = ArtifactStore(pg_pool)
+    messages = MessageStore(pg_pool)
     interjections = InterjectionStore(pg_pool)
     push_config_store = GatewayPushConfigStore(pg_pool, allowlist=["push.example.com"])
     pushed: list[httpx.Request] = []
@@ -184,6 +198,7 @@ async def app_and_adapter(pg_pool, validator):
         contexts=contexts,
         tasks=tasks,
         artifacts=artifacts,
+        messages=messages,
         harvester=harvester,
         interjections=interjections,
         push_config_store=push_config_store,
@@ -243,6 +258,96 @@ async def test_send_message_blocks_until_terminal_then_get(app_and_adapter, rsa_
         other_headers = _headers(_bearer_token(rsa_key, oid="ffffffff-ffff-ffff-ffff-ffffffffffff"))
         forbidden = await _rpc(client, "GetTask", {"id": task["id"]}, headers=other_headers, req_id="3")
         assert forbidden["error"]["code"] == -32001  # TASK_NOT_FOUND
+        # No "result" object at all on the error path -- get() returns None
+        # before _project_messages() (or anything else) ever runs, so
+        # there's no history to leak here by construction.
+        assert "result" not in forbidden
+
+
+@pytest.mark.asyncio
+async def test_get_task_returns_history_and_current_answer_not_buried_in_it(app_and_adapter, rsa_key):
+    """The direct regression test for docs/08 item 17: a completed task's
+    answer must land in status.message, not only ever be reachable as the
+    last element of history (or nowhere at all, which was the actual bug)."""
+    fastapi_app, adapter, _pushed = app_and_adapter
+    headers = _headers(_bearer_token(rsa_key))
+    adapter.final_detail = "Hello from the fake agent"
+    adapter._release.set()
+
+    async with AsyncClient(transport=ASGITransport(app=fastapi_app), base_url="http://test") as client:
+        message_id = f"m-{uuid4().hex[:8]}"
+        body = await _rpc(
+            client,
+            "SendMessage",
+            {"message": {"messageId": message_id, "role": "ROLE_USER", "parts": [{"text": "what's the status?"}]}},
+            headers=headers,
+        )
+        task = body["result"]["task"]
+        assert task["status"]["state"] == "TASK_STATE_COMPLETED"
+        assert task["status"]["message"]["parts"][0]["text"] == "Hello from the fake agent"
+
+        history_texts = [
+            part["text"] for m in task.get("history", []) for part in m.get("parts", []) if "text" in part
+        ]
+        assert "what's the status?" in history_texts
+        # The answer is in status.message -- it must not also show up as
+        # the tail of history (it was never demoted; there's no later
+        # status update to demote it).
+        assert "Hello from the fake agent" not in history_texts
+
+        get_body = await _rpc(client, "GetTask", {"id": task["id"]}, headers=headers, req_id="2")
+        get_task = get_body["result"]
+        assert get_task["status"]["message"]["parts"][0]["text"] == "Hello from the fake agent"
+        assert "what's the status?" in [
+            p["text"] for m in get_task.get("history", []) for p in m.get("parts", []) if "text" in p
+        ]
+
+
+@pytest.mark.asyncio
+async def test_status_message_gets_demoted_to_history_on_a_later_update(app_and_adapter, rsa_key):
+    fastapi_app, adapter, _pushed = app_and_adapter
+    headers = _headers(_bearer_token(rsa_key))
+    adapter.narration_steps = ["first narration", "second narration"]
+    # Deliberately NOT releasing -- the task must still be WORKING when
+    # GetTask is polled, so the demotion is observed mid-run, not after
+    # completion (docs/08 item 17's "current vs. superseded" distinction
+    # only matters while there's a "later" update to demote the earlier one).
+
+    async with AsyncClient(transport=ASGITransport(app=fastapi_app), base_url="http://test") as client:
+        message_id = f"m-{uuid4().hex[:8]}"
+        send_body = await _rpc(
+            client,
+            "SendMessage",
+            {
+                "message": {"messageId": message_id, "role": "ROLE_USER", "parts": [{"text": "hi"}]},
+                "configuration": {"returnImmediately": True},
+            },
+            headers=headers,
+        )
+        task_id = send_body["result"]["task"]["id"]
+
+        try:
+            for _ in range(100):
+                get_body = await _rpc(client, "GetTask", {"id": task_id}, headers=headers, req_id="2")
+                result = get_body["result"]
+                message = result["status"].get("message")
+                if message and message["parts"][0]["text"] == "second narration":
+                    break
+                await asyncio.sleep(0.05)
+            else:
+                pytest.fail("task never reached the second narration step")
+
+            assert result["status"]["state"] == "TASK_STATE_WORKING"
+            history_texts = [
+                p["text"] for m in result.get("history", []) for p in m.get("parts", []) if "text" in p
+            ]
+            assert "first narration" in history_texts
+            assert "second narration" not in history_texts  # current, not yet demoted
+        finally:
+            # Always release, pass or fail -- otherwise a failure here
+            # leaves the background follow() loop blocked on _release
+            # forever, hanging the fixture's aclose() teardown.
+            adapter._release.set()
 
 
 @pytest.mark.asyncio

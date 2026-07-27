@@ -91,6 +91,36 @@ CREATE UNIQUE INDEX IF NOT EXISTS gw_artifact_dedupe ON gw_artifact (task_id, ar
 CREATE INDEX IF NOT EXISTS gw_artifact_unharvested
     ON gw_artifact (created_at) WHERE state = 'pending';
 
+-- Turn-by-turn A2A Message history. a2a-sdk's own TaskManager already
+-- assembles Task.history/status.message correctly in memory before every
+-- TaskStore.save() call (verified against the installed a2a-sdk's
+-- task_manager.py: history holds every message once superseded, status.message
+-- holds the current one) -- this table is purely the persistence
+-- gateway.a2a_server.task_store.py never had for it. No context_id column:
+-- mirrors gw_artifact's list_for_task, which enforces D1 by construction
+-- (only ever queried for a task_id the caller has already authorised via
+-- gw_context), not by a join here.
+CREATE TABLE IF NOT EXISTS gw_message (
+    message_id  TEXT PRIMARY KEY,   -- a2a-sdk guarantees global uniqueness:
+                                     -- agent-authored via uuid4() (new_message()),
+                                     -- client-supplied inbound ids are already
+                                     -- globally deduped by gw_inbound_message (D7)
+    task_id     TEXT NOT NULL REFERENCES gw_task(task_id),
+    seq         BIGSERIAL,          -- read order; message_id has none of its own
+    role        TEXT NOT NULL CHECK (role IN ('ROLE_UNSPECIFIED','ROLE_USER','ROLE_AGENT')),
+    payload     JSONB NOT NULL,     -- full Message proto, google.protobuf.json_format
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS gw_message_by_task ON gw_message (task_id, seq);
+
+-- Points into gw_message. NULL when the current status has no associated
+-- message. No FK -- same bare-pointer style as gw_task.run_id. A standalone
+-- ALTER rather than folding into the CREATE TABLE gw_task statement above so
+-- it stays a safe re-run against an already-migrated local/CI database, same
+-- as every other change this file has grown since gw_task was first created.
+ALTER TABLE gw_task ADD COLUMN IF NOT EXISTS current_message_id TEXT;
+
 -- User interjections into a running task (D7). Deliberately NOT in gw_event:
 -- events are things the upstream told us, interjections are things the user
 -- asked us to tell the upstream. Different direction, different lifecycle.

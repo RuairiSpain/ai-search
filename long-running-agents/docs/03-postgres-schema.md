@@ -35,6 +35,8 @@ CREATE TABLE gw_task (
     tier              TEXT NOT NULL CHECK (tier IN ('t2','t3')),
     state             TEXT NOT NULL,
     run_id            TEXT,
+    current_message_id TEXT,        -- points into gw_message; NULL when the
+                                     -- current status has no associated message
     last_sequence     INT  NOT NULL DEFAULT 0,
     -- wedged-task detection: a reaper fails tasks whose lease has lapsed
     lease_expires_at  TIMESTAMPTZ,
@@ -89,6 +91,23 @@ CREATE UNIQUE INDEX gw_artifact_dedupe ON gw_artifact (task_id, artifact_id);
 -- TTL. Alert on it; the bytes are unrecoverable. Wire the runbook to this index.
 CREATE INDEX gw_artifact_unharvested
     ON gw_artifact (created_at) WHERE state = 'pending';
+
+-- Turn-by-turn A2A Message history. a2a-sdk's TaskManager already assembles
+-- Task.history/status.message correctly in memory before every
+-- TaskStore.save() call; this table is the persistence
+-- GatewayTaskStoreAdapter never had for it. No context_id column: mirrors
+-- gw_artifact's list_for_task, which enforces D1 by construction (only ever
+-- queried for an already-authorised task_id), not by a join here.
+CREATE TABLE gw_message (
+    message_id  TEXT PRIMARY KEY,   -- a2a-sdk guarantees global uniqueness
+    task_id     TEXT NOT NULL REFERENCES gw_task(task_id),
+    seq         BIGSERIAL,          -- read order
+    role        TEXT NOT NULL CHECK (role IN ('ROLE_UNSPECIFIED','ROLE_USER','ROLE_AGENT')),
+    payload     JSONB NOT NULL,     -- full Message proto, google.protobuf.json_format
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX gw_message_by_task ON gw_message (task_id, seq);
 
 -- User interjections into a running task (D7). Deliberately NOT in gw_event:
 -- events are things the upstream told us, interjections are things the user

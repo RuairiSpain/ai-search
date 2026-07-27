@@ -26,6 +26,7 @@ class TaskRow:
     tier: str
     state: str
     run_id: str | None
+    current_message_id: str | None
     last_sequence: int
     created_at: datetime
     updated_at: datetime
@@ -39,6 +40,7 @@ def _row_to_task(row: asyncpg.Record) -> TaskRow:
         tier=row["tier"],
         state=row["state"],
         run_id=row["run_id"],
+        current_message_id=row["current_message_id"],
         last_sequence=row["last_sequence"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -140,6 +142,20 @@ class TaskStore:
                 "UPDATE gw_task SET run_id = $2, updated_at = now() WHERE task_id = $1",
                 task_id,
                 run_id,
+            )
+
+    async def set_current_message_id(self, task_id: str, message_id: str | None) -> None:
+        """Points at the gw_message row (if any) holding the message
+        currently in Task.status.message -- NULL when the current status
+        has no associated message. Written alongside every append_messages()
+        call from GatewayTaskStoreAdapter.save() so get() can split
+        persisted messages back into history vs. the current status.message
+        without guessing from row order alone (docs/08 item 17)."""
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE gw_task SET current_message_id = $2, updated_at = now() WHERE task_id = $1",
+                task_id,
+                message_id,
             )
 
     async def renew_lease(self, task_id: str, lease_seconds: int) -> None:

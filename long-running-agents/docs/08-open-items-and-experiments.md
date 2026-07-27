@@ -421,6 +421,74 @@ real than a `FakeAdapter`. In order found:
     above — without it, the isolation demo's note count would never have
     been visible to the client at all.
 
+19. **Turn-by-turn A2A message history, persisted for real.**
+    `GatewayTaskStoreAdapter.get()` always returned `Task.history=[]` —
+    tracing item 17's answer-delivery bug back to its root cause is what
+    surfaced this as the next thing worth fixing, not a coincidence: with
+    no history, `status.message` on the terminal update was the *only*
+    path an answer could ever reach a client, which is exactly why that
+    bug went unnoticed as long as it did.
+
+    Read the installed `a2a-sdk`'s `TaskManager` source directly before
+    designing anything: it already assembles `Task.history`/
+    `Task.status.message` correctly in memory before every single
+    `TaskStore.save()` call — `history` holds every message once
+    superseded by a later status update, `status.message` holds the
+    current, not-yet-superseded one, seeded from the original inbound
+    message at task creation. `GatewayTaskStoreAdapter.save()` was handed
+    this fully-assembled `Task` object on every call already and simply
+    never persisted `history`/`status.message`, only `status.state`. No
+    new message-accumulation logic was needed — only the persistence layer
+    the SDK's own work was being handed to and dropped by.
+
+    New table `gw_message` (`migrations/0001_init.sql`,
+    `docs/03-postgres-schema.md`), keyed on `message_id TEXT PRIMARY KEY`
+    — every `Message` a2a-sdk hands the gateway already carries a globally
+    unique id (agent-authored via `uuid4()`, inbound ids already globally
+    deduped by the existing `gw_inbound_message` table for D7 submit
+    idempotency) — so `ON CONFLICT (message_id) DO NOTHING` makes
+    `MessageStore.append_messages()` (`src/gateway/store/message_store.py`,
+    new) trivially idempotent against the fact that `save()` re-sends the
+    full, growing history on every call, not a delta. A new
+    `gw_task.current_message_id` column (bare pointer, no FK, same style as
+    the existing `run_id` column) records which persisted message is
+    "current" at write time — read-time "last row wins" would be wrong the
+    moment a later status update carries no message of its own, so which
+    message is current has to be tracked explicitly, not inferred.
+    `GatewayTaskStoreAdapter._project_messages()` splits persisted rows
+    back into `(history, status.message)` using that pointer.
+    Serialization: `google.protobuf.json_format.MessageToDict`/`ParseDict`
+    — round-tripped by hand against the installed `protobuf` package before
+    committing to it, including a `raw` (bytes) `Part` surviving the
+    base64-under-the-hood round trip byte-identically, not assumed to work.
+
+    `GatewayTaskStoreAdapter.list()` needed **no changes** — it already
+    builds each task in a context via `self.get(task_id, context)`, so
+    multi-task conversation history (separate `task_id`s sharing one
+    `context_id`, the normal shape of a multi-turn chat) started working
+    the moment `get()` did.
+
+    Verified against a real, already-migrated local Postgres, not just a
+    fresh one: `ALTER TABLE gw_task ADD COLUMN IF NOT EXISTS
+    current_message_id` re-applied cleanly against a database that already
+    had every other table from a prior run. Tests:
+    `tests/test_message_store.py` (idempotent append, order preservation
+    across repeated saves, role/content round-trip including bytes,
+    per-task scoping) plus two new end-to-end tests in `tests/test_a2a_api.py`
+    — one confirming a completed task's answer lands in `status.message`
+    and the inbound prompt lands in `history` (the direct regression test
+    for item 17's bug pattern), one confirming a superseded status message
+    is correctly demoted into `history` on a later update. Found and fixed
+    a real bug in the *tests* themselves along the way: an early draft
+    reused literal `message_id` strings ("m-1", "m-2") across different
+    test functions sharing one persistent, non-torn-down local Postgres —
+    since `message_id` is a genuine global primary key, a later test's
+    insert silently no-opped against an earlier test's row under
+    `ON CONFLICT DO NOTHING`, and two tests failed with "message missing"
+    until each was given real globally-unique ids (`uuid4()`-based, same
+    fix already applied elsewhere in this suite for exactly this reason —
+    see `FakeAdapter.submit()`'s `task_id` in `test_a2a_api.py`).
+
 ## D. Duplicate source documents collapsed during merge
 
 For traceability: these upload sets were identical or near-identical

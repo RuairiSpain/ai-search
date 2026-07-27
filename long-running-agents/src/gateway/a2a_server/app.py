@@ -28,6 +28,7 @@ from gateway.config import AppConfig
 from gateway.store.artifact_store import ArtifactStore
 from gateway.store.context_store import ContextStore
 from gateway.store.interjection_store import InterjectionStore
+from gateway.store.message_store import MessageStore
 from gateway.store.task_store import TaskStore
 from gateway.upstream.base import UpstreamAdapter
 
@@ -41,6 +42,7 @@ def mount_app(
     contexts: ContextStore,
     tasks: TaskStore,
     artifacts: ArtifactStore,
+    messages: MessageStore,
     harvester: ArtifactHarvester,
     interjections: InterjectionStore,
     push_config_store: GatewayPushConfigStore,
@@ -64,7 +66,11 @@ def mount_app(
         lease_seconds=app_cfg.lease_seconds,
     )
     task_store = GatewayTaskStoreAdapter(
-        gw_tasks=tasks, gw_contexts=contexts, gw_artifacts=artifacts, harvester=harvester
+        gw_tasks=tasks,
+        gw_contexts=contexts,
+        gw_artifacts=artifacts,
+        gw_messages=messages,
+        harvester=harvester,
     )
     agent_card = build_agent_card(app_cfg, adapter.capabilities)
     context_builder = GatewayCallContextBuilder(validator)

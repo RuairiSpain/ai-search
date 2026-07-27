@@ -109,8 +109,12 @@ pushed `download_url`), inbound file parts (`Part.raw`/`Part.url`
 extracted and forwarded — T2 uploads via the Files API and references the
 resulting `file_id`; T3 relays the part to its own upstream A2A server),
 the wedged-task reaper (now actually scheduled, and now actually able to
-see `working` tasks — see below), and `gwlint`, the D6 CI linter, scoped
-to what's checkable from this repo alone (`make gwlint`).
+see `working` tasks — see below), turn-by-turn A2A message history
+(`gw_message`, persisting what `a2a-sdk`'s own `TaskManager` already
+assembles in memory and previously had nowhere to go — `tasks/get` now
+returns a real `history` and `status.message`, not `history: []` forever),
+and `gwlint`, the D6 CI linter, scoped to what's checkable from this repo
+alone (`make gwlint`).
 
 Driving each of these to "actually verified, not just written" surfaced
 five real, previously-undetected bugs along the way — this is the kind of

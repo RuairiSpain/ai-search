@@ -26,6 +26,7 @@ from gateway.store.artifact_store import ArtifactStore
 from gateway.store.context_store import ContextStore
 from gateway.store.db import Database
 from gateway.store.interjection_store import InterjectionStore
+from gateway.store.message_store import MessageStore
 from gateway.store.task_store import TaskStore
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "info").upper())
@@ -57,6 +58,7 @@ async def lifespan(app: FastAPI):
     contexts = ContextStore(db.pool)
     tasks = TaskStore(db.pool)
     artifacts = ArtifactStore(db.pool)
+    messages = MessageStore(db.pool)
     interjections = InterjectionStore(db.pool)
     push_config_store = GatewayPushConfigStore(
         db.pool, allowlist=config.push_notification_allowlist
@@ -92,6 +94,7 @@ async def lifespan(app: FastAPI):
             contexts=contexts,
             tasks=tasks,
             artifacts=artifacts,
+            messages=messages,
             harvester=registry.harvester,
             interjections=interjections,
             push_config_store=push_config_store,
