@@ -21,7 +21,7 @@ from types import SimpleNamespace
 import pytest
 
 from gateway.auth.principal import Principal
-from gateway.upstream.base import TaskState, UpstreamRef
+from gateway.upstream.base import ArtifactEvent, StatusEvent, TaskState, UpstreamRef
 from gateway.upstream.foundry_hosted import FoundryHostedAdapter
 from gateway.upstream.foundry_responses import (
     _detail_for,
@@ -47,9 +47,25 @@ def _item(item_type: str, **fields) -> SimpleNamespace:
 
 
 def _resp(
-    *, status: str = "in_progress", output: list | None = None, output_text: str = ""
+    *,
+    status: str = "in_progress",
+    output: list | None = None,
+    output_text: str = "",
+    container_file_citations: list | None = None,
 ) -> SimpleNamespace:
-    return SimpleNamespace(status=status, id="resp_1", output=output or [], output_text=output_text)
+    return SimpleNamespace(
+        status=status,
+        id="resp_1",
+        output=output or [],
+        output_text=output_text,
+        container_file_citations=container_file_citations or [],
+    )
+
+
+def _citation(*, file_id: str = "file_1", filename: str = "report.md", container_id: str = "cont_1") -> SimpleNamespace:
+    return SimpleNamespace(
+        file_id=file_id, filename=filename, mime_type="text/markdown", container_id=container_id
+    )
 
 
 class TestNarrate:
@@ -351,6 +367,37 @@ async def test_follow_ignores_structured_status_when_no_output_schema_configured
     assert event.state == TaskState.COMPLETED
     assert event.final is True
     assert event.detail == '{"status": "needs_input", "message": "need more info", "question": "Which city?"}'
+
+
+@pytest.mark.asyncio
+async def test_follow_yields_artifacts_before_the_terminal_status_event():
+    """The artifact-harvest race (docs/08): `_follow_and_relay`
+    (executor.py) awaits each yielded event in turn, and a2a-sdk's own
+    EventConsumer persists its single event queue strictly FIFO -- so
+    whichever event this adapter yields first is guaranteed persisted
+    first. Yielding the terminal StatusEvent(final=True) before this same
+    poll's artifacts meant a client calling GetTask the instant it saw
+    COMPLETED could observe a task with no artifacts yet, since the
+    harvest (a real network copy to blob) was still in flight. This test
+    locks in yield order, not just event *presence* -- getting the ordering
+    backwards again would still pass a test that only checked `len(events)`
+    or which event types appeared, but not which one appeared first."""
+    resp = _resp(
+        status="completed",
+        output=[_item("message", status="completed")],
+        output_text="Here's your report.",
+        container_file_citations=[_citation()],
+    )
+    adapter = FoundryHostedAdapter(project_client=_FakeProjectClient(resp), agent_name="a")
+    ref = UpstreamRef(conversation_id="conv_1", run_id="resp_1")
+
+    events = [e async for e in adapter.follow(ref, task_id="task_1", principal=PRINCIPAL)]
+
+    assert len(events) == 2
+    assert isinstance(events[0], ArtifactEvent)
+    assert events[0].artifact_id == "file_1"
+    assert isinstance(events[1], StatusEvent)
+    assert events[1].final is True
 
 
 @pytest.mark.asyncio

@@ -557,6 +557,60 @@ real than a `FakeAdapter`. In order found:
     unconfirmed. Only the request/response shapes against the installed
     `openai` SDK, and offline tests, back this.
 
+21. **T2 artifact-harvest race, hardened.** A real race, not a theoretical
+    one, and it was already visible in this repo's own sample:
+    `samples/tier2/02-per-user-isolated-storage`'s `fake_chat_ui.py` polls
+    `GetTask` until `status.state` reaches `TASK_STATE_COMPLETED`, then
+    checks that same response for `task.artifacts` — and had a resigned
+    `print("(no artifact yet -- harvest may still be in flight; re-run
+    GetTask)")` for the case where it lost.
+
+    Root cause: `FoundryResponsesAdapter.follow()`
+    (`src/gateway/upstream/foundry_responses.py`) yielded a completed
+    poll's terminal `StatusEvent` (`final=True`) *before* that same poll's
+    `ArtifactEvent`s. `_follow_and_relay()` (`src/gateway/a2a_server/
+    executor.py`) processes yielded events strictly in order, awaiting each
+    one fully — `updater.update_status()` for a status event,
+    `self._harvester.harvest()` (a real network copy into blob storage,
+    genuinely slow relative to a status write) then `updater.add_artifact()`
+    for an artifact. Read the installed `a2a-sdk` directly to confirm the
+    consequence: its `EventConsumer` drains the single per-task event queue
+    strictly FIFO, awaiting `TaskManager.process()` to completion for each
+    event before dequeuing the next
+    (`a2a.server.agent_execution.active_task`). So whichever event this
+    adapter yields first is guaranteed persisted first — meaning a client
+    calling `GetTask` the instant it observed `COMPLETED` could reliably
+    get a task response with no artifacts yet, not just occasionally.
+
+    Fix: swap the yield order — artifacts before the terminal status event,
+    for the same poll. No sequence-numbering or persistence concern from
+    the swap: T2's `follow()` writes nothing to `gw_event` (that table is
+    T3-only, read by `DurableAdapter`'s `event_source`); T2 always calls
+    `follow()` fresh with `from_sequence=0` (`executor.py`), so there's no
+    resume path depending on the old ordering. New regression test,
+    `test_follow_yields_artifacts_before_the_terminal_status_event`
+    (`tests/test_foundry_progress_narration.py`), asserts yield *order*
+    specifically (`events[0]` is the `ArtifactEvent`, `events[1]` the
+    `StatusEvent`) — a test that only checked event presence or count would
+    pass either way and miss a regression back to the old order.
+
+    T3 is explicitly out of scope for this fix: `DurableAdapter.follow()`
+    only relays `gw_event` rows in whatever order the T3 app's own webhook
+    pushed them, so getting the order right there is an
+    orchestrator-*author* responsibility, not something this adapter can
+    enforce. The reference orchestrator in `06-tier3-durable-agents.md` §5.2
+    already gets it right (`harvest_artifact` activity awaited, then the
+    `"completed"` notify) — flagged in `07-artifacts-and-code-interpreter.md`
+    §2 item 6 as the pattern to follow, with an explicit warning about
+    getting it backwards.
+
+    `fake_chat_ui.py`'s stale message updated to stop blaming a race that
+    no longer exists — a missing artifact now means the model genuinely
+    didn't call the code interpreter this turn (a real, separate,
+    already-tracked risk: LLM instruction-following reliability for the
+    docx-writing recipe in `instructions.md`), not a harvest still in
+    flight.
+
 ## D. Duplicate source documents collapsed during merge
 
 For traceability: these upload sets were identical or near-identical

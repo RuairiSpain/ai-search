@@ -66,6 +66,29 @@ SAS** per download — Entra-backed, no account key — after checking
 **5. Make harvest idempotent.** Key on `(task_id, artifact_id)`,
 conditional-create the blob, and a duplicate webhook becomes a no-op.
 
+**6. Never let a client observe "completed" before its artifacts are
+harvested.** A real race, not a theoretical one — `FoundryResponsesAdapter
+.follow()` used to yield a completed poll's terminal `StatusEvent` (i.e.
+`final=True`) *before* that same poll's `ArtifactEvent`s, so a client that
+called `GetTask` the instant it saw `TASK_STATE_COMPLETED` could get a task
+with no artifacts yet: the harvest — a real network copy into blob storage
+— was still in flight. `samples/tier2/02-per-user-isolated-storage`'s
+`fake_chat_ui.py` hit this directly and used to paper over it with a
+"harvest may still be in flight, re-run GetTask" message. Fixed by yielding
+artifacts first: `_follow_and_relay` (`src/gateway/a2a_server/executor.py`)
+awaits each yielded event in turn (harvest + `add_artifact()` for an
+artifact, `update_status()` for status), and a2a-sdk's own `EventConsumer`
+persists its single event queue strictly FIFO — so whichever event this
+adapter yields first is guaranteed persisted first. **This is a gateway
+responsibility for T2** (the gateway controls both artifact detection and
+terminal-status emission from the same poll) but an **orchestrator-author
+responsibility for T3**, since `DurableAdapter.follow()` only relays events
+in whatever order the T3 app's own webhook pushes land in — get this
+backwards in your own orchestrator and the same race reappears on T3. The
+reference orchestrator in `06-tier3-durable-agents.md` §5.2 already gets
+this right (`harvest_artifact` activity awaited, *then* the `"completed"`
+notify) — follow that order, not the reverse.
+
 That turns the container reference into a transient detail rather than the
 canonical location — which is what "brittle" really meant.
 

@@ -357,6 +357,26 @@ class FoundryResponsesAdapter:
                         "shape; showing raw output_text (run_id=%s)",
                         ref.run_id,
                     )
+            # Artifacts detected in THIS poll's response are yielded before
+            # its StatusEvent, not after -- a real race, not a style choice.
+            # `_follow_and_relay` (executor.py) awaits each yielded event in
+            # turn: harvest() + updater.add_artifact() for an ArtifactEvent,
+            # updater.update_status() for a StatusEvent. a2a-sdk's own
+            # EventConsumer then drains that single queue strictly FIFO and
+            # persists each event before dequeuing the next (verified
+            # against the installed a2a-sdk: _handle_task_modification_event
+            # awaits TaskManager.process() to completion per event). So
+            # whichever event we enqueue first is guaranteed persisted
+            # first. Yielding the terminal StatusEvent(final=True) before
+            # this poll's artifacts meant a client calling GetTask the
+            # instant it observed COMPLETED could see a task with no
+            # artifacts yet -- the harvest (a real network copy to blob) was
+            # still in flight. samples/tier2/02-per-user-isolated-storage's
+            # fake_chat_ui.py hit this directly (docs/08).
+            for artifact in self._new_artifacts(resp, task_id, seq):
+                seq += 1
+                artifact.sequence = seq
+                yield artifact
             seq += 1
             yield StatusEvent(
                 task_id=task_id,
@@ -368,10 +388,6 @@ class FoundryResponsesAdapter:
                 # must never be reported `final=True`.
                 final=state in TERMINAL_STATES,
             )
-            for artifact in self._new_artifacts(resp, task_id, seq):
-                seq += 1
-                artifact.sequence = seq
-                yield artifact
             # Deliberately a different condition than `final=` above: the
             # poll loop has nothing left to observe once paused for input
             # (the underlying Foundry response is genuinely done), so it

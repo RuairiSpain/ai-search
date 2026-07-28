@@ -113,7 +113,15 @@ async def run_turn(client: httpx.AsyncClient, app: str, user: SimulatedUser, tex
         print(f"           artifact: {artifact_url}")
         await _download_and_verify(client, user, artifact_url)
     else:
-        print("           (no artifact yet -- harvest may still be in flight; re-run GetTask)")
+        # No longer a harvest-timing race (docs/08): FoundryResponsesAdapter
+        # .follow() now yields a completed poll's ArtifactEvents before its
+        # terminal StatusEvent, so by the time GetTask can observe
+        # TASK_STATE_COMPLETED, the harvest for any artifact detected in
+        # that same poll has already run. A missing artifact here means the
+        # model didn't emit a code-interpreter container_file this turn --
+        # see instructions.md's docx-writing recipe and this sample's
+        # README on the LLM-instruction-following risk that remains.
+        print("           (no artifact this turn -- model may not have written the file)")
 
 
 async def _download_and_verify(client: httpx.AsyncClient, user: SimulatedUser, url: str) -> None:
