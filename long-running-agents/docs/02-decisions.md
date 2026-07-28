@@ -542,7 +542,13 @@ list originally split out as `02-mcp-tool`, since the MCP toolbox is one
 piece of the same basic-agent sample rather than its own), `tier1/03`,
 `tier1/08`, `tier2/02`, `tier2/04`, `tier3/01` (the T3 entry doubles as
 this list's `04-a2a-server`, since a T3 sample can't avoid building its
-own A2A server surface). Everything else below is still target-only.
+own A2A server surface), `tier3/03`. Everything else below is still
+target-only, except one addition this list never anticipated:
+`tier3/05-push-notifications`, built because every T2/T3 sample's card
+already declared `pushNotifications: true` but nothing actually registered
+one and watched it arrive — closer to a gap in gateway-feature coverage
+than a missing tier-behavior sample, so it didn't fit any of this list's
+existing numbered slots and was appended instead of forced into one.
 
 ```
 docs/
@@ -572,7 +578,8 @@ samples/
           05-input-required  06-session-memory  07-workflow-sequential
           08-workflow-executor-reviewer ✅  09-workflow-hitl  10-structured-output
   tier2/  01-hosted-basic  02-per-user-isolation ✅  03-session-files ✅  04-long-running ✅
-  tier3/  01-durable-agent ✅  02-multi-agent-orchestration  03-hitl-durable  04-a2a-server
+  tier3/  01-durable-agent ✅  02-multi-agent-orchestration  03-hitl-durable ✅  04-a2a-server
+          05-push-notifications ✅ (addition -- not in the original list, see note above)
   gateway/  01-local-dev  02-end-to-end
 ```
 

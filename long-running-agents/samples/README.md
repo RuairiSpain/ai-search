@@ -1,12 +1,14 @@
 # Samples
 
-Six worked examples across all three tiers. This is a first slice of the
+Eight worked examples across all three tiers. This is a first slice of the
 target library laid out in `docs/02-decisions.md` ("Documentation and
 samples structure") — that section lists the full eventual set
 (`tier1/01`..`10`, `tier2/01`..`04`, `tier3/01`..`04`, `gateway/01`..`02`);
-what exists on disk today is the subset below. Numbering matches that
-target list where a sample corresponds directly to one of its entries, so
-filling in the rest later doesn't require renaming anything.
+what exists on disk today is the subset below, plus one addition beyond
+that original list (`tier3/05-push-notifications` — see that section's own
+note). Numbering matches the target list where a sample corresponds
+directly to one of its entries, so filling in the rest later doesn't
+require renaming anything.
 
 | Sample | Tier | Demonstrates |
 |---|---|---|
@@ -16,6 +18,8 @@ filling in the rest later doesn't require renaming anything.
 | [`tier2/02-per-user-isolated-storage`](tier2/02-per-user-isolated-storage/) | T2 | Three simulated users hit the same hosted agent. A function tool proves each gets an isolated, persistent `$HOME` (no cross-user leakage); code interpreter writes each user's prompt to a real `.docx`, harvested by the gateway's existing artifact pipeline and returned as a download link that outlives the agent session. |
 | [`tier2/04-long-running-hello-world`](tier2/04-long-running-hello-world/) | T2 | One hosted agent, ~5 minutes of work, fronted by this gateway. Narration is automatic and coarse: one line naming the tool call in progress ("running tool: slow_then_greet"), unchanged for the whole run, derived from the platform's own `Response.output` — no agent-side code. |
 | [`tier3/01-durable-hello-world-status`](tier3/01-durable-hello-world-status/) | T3 | The same ~5 minute hello world, this time as a durable orchestration that pushes explicit, author-chosen narration at each of five steps via webhook. Same client, visibly finer-grained experience. |
+| [`tier3/03-hitl-durable`](tier3/03-hitl-durable/) | T3 | A multi-day expense-approval orchestration that pauses on `wait_for_external_event`, racing it against a deadline timer. The gateway sees the pause as `TASK_STATE_INPUT_REQUIRED`; a client resumes it with a second `SendMessage`, which this sample's own A2A server routes to `client.raise_event(...)`. Deliberate failure path: the deadline wins instead of the approval. |
+| [`tier3/05-push-notifications`](tier3/05-push-notifications/) | T3 | `CreateTaskPushNotificationConfig` against a real local receiver — the client never calls `GetTask`, it registers a callback and blocks on its own tiny HTTP server, watching each status update arrive the instant the gateway delivers it. Deliberate failure path: registering a non-allowlisted URL, rejected by `gwlint` rule L023's own runtime check. |
 
 The T2/T3 pair is the point: identical wall-clock behavior, both tiers
 narrate, but through genuinely different mechanisms with different
@@ -29,14 +33,20 @@ that code. Both land as the same `StatusEvent.detail` field on the gateway
 side and reach the wire through the same `TaskUpdater.update_status(...,
 message=...)` call — one rendering path, two different sources.
 
-## Why T1 has three samples and T2/T3 have one each
+## Why T1 samples don't touch the gateway at all
 
 T1 agents aren't fronted by this gateway at all (`docs/00` §0, `docs/04`) —
 they get Foundry's own native incoming A2A endpoint. So the T1 samples
 exercise `azure-ai-projects` directly against a Foundry project, with no
-gateway in the loop. The T2/T3 samples are the opposite: the whole point is
-what changes when the gateway *is* in the loop, so both ship a client that
-talks to a running gateway instance, not to Foundry directly.
+gateway in the loop. Every T2/T3 sample is the opposite: the whole point is
+what changes when the gateway *is* in the loop, so all of them ship a
+client that talks to a running gateway instance, not to Foundry or the T3
+app directly. T3 has three samples for the same reason T1 has three:
+`01-durable-hello-world-status`, `03-hitl-durable`, and
+`05-push-notifications` each isolate one gateway-facing mechanism
+(narration, `input_required`, push delivery) rather than combining all
+three into one sample where it would be hard to tell which behavior came
+from which mechanism.
 
 ## Prerequisites, all samples
 

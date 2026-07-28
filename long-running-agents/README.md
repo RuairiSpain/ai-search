@@ -49,7 +49,7 @@ Full escalation table, what each tier does *not* have, and cost models: see
 | [`06-tier3-durable-agents.md`](docs/06-tier3-durable-agents.md) | Deployment, determinism rules, triggers (A2A/cron/Teams), HITL, the three planes |
 | [`07-artifacts-and-code-interpreter.md`](docs/07-artifacts-and-code-interpreter.md) | Blob artifact policy, code interpreter container lifecycle, MCP → code interpreter handoff |
 | [`08-open-items-and-experiments.md`](docs/08-open-items-and-experiments.md) | Consolidated backlog: empirical checks (⚠) to run before build, open decisions (◆), and every correction made while merging the source drafts |
-| [`samples/`](samples/) | Six worked examples: three T1 (declarative agent, isolated executor/reviewer, shared-memory code-interpreter/flashcards), a T2 per-user isolation + artifact-harvest demo, and a T2/T3 hello-world pair that shows the actual progress-narration difference between the two tiers |
+| [`samples/`](samples/) | Eight worked examples: three T1 (declarative agent, isolated executor/reviewer, shared-memory code-interpreter/flashcards), a T2 per-user isolation + artifact-harvest demo, a T2/T3 hello-world pair that shows the actual progress-narration difference between the two tiers, a T3 multi-day human-in-the-loop approval, and a T3 push-notifications demo |
 
 ## Status at a glance
 
