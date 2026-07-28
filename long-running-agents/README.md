@@ -190,22 +190,25 @@ of each, item by item.
   against a real `a2a-sdk` server acting as a T3 stand-in, which is
   stronger than isolated `ParseDict` checking but still not a real T3
   orchestrator — nothing in this codebase has run one yet.
-- T2's `resume()` has a real, working body now, but nothing in the T2 poll
-  loop can currently detect that Foundry is actually waiting on a reply
-  (`Capabilities.input_required` stays `False`) — `_map_state()` has no
-  case for it yet, so the method is reachable but not yet exercised by a
-  live pause.
+- T2's `resume()`/`input_required` detection is implemented (D4, extended
+  for T2 — apps declare `input_required: true` + an `output_schema` in
+  `apps.yaml`, the gateway attaches it as a Responses API `text.format`
+  param, and `follow()` parses `resp.output_text` against it), but it is
+  **not verified against a live Foundry endpoint** — only that the request
+  shape and response parsing match the installed `openai` SDK and pass
+  offline tests. Whether the hosted-agent proxy actually honors
+  `text.format` end to end is unconfirmed.
 - T2's progress narration stays declared `COARSE`, not `FINE`, even after
   the fix above — it's genuinely best-effort (one line per output item,
   not per fine-grained step, and nothing at all before the first item
   appears), and `Capabilities.progress` reports what the adapter actually
   has rather than fabricating granularity (docs/00 design premise #4).
 - No VNet/private endpoint on Postgres or storage (deliberately deferred).
-- `gwlint` only covers the safety rules (L020, L022, L023, L030, L032)
-  checkable from this repo's own `apps.yaml` and source tree — the rest of
-  the D6 catalogue needs either a live Foundry connection or references
-  files that live in the separate Foundry-agent-deployment repo. Every
-  skipped rule is reported as `SKIP`, not silently omitted.
+- `gwlint` only covers the safety rules (L013, L020, L022, L023, L030,
+  L032) checkable from this repo's own `apps.yaml` and source tree — the
+  rest of the D6 catalogue needs either a live Foundry connection or
+  references files that live in the separate Foundry-agent-deployment
+  repo. Every skipped rule is reported as `SKIP`, not silently omitted.
 
 ## Running it locally
 

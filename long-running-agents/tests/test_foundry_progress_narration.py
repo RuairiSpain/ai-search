@@ -23,9 +23,23 @@ import pytest
 from gateway.auth.principal import Principal
 from gateway.upstream.base import TaskState, UpstreamRef
 from gateway.upstream.foundry_hosted import FoundryHostedAdapter
-from gateway.upstream.foundry_responses import _detail_for, _narrate
+from gateway.upstream.foundry_responses import (
+    _detail_for,
+    _extract_structured_status,
+    _narrate,
+    _to_text_format,
+)
 
 PRINCIPAL = Principal(subject="t2.alice", tenant="t2")
+
+# D4's example shape (docs/02-decisions.md, config/apps.example.yaml).
+D4_OUTPUT_SCHEMA = {
+    "properties": {
+        "status": {"type": "string", "enum": ["answered", "needs_input"], "required": True},
+        "message": {"type": "string", "required": True},
+        "question": {"type": "string", "required": False},
+    }
+}
 
 
 def _item(item_type: str, **fields) -> SimpleNamespace:
@@ -135,6 +149,85 @@ class TestDetailFor:
         assert _detail_for(resp, TaskState.FAILED) is None
 
 
+class TestToTextFormat:
+    def test_required_list_matches_required_true_properties(self):
+        result = _to_text_format(D4_OUTPUT_SCHEMA)
+        assert sorted(result["format"]["schema"]["required"]) == ["message", "status"]
+
+    def test_non_strict(self):
+        result = _to_text_format(D4_OUTPUT_SCHEMA)
+        assert result["format"]["strict"] is False
+
+    def test_type_and_enum_carried_through_per_property(self):
+        result = _to_text_format(D4_OUTPUT_SCHEMA)
+        props = result["format"]["schema"]["properties"]
+        assert props["status"] == {"type": "string", "enum": ["answered", "needs_input"]}
+        assert props["message"] == {"type": "string"}
+        assert props["question"] == {"type": "string"}  # required:false -- present, just not in required[]
+
+    def test_wrapper_shape(self):
+        result = _to_text_format(D4_OUTPUT_SCHEMA, name="my_schema_v1")
+        assert result == {
+            "format": {
+                "type": "json_schema",
+                "name": "my_schema_v1",
+                "schema": {
+                    "type": "object",
+                    "properties": result["format"]["schema"]["properties"],
+                    "required": result["format"]["schema"]["required"],
+                },
+                "strict": False,
+            }
+        }
+
+
+class TestExtractStructuredStatus:
+    def _resp_with_text(self, text: str) -> SimpleNamespace:
+        return SimpleNamespace(output_text=text)
+
+    def test_answered(self):
+        resp = self._resp_with_text('{"status": "answered", "message": "Paris"}')
+        assert _extract_structured_status(resp) == (TaskState.COMPLETED, "Paris")
+
+    def test_needs_input_with_question(self):
+        resp = self._resp_with_text(
+            '{"status": "needs_input", "message": "need more info", "question": "Which city?"}'
+        )
+        assert _extract_structured_status(resp) == (TaskState.INPUT_REQUIRED, "Which city?")
+
+    def test_needs_input_without_question_falls_back_to_message(self):
+        resp = self._resp_with_text('{"status": "needs_input", "message": "need more info"}')
+        assert _extract_structured_status(resp) == (TaskState.INPUT_REQUIRED, "need more info")
+
+    def test_needs_input_with_empty_question_falls_back_to_message(self):
+        resp = self._resp_with_text(
+            '{"status": "needs_input", "message": "need more info", "question": ""}'
+        )
+        assert _extract_structured_status(resp) == (TaskState.INPUT_REQUIRED, "need more info")
+
+    def test_malformed_json_returns_none(self):
+        resp = self._resp_with_text("not json at all")
+        assert _extract_structured_status(resp) is None
+
+    def test_valid_json_but_not_an_object_returns_none(self):
+        resp = self._resp_with_text('["answered", "Paris"]')
+        assert _extract_structured_status(resp) is None
+
+    def test_status_outside_enum_returns_none(self):
+        resp = self._resp_with_text('{"status": "in_progress", "message": "still working"}')
+        assert _extract_structured_status(resp) is None
+
+    def test_message_wrong_type_returns_none(self):
+        resp = self._resp_with_text('{"status": "answered", "message": 42}')
+        assert _extract_structured_status(resp) is None
+
+    def test_empty_output_text_returns_none(self):
+        assert _extract_structured_status(self._resp_with_text("")) is None
+
+    def test_missing_output_text_attribute_returns_none(self):
+        assert _extract_structured_status(SimpleNamespace()) is None
+
+
 class _FakeResponses:
     def __init__(self, resp):
         self._resp = resp
@@ -210,3 +303,73 @@ async def test_follow_delivers_the_real_answer_on_completion():
 
     assert event.final
     assert event.detail == "You now have 2 notes in your session."
+
+
+@pytest.mark.asyncio
+async def test_follow_detects_input_required_when_output_schema_configured():
+    resp = _resp(
+        status="completed",
+        output=[_item("message", status="completed")],
+        output_text='{"status": "needs_input", "message": "need more info", "question": "Which city?"}',
+    )
+    adapter = FoundryHostedAdapter(
+        project_client=_FakeProjectClient(resp), agent_name="a", output_schema=D4_OUTPUT_SCHEMA
+    )
+    ref = UpstreamRef(conversation_id="conv_1", run_id="resp_1")
+
+    # Exhaust the generator, not just take the first event: the real
+    # regression this design has to prevent is the poll loop failing to
+    # stop and re-yielding the same question forever (a bare `state in
+    # TERMINAL_STATES` check would do exactly that, since INPUT_REQUIRED
+    # is deliberately not a terminal state).
+    events = [e async for e in adapter.follow(ref, task_id="task_1", principal=PRINCIPAL)]
+
+    assert len(events) == 1
+    event = events[0]
+    assert event.state == TaskState.INPUT_REQUIRED
+    assert event.detail == "Which city?"
+    # Must stay False -- INPUT_REQUIRED is a pause (D7), not permanently
+    # done. A shared final=/loop-stop expression would silently break this.
+    assert event.final is False
+
+
+@pytest.mark.asyncio
+async def test_follow_ignores_structured_status_when_no_output_schema_configured():
+    """Opt-in per app: the exact same completed-with-JSON response is just
+    an ordinary answer (the raw JSON text) for an app that never declared
+    an output_schema -- this adapter has no idea the JSON is meaningful."""
+    resp = _resp(
+        status="completed",
+        output=[_item("message", status="completed")],
+        output_text='{"status": "needs_input", "message": "need more info", "question": "Which city?"}',
+    )
+    adapter = FoundryHostedAdapter(project_client=_FakeProjectClient(resp), agent_name="a")
+    ref = UpstreamRef(conversation_id="conv_1", run_id="resp_1")
+
+    event = await _first_event(adapter, ref)
+
+    assert event.state == TaskState.COMPLETED
+    assert event.final is True
+    assert event.detail == '{"status": "needs_input", "message": "need more info", "question": "Which city?"}'
+
+
+@pytest.mark.asyncio
+async def test_follow_falls_back_gracefully_on_non_conforming_output_with_schema_configured():
+    """Non-strict mode gives no server-side guarantee the model actually
+    emitted the D4 shape -- a plain-prose answer must degrade to ordinary
+    COMPLETED handling, never raise."""
+    resp = _resp(
+        status="completed",
+        output=[_item("message", status="completed")],
+        output_text="Sure, here's your answer without any JSON at all.",
+    )
+    adapter = FoundryHostedAdapter(
+        project_client=_FakeProjectClient(resp), agent_name="a", output_schema=D4_OUTPUT_SCHEMA
+    )
+    ref = UpstreamRef(conversation_id="conv_1", run_id="resp_1")
+
+    event = await _first_event(adapter, ref)
+
+    assert event.state == TaskState.COMPLETED
+    assert event.final is True
+    assert event.detail == "Sure, here's your answer without any JSON at all."

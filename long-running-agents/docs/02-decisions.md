@@ -220,6 +220,45 @@ a reply affordance.
 The linter rejects any app with `input_required: true` whose agent lacks a
 conforming `outputSchema` (`L013`).
 
+### ⚠ Extended for T2 — the gateway is the caller, not the agent
+
+The text above was written for T1 (before T1 was removed as a gateway
+tier), where the agent's own definition carried the schema and Foundry's
+native A2A endpoint handled invocation and status mapping. For T2, the
+**gateway itself** calls `responses.create()`, so the same contract needs
+a different, gateway-side mechanism:
+
+- `AppConfig` gains `input_required: bool` (the declared intent, checked
+  by `L013`) and `output_schema` (an `OutputSchemaConfig` mirroring the
+  YAML shape above 1:1 — see `config/apps.example.yaml`'s `ticket-triage`
+  block).
+- `Registry` converts `output_schema` into a Responses API `text.format`
+  param (`_to_text_format()`, `src/gateway/upstream/foundry_responses.py`)
+  and attaches it to every `submit()`/`resume()` call the adapter makes
+  for that app. Verified directly against the installed `openai==2.48.0`
+  package: request shape is `text={"format": {"type": "json_schema",
+  "name", "schema", "strict"}}`.
+- Detection happens in `follow()`: a `completed` response is inspected via
+  `_extract_structured_status()`, which parses `resp.output_text` as JSON
+  against the fixed `status`/`message`/`question` keys — there is no
+  separate "structured output" response item type. `status: needs_input`
+  maps to `TaskState.INPUT_REQUIRED` with `question` (or `message` as a
+  fallback) as the detail; anything that doesn't parse or conform falls
+  back to ordinary plain-text `COMPLETED` handling rather than raising —
+  intentional, since the schema is attached in **non-strict** mode (`strict:
+  False`), so OpenAI gives no server-side guarantee the model actually
+  conforms.
+- `Capabilities.input_required` is derived from whether an `output_schema`
+  was actually wired into the adapter instance, not by re-reading the
+  `AppConfig` boolean — defense in depth: `L013` catches
+  `input_required: true` with no schema at config-review time, but the
+  adapter itself never claims a capability it can't deliver regardless of
+  whether CI ran.
+
+Not verified against a live Foundry endpoint: whether the hosted-agent
+Responses API proxy honors `text.format` end to end. See
+`docs/08-open-items-and-experiments.md`.
+
 ---
 
 ## D5 — Retention

@@ -46,10 +46,20 @@ class Registry:
         )
 
     def build(self) -> None:
-        for upstream in self._config.upstreams:
-            self._adapters[upstream.id] = self._build_adapter(upstream)
+        # Keyed by app name, not upstream id: `output_schema` (D4,
+        # docs/02-decisions.md) is per-app, baked into the adapter at
+        # construction (FoundryResponsesAdapter._text_format), so two apps
+        # sharing one upstream can no longer safely share one adapter
+        # instance. Trades a little duplicate-client overhead (two
+        # AIProjectClients instead of one, for the rare app pair that
+        # shares an upstream) for not inventing a separate 1:1-enforcement
+        # validation layer -- every app in this repo's own example config
+        # already has its own upstream.
+        for app_cfg in self._config.apps:
+            upstream = self._config.upstream_for_app(app_cfg.name)
+            self._adapters[app_cfg.name] = self._build_adapter(upstream, app_cfg)
 
-    def _build_adapter(self, upstream) -> UpstreamAdapter:
+    def _build_adapter(self, upstream, app_cfg) -> UpstreamAdapter:
         if upstream.tier == "t2":
             project = AIProjectClient(endpoint=upstream.project_endpoint, credential=self._credential)
             return FoundryHostedAdapter(
@@ -58,6 +68,7 @@ class Registry:
                 identity_mode=upstream.identity,
                 project_endpoint=upstream.project_endpoint,
                 credential=self._credential,
+                output_schema=app_cfg.output_schema.model_dump() if app_cfg.output_schema else None,
             )
         if upstream.tier == "t3":
             return DurableAdapter(
@@ -68,15 +79,14 @@ class Registry:
         raise ValueError(f"unknown tier {upstream.tier!r}")
 
     def adapter_for_app(self, app_name: str) -> UpstreamAdapter:
-        upstream_id = self._config.app(app_name).upstream
-        return self._adapters[upstream_id]
+        return self._adapters[app_name]
 
     async def health_check_all(self) -> dict[str, bool]:
         results: dict[str, bool] = {}
-        for upstream_id, adapter in self._adapters.items():
+        for app_name, adapter in self._adapters.items():
             try:
-                results[upstream_id] = await adapter.health()
+                results[app_name] = await adapter.health()
             except Exception:
-                log.exception("health check failed for upstream %s", upstream_id)
-                results[upstream_id] = False
+                log.exception("health check failed for app %s", app_name)
+                results[app_name] = False
         return results

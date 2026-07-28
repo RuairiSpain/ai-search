@@ -127,7 +127,8 @@ class SteerResult:
 class UpstreamAdapter(Protocol):
     """One interface, two implementations. Polling vs pushing is hidden here."""
 
-    capabilities: Capabilities
+    @property
+    def capabilities(self) -> Capabilities: ...
 
     async def submit(
         self,

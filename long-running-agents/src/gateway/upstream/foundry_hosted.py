@@ -12,9 +12,7 @@ from typing import Any, ClassVar
 
 from gateway.auth.principal import Principal
 from gateway.upstream.base import (
-    Capabilities,
     InboundFile,
-    ProgressFidelity,
     Submission,
     UpstreamRef,
 )
@@ -22,6 +20,7 @@ from gateway.upstream.foundry_responses import (
     FoundryResponsesAdapter,
     _build_input,
     _map_state,
+    _to_text_format,
     _upload_files,
     new_task_id,
 )
@@ -36,19 +35,13 @@ class Forbidden(Exception):
 
 
 class FoundryHostedAdapter(FoundryResponsesAdapter):
-    capabilities = Capabilities(
-        # COARSE, same reasoning as the base class -- narration here is
-        # `_narrate()`, inherited from FoundryResponsesAdapter.follow(),
-        # derived from the polled Response's own `output` items. NOT the
-        # `gw.progress.v1`/`ctx.emit_custom_event` mechanism docs/05 §5.4
-        # used to describe -- that API doesn't exist in any installed
-        # package (docs/08 item 16).
-        progress=ProgressFidelity.COARSE,
-        push=False,  # no separate transport; T2 is always polled
-        artifacts=True,
-        input_required=False,
-        cancel=True,
-    )
+    # `capabilities` is inherited as-is from FoundryResponsesAdapter (a
+    # @property there) -- this class used to redeclare an identical
+    # Capabilities(...) class attribute here, byte-for-byte the same as
+    # the base class's value. Deleted rather than kept in sync by hand:
+    # now that `input_required` is derived from `self._output_schema`
+    # (docs/02-decisions.md D4), duplicating it here would mean two
+    # places to update instead of one, for no behavioral difference.
 
     # Platform fact, not configuration. Delete this constant when the
     # preview flag goes GA rather than editing every upstream entry.
@@ -63,6 +56,7 @@ class FoundryHostedAdapter(FoundryResponsesAdapter):
         poll_interval_s: float = 1.5,
         project_endpoint: str | None = None,
         credential: Any | None = None,
+        output_schema: dict | None = None,
     ):
         # Note: does NOT call FoundryResponsesAdapter.__init__ — `_openai`
         # is a property below (a fresh per-call client, matching T2's
@@ -80,6 +74,12 @@ class FoundryHostedAdapter(FoundryResponsesAdapter):
         # below.
         self._project_endpoint = project_endpoint
         self._credential = credential
+        # Same independent-assignment reasoning as above -- __init__
+        # doesn't chain to the base class's, so `input_required` capability
+        # detection (inherited `capabilities` property, D4) needs its own
+        # copy of this state here too.
+        self._output_schema = output_schema
+        self._text_format = _to_text_format(output_schema) if output_schema else None
 
     @property
     def _openai(self) -> Any:
@@ -140,7 +140,7 @@ class FoundryHostedAdapter(FoundryResponsesAdapter):
         budget_ms: int,
     ) -> Submission:
         uploaded = await _upload_files(self._openai, files)
-        resp = await self._openai.responses.create(
+        kwargs: dict[str, Any] = dict(
             background=not blocking,
             conversation=ref.conversation_id,
             input=_build_input(text, uploaded),
@@ -148,6 +148,9 @@ class FoundryHostedAdapter(FoundryResponsesAdapter):
             prompt_cache_key=principal.subject,
             safety_identifier=principal.subject,
         )
+        if self._text_format is not None:
+            kwargs["text"] = self._text_format
+        resp = await self._openai.responses.create(**kwargs)
         session_id = resp.model_extra.get("agent_session_id") if hasattr(resp, "model_extra") else None
         return Submission(
             task_id=new_task_id(),

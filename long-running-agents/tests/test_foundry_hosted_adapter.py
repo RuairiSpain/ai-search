@@ -22,12 +22,21 @@ PRINCIPAL = Principal(subject="t2.alice", tenant="t2")
 
 
 class _FakeResponse:
-    def __init__(self, *, status: str = "completed", resp_id: str = "resp_1", conv_id: str = "conv_1"):
+    def __init__(
+        self,
+        *,
+        status: str = "completed",
+        resp_id: str = "resp_1",
+        conv_id: str = "conv_1",
+        output_text: str = "",
+    ):
         self.status = status
         self.id = resp_id
         self.conversation = SimpleNamespace(id=conv_id)
         self.model_extra: dict = {}
         self.container_file_citations: list = []
+        self.output = []
+        self.output_text = output_text
 
 
 class _FakeResponses:
@@ -86,3 +95,14 @@ async def test_inherited_methods_get_a_real_client_not_none():
     assert submission.ref.conversation_id == "conv_1"
 
     assert project.get_client_calls > 0
+
+
+def test_capabilities_input_required_false_without_output_schema():
+    adapter = FoundryHostedAdapter(project_client=_FakeProjectClient(), agent_name="a")
+    assert adapter.capabilities.input_required is False
+
+
+def test_capabilities_input_required_true_with_output_schema():
+    schema = {"properties": {"status": {"type": "string", "required": True}}}
+    adapter = FoundryHostedAdapter(project_client=_FakeProjectClient(), agent_name="a", output_schema=schema)
+    assert adapter.capabilities.input_required is True

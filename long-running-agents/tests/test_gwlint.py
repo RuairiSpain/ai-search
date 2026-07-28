@@ -48,6 +48,39 @@ def test_clean_config_has_no_findings(tmp_path):
     assert findings == []
 
 
+def test_l013_input_required_without_output_schema_fails(tmp_path):
+    config = _BASE_CONFIG.replace("preview: allow", "preview: allow\n    input_required: true")
+    findings = gwlint.run(_write(tmp_path, config), tmp_path / "empty-src")
+    assert any(f.rule == "L013" and f.severity == "fail" for f in findings)
+
+
+def test_l013_input_required_with_malformed_enum_fails(tmp_path):
+    config = _BASE_CONFIG.replace(
+        "preview: allow",
+        "preview: allow\n    input_required: true\n"
+        "    output_schema:\n"
+        "      properties:\n"
+        "        status: { type: string, enum: [yes, no], required: true }\n"
+        "        message: { type: string, required: true }\n",
+    )
+    findings = gwlint.run(_write(tmp_path, config), tmp_path / "empty-src")
+    assert any(f.rule == "L013" and f.severity == "fail" for f in findings)
+
+
+def test_l013_input_required_with_conforming_schema_passes(tmp_path):
+    config = _BASE_CONFIG.replace(
+        "preview: allow",
+        "preview: allow\n    input_required: true\n"
+        "    output_schema:\n"
+        "      properties:\n"
+        "        status:   { type: string, enum: [answered, needs_input], required: true }\n"
+        "        message:  { type: string, required: true }\n"
+        "        question: { type: string, required: false }\n",
+    )
+    findings = gwlint.run(_write(tmp_path, config), tmp_path / "empty-src")
+    assert not any(f.rule == "L013" for f in findings)
+
+
 def test_l020_service_identity_without_justification_fails(tmp_path):
     config = _BASE_CONFIG.replace("identity: per_user", "identity: service")
     findings = gwlint.run(_write(tmp_path, config), tmp_path / "empty-src")

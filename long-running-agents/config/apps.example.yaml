@@ -32,6 +32,18 @@ apps:
     # a T2 app can never satisfy — see D10's "preview: deny means tier 1
     # only" note in docs/02-decisions.md.
     preview: allow
+    # D4: this agent can pause mid-turn to ask a clarifying question
+    # ("which customer account?") instead of guessing. input_required
+    # declares the intent (checked by gwlint L013); output_schema is the
+    # actual mechanism -- converted to a Responses API text.format
+    # json_schema param on every call the gateway makes for this app
+    # (docs/02-decisions.md D4 "T2 mechanism").
+    input_required: true
+    output_schema:
+      properties:
+        status:   { type: string, enum: [answered, needs_input], required: true }
+        message:  { type: string, required: true }
+        question: { type: string, required: false }
 
   - name: deep-research
     tier: t3

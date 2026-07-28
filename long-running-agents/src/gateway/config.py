@@ -44,6 +44,16 @@ class CardConfig(BaseModel):
     capabilities: CardCapabilities = Field(default_factory=CardCapabilities)
 
 
+class OutputSchemaProperty(BaseModel):
+    type: str = "string"
+    enum: list[str] | None = None
+    required: bool = False
+
+
+class OutputSchemaConfig(BaseModel):
+    properties: dict[str, OutputSchemaProperty]
+
+
 class AppConfig(BaseModel):
     name: str
     tier: Literal["t2", "t3"]
@@ -58,6 +68,16 @@ class AppConfig(BaseModel):
     # arriving. Per-tier/per-app because a T3 multi-day HITL pause and a T2
     # sub-hour turn have very different "gone quiet too long" thresholds.
     lease_seconds: int = 300
+    # D4 (docs/02-decisions.md): T2-only. `input_required` is the
+    # human-authored declaration of intent -- checked by gwlint L013.
+    # `output_schema` is the actual mechanism: converted to a Responses API
+    # `text.format` json_schema param and attached to every call the
+    # gateway makes for this app (FoundryResponsesAdapter._to_text_format).
+    # Kept as two fields rather than deriving intent from output_schema's
+    # mere presence so CI can catch "declared but not configured" as a
+    # distinct failure from "just not using this feature at all".
+    input_required: bool = False
+    output_schema: OutputSchemaConfig | None = None
 
 
 class UpstreamConfig(BaseModel):

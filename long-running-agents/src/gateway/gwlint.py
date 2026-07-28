@@ -50,7 +50,6 @@ _SKIPPED_RULES: dict[str, str] = {
     "L010": "default_mode: long requires a background-capable model -- needs a live Foundry connection",
     "L011": "tool available in region/model -- needs a live Foundry connection",
     "L012": "code interpreter apps declare container_policy -- references agents/*.yaml, not part of this repo",
-    "L013": "input_required requires the D4 outputSchema -- an adapter Capability, not YAML-configurable here",
     "L014": "gateway identity holds UserIdentityImpersonation -- needs a live Azure RBAC check (infra/scripts/grant-agent-access.sh)",
     "L021": "x-ms-user-identity charset -- enforced at request time by Principal.user_identity_header(), not config-time",
     "L024": "identity: service + UserEntraToken conflict -- references Foundry-agent connection config, not part of this repo",
@@ -66,6 +65,46 @@ class Finding:
     rule: str
     severity: str  # "fail" | "warn"
     message: str
+
+
+def check_l013_input_required_output_schema(data: dict[str, Any]) -> list[Finding]:
+    """D4 (docs/02-decisions.md): input_required: true declares intent,
+    output_schema is the mechanism (converted to a Responses API
+    text.format param -- src/gateway/upstream/foundry_responses.py
+    `_to_text_format`). Checkable from apps.yaml alone now that both are
+    real AppConfig fields, unlike when L013 was skipped as "an adapter
+    Capability, not YAML-configurable here"."""
+    findings = []
+    for app in data.get("apps", []) or []:
+        if not app.get("input_required"):
+            continue
+        schema = app.get("output_schema") or {}
+        props = schema.get("properties") or {}
+        status = props.get("status") or {}
+        message = props.get("message") or {}
+        problems = []
+        if not schema:
+            problems.append("output_schema is missing")
+        else:
+            enum = status.get("enum")
+            if not isinstance(enum, list) or sorted(enum) != ["answered", "needs_input"]:
+                problems.append("properties.status.enum must be exactly [answered, needs_input]")
+            if not status.get("required"):
+                problems.append("properties.status.required must be true")
+            if message.get("type") not in (None, "string"):
+                problems.append("properties.message.type must be string")
+            if not message.get("required"):
+                problems.append("properties.message.required must be true")
+        if problems:
+            findings.append(
+                Finding(
+                    "L013",
+                    "fail",
+                    f"app {app.get('name')!r}: input_required: true requires a "
+                    "conforming D4 outputSchema -- " + "; ".join(problems),
+                )
+            )
+    return findings
 
 
 def check_l020_service_identity_justification(data: dict[str, Any]) -> list[Finding]:
@@ -179,6 +218,7 @@ def run(config_path: Path, src_root: Path) -> list[Finding]:
     data = yaml.safe_load(raw_yaml_text) or {}
 
     findings: list[Finding] = []
+    findings += check_l013_input_required_output_schema(data)
     findings += check_l020_service_identity_justification(data)
     findings += check_l022_no_inline_secrets(data)
     findings += check_l023_push_allowlist(data)
@@ -214,7 +254,7 @@ def main(argv: list[str] | None = None) -> int:
         f"{len(_SKIPPED_RULES)} skipped (not checkable from this repo alone)"
     )
     # Severity per D6: L0xx safety rules fail the build. Every rule
-    # implemented here (L020, L022, L023, L030, L032) is a safety rule.
+    # implemented here (L013, L020, L022, L023, L030, L032) is a safety rule.
     return 1 if failed else 0
 
 

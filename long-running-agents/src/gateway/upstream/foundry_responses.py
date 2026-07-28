@@ -14,6 +14,8 @@ doesn't ripple past this file.
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 from uuid import uuid4
@@ -33,6 +35,8 @@ from gateway.upstream.base import (
     TaskState,
     UpstreamRef,
 )
+
+log = logging.getLogger(__name__)
 
 _STATE_MAP: dict[str, TaskState] = {
     "queued": TaskState.SUBMITTED,
@@ -113,6 +117,76 @@ def _detail_for(resp: Any, state: TaskState) -> str | None:
     return _narrate(resp)
 
 
+def _to_text_format(output_schema: dict, *, name: str = "gw_input_required_v1") -> dict:
+    """D4's per-property `required: true/false` shape (docs/02-decisions.md)
+    -> real JSON Schema's object-level `required: [...]` array, wrapped in
+    the Responses API's `text.format` shape -- verified against the
+    installed `openai` package's `ResponseFormatTextJSONSchemaConfigParam`
+    (name/schema/type required, strict optional), not guessed.
+
+    Non-strict (`strict: False`) deliberately: OpenAI's `strict: true` mode
+    requires every property in `required` (no true-optional fields --
+    `question`, D4's genuinely optional field, would have to become
+    nullable-but-required instead of simply absent). That's a bigger
+    schema-shape change than warranted without a live Foundry endpoint to
+    verify strict-mode edge cases against. The cost: no server-side
+    guarantee the model's output actually conforms -- see
+    `_extract_structured_status()`, which fails open rather than trusts
+    that guarantee to exist.
+    """
+    properties: dict[str, dict] = {}
+    required: list[str] = []
+    for prop_name, prop in output_schema["properties"].items():
+        json_prop: dict[str, Any] = {"type": prop.get("type", "string")}
+        if prop.get("enum") is not None:
+            json_prop["enum"] = prop["enum"]
+        properties[prop_name] = json_prop
+        if prop.get("required"):
+            required.append(prop_name)
+    return {
+        "format": {
+            "type": "json_schema",
+            "name": name,
+            "schema": {"type": "object", "properties": properties, "required": required},
+            "strict": False,
+        }
+    }
+
+
+def _extract_structured_status(resp: Any) -> tuple[TaskState, str] | None:
+    """D4's fixed `status`/`message`/`question` keys -- not app-configurable,
+    only the request-side schema is (`_to_text_format`). Structured output
+    lands as a plain JSON *string* inside `resp.output_text` (verified
+    against the installed `openai` package: no separate "structured
+    output" response item type exists) -- so this is `json.loads`, not a
+    lookup on some dedicated field.
+
+    Returns `None` on anything that doesn't conform: malformed JSON, wrong
+    types, a `status` value outside the D4 enum. Non-strict mode (see
+    `_to_text_format`) gives no server-side guarantee the model actually
+    emitted this shape, so this must degrade gracefully, never raise --
+    the caller falls back to treating the response as an ordinary
+    COMPLETED answer when this returns `None`.
+    """
+    text = getattr(resp, "output_text", None)
+    if not text:
+        return None
+    try:
+        data = json.loads(text)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    status = data.get("status")
+    message = data.get("message")
+    if status not in ("answered", "needs_input") or not isinstance(message, str):
+        return None
+    if status == "needs_input":
+        question = data.get("question")
+        return TaskState.INPUT_REQUIRED, (question if isinstance(question, str) and question else message)
+    return TaskState.COMPLETED, message
+
+
 def new_task_id() -> str:
     return f"task_{uuid4().hex}"
 
@@ -170,19 +244,26 @@ class FoundryResponsesAdapter:
     (T2) is the only subclass actually wired into the registry.
     """
 
-    capabilities = Capabilities(
-        # COARSE, not FINE, even though follow() does narrate (via
-        # _narrate()) -- it's best-effort: a poll landing before any tool
-        # call has started, or an agent that never calls a tool at all,
-        # gets no narration line. FINE would claim a per-step guarantee
-        # this doesn't make (docs/00 design premise #4: "the gateway
-        # reports what it actually has, not fabricated granularity").
-        progress=ProgressFidelity.COARSE,
-        push=False,
-        artifacts=True,  # code interpreter container files, ~1h TTL — docs/07
-        input_required=False,
-        cancel=True,
-    )
+    @property
+    def capabilities(self) -> Capabilities:
+        return Capabilities(
+            # COARSE, not FINE, even though follow() does narrate (via
+            # _narrate()) -- it's best-effort: a poll landing before any
+            # tool call has started, or an agent that never calls a tool
+            # at all, gets no narration line. FINE would claim a per-step
+            # guarantee this doesn't make (docs/00 design premise #4: "the
+            # gateway reports what it actually has, not fabricated
+            # granularity").
+            progress=ProgressFidelity.COARSE,
+            push=False,
+            artifacts=True,  # code interpreter container files, ~1h TTL — docs/07
+            # True only when this app was actually configured with a D4
+            # output_schema (docs/02-decisions.md D4) -- never a fixed
+            # class-wide value, since whether resume()/input-required
+            # pauses work at all is genuinely per-app, not per-adapter-class.
+            input_required=self._output_schema is not None,
+            cancel=True,
+        )
 
     def __init__(
         self,
@@ -192,6 +273,7 @@ class FoundryResponsesAdapter:
         poll_interval_s: float = 1.5,
         project_endpoint: str | None = None,
         credential: Any | None = None,
+        output_schema: dict | None = None,
     ):
         self._openai = openai_client
         self._agent_name = agent_name
@@ -201,6 +283,8 @@ class FoundryResponsesAdapter:
         # guaranteed method for it (docs/07 §5).
         self._project_endpoint = project_endpoint
         self._credential = credential
+        self._output_schema = output_schema
+        self._text_format = _to_text_format(output_schema) if output_schema else None
 
     async def submit(
         self,
@@ -221,7 +305,7 @@ class FoundryResponsesAdapter:
             conv_id = conv.id
 
         uploaded = await _upload_files(self._openai, files)
-        resp = await self._openai.responses.create(
+        kwargs: dict[str, Any] = dict(
             background=not blocking,
             conversation=conv_id,
             input=_build_input(text, uploaded),
@@ -232,6 +316,9 @@ class FoundryResponsesAdapter:
             prompt_cache_key=principal.subject,
             safety_identifier=principal.subject,
         )
+        if self._text_format is not None:
+            kwargs["text"] = self._text_format
+        resp = await self._openai.responses.create(**kwargs)
         return Submission(
             task_id=new_task_id(),
             context_id=conv_id,
@@ -252,19 +339,45 @@ class FoundryResponsesAdapter:
         while True:
             resp = await self._openai.responses.retrieve(ref.run_id)
             state = _map_state(resp.status)
+            detail = _detail_for(resp, state)
+            # D4 (docs/02-decisions.md): a paused-for-clarification turn
+            # still reports resp.status == "completed" at the raw
+            # Responses-API level -- there's no native "waiting for
+            # input" status. The only way to detect the pause is the
+            # response's structured *content*, checked here, never from
+            # resp.status alone.
+            if state == TaskState.COMPLETED and self._output_schema is not None:
+                structured = _extract_structured_status(resp)
+                if structured is not None:
+                    state, detail = structured
+                else:
+                    log.warning(
+                        "app configured with output_schema but completed "
+                        "response did not conform to the D4 status/message "
+                        "shape; showing raw output_text (run_id=%s)",
+                        ref.run_id,
+                    )
             seq += 1
             yield StatusEvent(
                 task_id=task_id,
                 state=state,
                 sequence=seq,
-                detail=_detail_for(resp, state),
+                detail=detail,
+                # NOT the same expression as the loop-stop check below --
+                # INPUT_REQUIRED is a pause, not TERMINAL_STATES (D7), and
+                # must never be reported `final=True`.
                 final=state in TERMINAL_STATES,
             )
             for artifact in self._new_artifacts(resp, task_id, seq):
                 seq += 1
                 artifact.sequence = seq
                 yield artifact
-            if state in TERMINAL_STATES:
+            # Deliberately a different condition than `final=` above: the
+            # poll loop has nothing left to observe once paused for input
+            # (the underlying Foundry response is genuinely done), so it
+            # must stop here too, or it re-polls the same finished
+            # response and re-yields the same question forever.
+            if state in TERMINAL_STATES or state == TaskState.INPUT_REQUIRED:
                 return
             await asyncio.sleep(self._interval)
 
@@ -319,26 +432,23 @@ class FoundryResponsesAdapter:
     async def resume(
         self, ref: UpstreamRef, *, principal: Principal, text: str, files: list[InboundFile]
     ) -> Submission:
-        """Continues the same conversation with the caller's reply — a
-        second `responses.create()` call against `ref.conversation_id`,
-        structurally identical to `submit()`'s first-turn call once a
-        conversation already exists.
+        """Continues the same conversation with the caller's reply to a
+        `needs_input` pause — a second `responses.create()` call against
+        `ref.conversation_id`, structurally identical to `submit()`'s
+        first-turn call once a conversation already exists.
 
-        This is reachable code, not dead code, but it is NOT currently
-        exercised end to end: `Capabilities.input_required` stays `False`
-        (see the class-level `capabilities`), because `_map_state()` has no
-        case that produces `TaskState.INPUT_REQUIRED` — nothing in this
-        adapter's poll loop can currently detect that Foundry is waiting on
-        a reply rather than still working. Enable a conforming
-        `outputSchema` (D4) and teach `_map_state()`/`follow()` to
-        recognise the paused state before flipping `input_required` on;
-        until then this method is only invoked if a future change routes
-        into it some other way.
+        Reachable via `GatewayAgentExecutor._continue_existing()`
+        (`src/gateway/a2a_server/executor.py`), which routes here whenever
+        the current task's state is `TASK_STATE_INPUT_REQUIRED` -- which
+        `follow()` now actually produces, for apps configured with a D4
+        `output_schema` (docs/02-decisions.md D4). `text=self._text_format`
+        below re-applies the same schema on the continued turn, since the
+        agent may ask another clarifying question before finally answering.
         """
         if ref.conversation_id is None:
             raise ValueError("resume() requires an existing conversation_id")
         uploaded = await _upload_files(self._openai, files)
-        resp = await self._openai.responses.create(
+        kwargs: dict[str, Any] = dict(
             background=True,
             conversation=ref.conversation_id,
             input=_build_input(text, uploaded),
@@ -349,6 +459,9 @@ class FoundryResponsesAdapter:
             prompt_cache_key=principal.subject,
             safety_identifier=principal.subject,
         )
+        if self._text_format is not None:
+            kwargs["text"] = self._text_format
+        resp = await self._openai.responses.create(**kwargs)
         return Submission(
             task_id=new_task_id(),
             context_id=ref.conversation_id,

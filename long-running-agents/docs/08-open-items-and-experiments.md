@@ -489,6 +489,74 @@ real than a `FakeAdapter`. In order found:
     fix already applied elsewhere in this suite for exactly this reason —
     see `FakeAdapter.submit()`'s `task_id` in `test_a2a_api.py`).
 
+20. **T2 `resume()`/`input_required` detection.** `resume()` already had a
+    real, correct body, and `GatewayAgentExecutor._continue_existing()`
+    already routed a reply to an `INPUT_REQUIRED` task into it — that
+    whole path needed zero changes. The actual gap was narrower than it
+    looked: `_map_state()` only translates the raw OpenAI Responses API
+    status (`queued/in_progress/completed/failed/incomplete/cancelled`) —
+    there is no "waiting for input" status at that protocol level. A
+    response that's really a paused clarifying question still reports
+    `status: "completed"`; the only way to detect a pause is to inspect
+    the response's *content*.
+
+    D4 already decided the contract (`input_required: true` + a
+    conforming `outputSchema`) but its text was written for T1, where the
+    agent's own definition carried the schema and Foundry's native A2A
+    endpoint did the invocation and status mapping. For T2 the **gateway**
+    calls `responses.create()`, so the schema has to be gateway-configured
+    (`AppConfig.output_schema`, `apps.yaml`) and attached as a `text.format`
+    param on every call the gateway makes for that app — same decision,
+    different mechanism. See D4's "Extended for T2" subsection in
+    `docs/02-decisions.md` for the full mechanism description.
+
+    Verified directly against the installed `openai==2.48.0` package, not
+    assumed: the request shape is `text={"format": {"type": "json_schema",
+    "name", "schema", "strict"}}`; the resulting structured JSON comes
+    back as a **plain string** inside `resp.output_text` — the same
+    property item 17's `_detail_for()` fix already reads — there is no
+    separate "structured output" response item type. Chose non-strict mode
+    (`strict: False`): OpenAI's `strict: true` requires every property in
+    `required`, which would have forced `question` (genuinely optional in
+    D4's shape) into a bigger schema change than warranted without a live
+    endpoint to verify strict-mode edge cases against. The cost:
+    `_extract_structured_status()` gets no server-side conformance
+    guarantee, so it fails open — anything that doesn't parse as the
+    expected JSON shape falls back to ordinary plain-text `COMPLETED`
+    handling rather than raising.
+
+    Found a real architectural gap while implementing, not anticipated in
+    the initial design: `Registry.build()` cached one adapter per
+    **upstream**, shared across every app pointing at it, but
+    `output_schema` is per-**app**. Re-keyed `self._adapters` by
+    `app_cfg.name`, resolving each app's upstream via the already-existing
+    `GatewayConfig.upstream_for_app()` — a small amount of duplicate
+    `AIProjectClient` overhead for the rare app pair sharing an upstream,
+    traded against not inventing a new 1:1-enforcement validation layer.
+
+    The single highest-risk line in this feature: `follow()`'s `final=`
+    expression (`final=state in TERMINAL_STATES`) and its loop-stop
+    condition (`if state in TERMINAL_STATES or state ==
+    TaskState.INPUT_REQUIRED: return`) must stay two separate expressions.
+    Collapsing them into one shared boolean would report every
+    `INPUT_REQUIRED` event as `final=True`, which is wrong (`INPUT_REQUIRED`
+    is a pause, not a terminal state) and silently breaks the resume path.
+    A dedicated test (`test_follow_detects_input_required_when_output_schema_configured`,
+    `tests/test_foundry_progress_narration.py`) exhausts the `follow()`
+    generator fully and asserts both `len(events) == 1` and `event.final
+    is False` to guard this specifically.
+
+    `gwlint` L013 (previously skipped as "an adapter Capability, not
+    YAML-configurable here") is now implementable and implemented, since
+    `input_required`/`output_schema` are real `AppConfig`/`apps.yaml`
+    fields.
+
+    **Not verified against a live Foundry endpoint** — same class of risk
+    already flagged elsewhere in this file: whether the hosted-agent
+    Responses API proxy actually honors `text.format` end to end is
+    unconfirmed. Only the request/response shapes against the installed
+    `openai` SDK, and offline tests, back this.
+
 ## D. Duplicate source documents collapsed during merge
 
 For traceability: these upload sets were identical or near-identical
