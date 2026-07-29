@@ -1,0 +1,35 @@
+[project]
+name = "long-duration-agent"
+version = "0.1.0"
+description = "Hosted MAF agent that translates a prompt to Spain Spanish, saves a bilingual Markdown artifact to private Blob Storage, and returns a broker download link to the chat UI."
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2.7",
+  "pydantic-settings>=2.3",
+  "python-dotenv>=1.0",
+  "sse-starlette>=2.1",
+  "httpx>=0.27",
+  "azure-identity>=1.17",
+  "azure-storage-blob>=12.20",
+  "agent-framework-core>=1.12.0",
+  "pyjwt[crypto]>=2.8",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2",
+  "pytest-asyncio>=0.23",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
