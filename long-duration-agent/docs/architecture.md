@@ -160,6 +160,83 @@ via `typing.get_type_hints`, so PEP 563 postponed evaluation makes that check se
 string `"WorkflowContext[PipelineState]"` and reject it. `@handler` doesn't have this issue - only
 `@response_handler`, used by `SteeringGateExecutor.on_steering_decision`.
 
+## Observability
+
+`observability.py` is a single module both apps call at import time
+(`configure_observability()` + `configure_json_logging()`), and it's designed to degrade to
+safe no-ops rather than fail when the optional `observability` extra isn't installed:
+
+- **Tracing**: if `LDA_OTEL_EXPORTER` is `console` or `otlp`, an OpenTelemetry `TracerProvider`
+  is configured with the corresponding exporter and handed to
+  `agent_framework.observability.configure_otel_providers()`. The framework's own instrumentation
+  then produces `workflow.run` spans (and per-executor spans) automatically - no custom span
+  code was needed in `pipeline.py` or `engine.py` to get workflow-level tracing.
+- **Metrics**: `metrics()` returns a memoized dict of Prometheus `Counter`/`Histogram`/`Gauge`
+  instruments (`operations_started`, `operations_completed`, `operations_failed`,
+  `operations_stopped`, `operation_duration_seconds`, `waiting_hitl_gauge`,
+  `translation_duration_seconds`) if `prometheus_client` is installed and
+  `LDA_METRICS_ENABLED=1`; otherwise every instrument is a `_NoopMetric` (a stand-in with
+  `.inc`/`.dec`/`.observe`/`.set`/`.labels` that all do nothing), so instrumented code
+  (`durable/engine.py`, `translator.py`) never has to branch on whether metrics are enabled.
+  Both apps expose the Prometheus text format at `GET /metrics` via
+  `metrics_endpoint_response()`.
+- **Logs**: `operation_log_context(operation_id)` is a context manager backed by a
+  `contextvars.ContextVar`; `JsonLogFormatter` reads it and stamps `operation_id` onto every log
+  record emitted while a `run_translation_operation`/`respond_to_hitl` call is in flight, so logs
+  from concurrent operations on the same process can be correlated without passing a logger
+  around explicitly.
+
+## Stale operation sweep
+
+A crashed worker or an abandoned HITL prompt can leave an operation's metadata row stuck at
+`in_progress` or `waiting_hitl` forever - nothing else in the system ever revisits it.
+`stale_operations.sweep_stale_operations()` queries `list_stale_operations(older_than=...)`
+(both metadata store backends implement this: SQLite filters
+`status IN ('in_progress','waiting_hitl') AND updated_at <= ?`; Table Storage does the
+equivalent) using a cutoff of `LDA_OPERATION_STALE_HOURS` (default 6) hours before "now", then
+for each stale operation: deletes its hosted-agent scratch workspace file (if any) and marks it
+`stopped`. It deliberately never looks at `completed`/`failed`/`stopped` rows, no matter how old,
+so it can't undo a real result. Run it on a schedule (`python -m
+long_duration_agent.stale_operations`, or an Azure Functions timer trigger) alongside the
+existing artifact-TTL `cleanup.py` sweep - the two are independent: `cleanup.py` expires
+*completed* artifacts in Blob Storage/metadata, this sweeps *stuck* operations that never
+reached completion.
+
+## Entra token hardening
+
+`identity.py`'s `_resolve_entra()` validates more than "is this JWT signed by the right tenant":
+
+- **Fails closed on misconfiguration.** An empty `ENTRA_AUDIENCE` raises `500` immediately
+  rather than silently skipping audience validation - a missing config value can never
+  degrade into an open endpoint.
+- **Issuer check.** With `ENTRA_REQUIRE_ISSUER_MATCH=1` (default), the token's `iss` claim must
+  match either the Entra v1 (`https://sts.windows.net/{tenant_id}/`) or v2
+  (`https://login.microsoftonline.com/{tenant_id}/v2.0`) issuer format for the tenant the token
+  claims (`tid`) - rejecting, for example, a validly-signed-but-wrong-issuer token from a
+  different Entra product surface.
+- **Scope/role checks.** `ENTRA_REQUIRED_SCOPE`/`ENTRA_REQUIRED_ROLE`, when set, reject (`403`)
+  a token whose `scp`/`roles` claims don't include the required value - lets a deployment
+  require a specific delegated scope or app role beyond "any valid token for this app".
+- **JWKS fetch failures surface as `503`, not a crash** - `_get_signing_key()` wraps the
+  `httpx.get` call in `try/except httpx.HTTPError`.
+
+All of this is exercised in `tests/test_identity_entra.py` against real RSA-signed JWTs (a
+locally generated keypair, a JWKS response built from it, `identity.httpx.get` monkeypatched to
+serve that JWKS) - no live Entra tenant needed to test the validation logic itself.
+
+## Key Vault secrets
+
+The broker's HMAC signing key (`broker/tokens.py`) is the one long-lived secret in this system -
+a leaked key would let someone mint valid-looking download tokens. `secrets.py` centralizes
+sourcing it: if `LDA_KEY_VAULT_URL` is set, `get_broker_signing_key()` fetches
+`LDA_KEY_VAULT_SIGNING_KEY_SECRET_NAME` (default `lda-broker-signing-key`) from Key Vault via a
+synchronous `azure.keyvault.secrets.SecretClient` + `DefaultAzureCredential` (sync is deliberate
+here, matching the JWKS-fetch precedent in `identity.py` - this is called once per token
+mint/verify, not from a hot per-request path that would need to avoid blocking the event loop),
+caching the value in-process for `LDA_KEY_VAULT_CACHE_SECONDS` (default 3600s) to avoid a Key
+Vault round-trip on every signed download link. With `LDA_KEY_VAULT_URL` unset, it falls back to
+`LDA_BROKER_SIGNING_KEY` directly - the local-dev/demo path, not for production use.
+
 ## Storage and identity: what changed from the initial design
 
 The first draft of this design considered handing the browser a raw Azure Blob SAS URL.
@@ -231,32 +308,52 @@ can't accidentally restructure the document.
 
 ## Scaling beyond a single host
 
-`durable/engine.py` uses `FileCheckpointStorage` and an in-process asyncio loop - fine for a
-demo or a single hosted-agent instance. To scale to a real pipeline without changing
-`pipeline.py`:
+`durable/engine.py` defaults to `FileCheckpointStorage` + SQLite - fine for a demo or a single
+hosted-agent instance, and still the fastest option for local development. The distributed
+backends described below are implemented and tested, not just a suggested migration path:
 
-1. **Distributed checkpoints**: implement the `CheckpointStorage` protocol (`save`, `load`,
-   `list_checkpoints`, `delete`, `get_latest`, `list_checkpoint_ids`) against Cosmos DB or
-   Table Storage, and pass that instance instead of `FileCheckpointStorage`.
-2. **Azure Functions Durable Task hosting**: `agent-framework-durabletask` (published as a
-   pre-release package alongside `agent-framework-azurefunctions`) runs the exact same
-   `agent_framework.Workflow` as a Durable Task orchestration - the framework converts each
-   `Executor`/edge into an activity/orchestrator pairing, giving you cross-process durability,
-   automatic retries, and fan-out, on Azure's own durable execution engine rather than a
-   single long-lived HTTP connection. A production `function_app.py` looks like:
+1. **Distributed checkpoints** (done): `durable/table_checkpoint_storage.py` implements the
+   `CheckpointStorage` protocol (`save`, `load`, `list_checkpoints`, `delete`, `get_latest`,
+   `list_checkpoint_ids`) against Azure Table Storage/Azurite. Schema: `PartitionKey` =
+   workflow name, `RowKey` = checkpoint id, with the checkpoint payload run through the
+   framework's own `encode_checkpoint_value`/`decode_checkpoint_value` (the same
+   allowlist-guarded pickle encoding `FileCheckpointStorage` uses) so nothing bespoke is
+   invented for serialization. `get_latest` resolves the newest checkpoint across a workflow's
+   partition by parsing each row's timestamp. Selected via `LDA_CHECKPOINT_BACKEND=azurite|azure`
+   in `_get_checkpoint_storage()` (`durable/engine.py`) - see the Configuration section in
+   `README.md`.
+2. **Metadata store** (done): `storage/table_metadata_store.py` implements the same
+   `MetadataStoreProtocol` as the SQLite `MetadataStore` (both now fully `async def`, with
+   SQLite calls wrapped in `asyncio.to_thread` so the interface is uniformly non-blocking).
+   Operations and artifacts each get a fixed `PartitionKey` (`"operation"` / `"artifact"`) for
+   O(1) point lookups by `operation_id`/`artifact_id`; steering messages are partitioned by
+   `operation_id` with a zero-padded-timestamp `RowKey` so `drain_steering_messages` gets FIFO
+   order back within a single partition query. Selected via `LDA_METADATA_BACKEND=azurite|azure`
+   in `get_metadata_store()` (`storage/metadata_store.py`).
+   `tests/test_table_storage_backends.py` runs the full translation pipeline *and* a full
+   steering/HITL pause-and-resume against both backends live against Azurite (skipped cleanly
+   if `azure-data-tables` isn't installed or Azurite isn't reachable).
+3. **Azure Functions Durable Task hosting** (reference implementation, not deployed):
+   `agent-framework-durabletask` (published as a pre-release package alongside
+   `agent-framework-azurefunctions`) runs the exact same `agent_framework.Workflow` as a Durable
+   Task orchestration - the framework converts each `Executor`/edge into an activity/orchestrator
+   pairing, giving you cross-process durability, automatic retries, and fan-out, on Azure's own
+   durable execution engine rather than a single long-lived HTTP connection. See
+   `azure_functions/function_app.py` (checked in, along with `host.json` and a
+   `local.settings.json.example`):
 
    ```python
-   import azure.functions as func
-   from agent_framework.azure import AgentFunctionApp
+   from agent_framework_azurefunctions import AgentFunctionApp
    from long_duration_agent.durable.pipeline import build_workflow
 
    workflow = build_workflow(workflow_name="lda-translate", checkpoint_storage=None)
-   app = AgentFunctionApp(workflows=[workflow])  # registers HTTP + orchestrator/activity functions
+   app = AgentFunctionApp(workflow=workflow)  # registers HTTP + orchestrator/activity functions
    ```
 
-   This is intentionally not wired into the demo (it requires the Azure Functions Core Tools
-   host and a Durable Task storage backend to run), but no change to the pipeline's step
-   logic is needed to adopt it - only the hosting layer changes.
-3. **Metadata store**: swap `storage/metadata_store.MetadataStore` for a Table
-   Storage/Cosmos-backed implementation of the same interface once you're running more than
-   one instance.
+   Adopting this changes the client contract: the synchronous SSE stream (`POST /invocations`
+   held open for the whole operation) is replaced by an async HTTP 202 + status-polling pattern,
+   and HITL responses are submitted via the `WorkflowHitlContext`-provided `respond`/`status`
+   URLs instead of `/invocations/{operation_id}/respond`. This is reviewed but intentionally not
+   live-tested in this repo (no Azure Functions Core Tools host in this environment) - treat
+   `azure_functions/` as a vetted starting point, not a drop-in swap, and validate the HTTP
+   contract change with the calling chat UI before switching a real deployment over to it.

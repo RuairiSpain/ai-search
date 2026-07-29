@@ -50,8 +50,20 @@ def _get_signing_key(tenant_id: str, kid: str) -> Any:
     raise HTTPException(status_code=401, detail="Unknown signing key (kid) for caller token.")
 
 
+_V1_ISSUER = "https://sts.windows.net/{tenant_id}/"
+_V2_ISSUER = "https://login.microsoftonline.com/{tenant_id}/v2.0"
+
+
 def _resolve_entra(request: Request) -> CallerIdentity:
     settings = get_settings()
+    if not settings.entra_audience:
+        # Fail closed: LDA_IDENTITY_MODE=entra with no configured audience would otherwise
+        # accept a validly-signed token for *any* Entra application, not just this one.
+        raise HTTPException(
+            status_code=500,
+            detail="Server misconfiguration: ENTRA_AUDIENCE must be set when LDA_IDENTITY_MODE=entra.",
+        )
+
     auth_header = request.headers.get("authorization", "")
     if not auth_header.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token.")
@@ -69,14 +81,34 @@ def _resolve_entra(request: Request) -> CallerIdentity:
             token,
             key=signing_key,
             algorithms=["RS256"],
-            audience=settings.entra_audience or None,
-            options={"verify_aud": bool(settings.entra_audience)},
+            audience=settings.entra_audience,
+            options={"verify_aud": True},
         )
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=401, detail=f"Invalid caller token: {exc}") from exc
 
     if settings.entra_tenant_id and claims.get("tid") != settings.entra_tenant_id:
         raise HTTPException(status_code=401, detail="Token issued by an unexpected tenant.")
+
+    if settings.entra_require_issuer_match:
+        expected_issuers = {
+            _V1_ISSUER.format(tenant_id=tenant_id),
+            _V2_ISSUER.format(tenant_id=tenant_id),
+        }
+        if claims.get("iss") not in expected_issuers:
+            # Defense in depth beyond trusting "tid" alone: the issuer must actually match
+            # the tenant the token claims to be from, not just carry a matching tid claim.
+            raise HTTPException(status_code=401, detail="Token issuer does not match its claimed tenant.")
+
+    if settings.entra_required_scope:
+        scopes = (claims.get("scp") or "").split()
+        if settings.entra_required_scope not in scopes:
+            raise HTTPException(status_code=403, detail="Token is missing the required delegated permission.")
+
+    if settings.entra_required_role:
+        roles = claims.get("roles") or []
+        if settings.entra_required_role not in roles:
+            raise HTTPException(status_code=403, detail="Token is missing the required app role.")
 
     object_id = claims.get("oid")
     if not object_id:

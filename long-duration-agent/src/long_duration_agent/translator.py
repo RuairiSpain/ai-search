@@ -10,6 +10,7 @@ and for exercising the rest of the pipeline without Azure credentials.
 from __future__ import annotations
 
 from .config import get_settings
+from .observability import metrics, timer
 
 SYSTEM_PROMPT = (
     "You are a professional English-to-Spanish translator. Translate the user's text "
@@ -26,9 +27,13 @@ class TranslationError(RuntimeError):
 async def translate_to_spanish(text: str) -> str:
     """Returns the es-ES translation of ``text``."""
     settings = get_settings()
-    if settings.lda_use_stub_translator:
-        return _stub_translate(text)
-    return await _model_translate(text, settings)
+    with timer() as elapsed:
+        try:
+            if settings.lda_use_stub_translator:
+                return _stub_translate(text)
+            return await _model_translate(text, settings)
+        finally:
+            metrics()["translation_duration_seconds"].observe(elapsed())
 
 
 def _stub_translate(text: str) -> str:

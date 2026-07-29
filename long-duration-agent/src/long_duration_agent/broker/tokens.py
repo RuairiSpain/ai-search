@@ -57,7 +57,9 @@ def _b64url_decode(s: str) -> bytes:
 
 
 def _sign(payload_b64: str) -> str:
-    key = get_settings().lda_broker_signing_key.encode("utf-8")
+    from ..secrets import get_broker_signing_key
+
+    key = get_broker_signing_key().encode("utf-8")
     digest = hmac.new(key, payload_b64.encode("ascii"), hashlib.sha256).digest()
     return _b64url_encode(digest)
 

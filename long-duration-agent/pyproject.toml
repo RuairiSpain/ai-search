@@ -29,6 +29,22 @@ translate = [
   "agent-framework-openai>=1.10.0",
   "agent-framework-foundry>=1.10.0",
 ]
+# Required only for LDA_CHECKPOINT_BACKEND/LDA_METADATA_BACKEND=azurite|azure and/or
+# LDA_KEY_VAULT_URL - the multi-instance-safe backends. Not needed for the single-host/demo
+# defaults (FileCheckpointStorage + SQLite + a plain env var).
+production = [
+  "azure-data-tables>=12.5",
+  "azure-keyvault-secrets>=4.8",
+]
+# Required only for LDA_OTEL_EXPORTER=console|otlp and/or LDA_METRICS_ENABLED=true (the
+# default). agent-framework-core already depends on opentelemetry-api (a no-op stub without
+# these); observability.py degrades gracefully to no-op metrics if prometheus-client isn't
+# installed, but actually exporting traces needs the real SDK below.
+observability = [
+  "opentelemetry-sdk>=1.30",
+  "opentelemetry-exporter-otlp-proto-http>=1.30",
+  "prometheus-client>=0.20",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

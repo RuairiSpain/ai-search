@@ -131,7 +131,7 @@ class SteeringGateExecutor(Executor):
 
     @handler
     async def process(self, state: PipelineState, ctx: WorkflowContext[PipelineState]) -> None:
-        pending = get_metadata_store().drain_steering_messages(state.operation_id)
+        pending = await get_metadata_store().drain_steering_messages(state.operation_id)
         if not pending:
             await ctx.send_message(state, target_id="upload")
             return
@@ -192,7 +192,7 @@ class UploadExecutor(Executor):
 
         created_at = datetime.fromisoformat(state.created_at_iso)
         expires_at = created_at + timedelta(hours=settings.lda_artifact_ttl_hours)
-        get_metadata_store().save_artifact(
+        await get_metadata_store().save_artifact(
             ArtifactRecord(
                 artifact_id=state.artifact_id,
                 operation_id=state.operation_id,

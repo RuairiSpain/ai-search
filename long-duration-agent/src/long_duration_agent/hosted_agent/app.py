@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import logging
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Response
 from sse_starlette.sse import EventSourceResponse
 
 from ..durable.engine import (
@@ -39,10 +39,20 @@ from ..durable.engine import (
 )
 from ..identity import CallerIdentity, resolve_caller
 from ..models import HitlDecisionRequest, InvocationRequest, SteerRequest
+from ..observability import configure_json_logging, configure_observability, metrics_endpoint_response
 
 logger = logging.getLogger(__name__)
 
+configure_json_logging()
+configure_observability()
+
 app = FastAPI(title="Long-Duration Translation Agent - Hosted Agent Invocations")
+
+
+@app.get("/metrics")
+async def metrics_endpoint() -> Response:
+    content, content_type = metrics_endpoint_response()
+    return Response(content=content, media_type=content_type)
 
 
 def _domain_error_to_http(exc: Exception) -> HTTPException:
@@ -78,7 +88,7 @@ async def invoke(request: InvocationRequest, caller: CallerIdentity = Depends(re
         # starts the status code can no longer change. run_translation_operation()
         # re-checks the same conditions internally for callers that invoke it directly.
         try:
-            operation = check_operation_access(request.operation_id, caller)
+            operation = await check_operation_access(request.operation_id, caller)
         except OperationNotFoundError:
             operation = None  # a brand-new operation_id chosen by the client - nothing to check yet
         except (OperationAccessDeniedError, OperationNotSteerableError) as exc:
@@ -103,7 +113,7 @@ async def steer(
     """Queues a steering message. Does not itself translate or interrupt anything -
     the workflow only acts on it (with a HITL confirmation) at its next checkpoint."""
     try:
-        submit_steering_message(operation_id, caller, request.text)
+        await submit_steering_message(operation_id, caller, request.text)
     except (OperationNotFoundError, OperationAccessDeniedError, OperationNotSteerableError) as exc:
         raise _domain_error_to_http(exc) from exc
     return {"accepted": True}
@@ -115,7 +125,7 @@ async def respond(
 ) -> EventSourceResponse:
     """Submits the user's answer to a pending HITL request and resumes the SSE stream."""
     try:
-        check_operation_access(operation_id, caller, require_status="waiting_hitl")
+        await check_operation_access(operation_id, caller, require_status="waiting_hitl")
     except (OperationNotFoundError, OperationAccessDeniedError, OperationNotSteerableError) as exc:
         raise _domain_error_to_http(exc) from exc
 

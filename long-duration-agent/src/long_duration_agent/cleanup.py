@@ -25,13 +25,13 @@ logger = logging.getLogger(__name__)
 async def sweep_expired_artifacts() -> int:
     store = get_metadata_store()
     blob_store = get_blob_store()
-    expired = store.list_expired()
+    expired = await store.list_expired()
     for record in expired:
         try:
             await blob_store.delete(record.blob_name)
         except FileNotFoundError:
             pass  # already removed by the storage account's own lifecycle policy
-        store.mark_deleted(record.artifact_id)
+        await store.mark_deleted(record.artifact_id)
         logger.info("Swept expired artifact %s (owner %s/%s)", record.artifact_id, record.tenant_id, record.user_object_id)
     return len(expired)
 

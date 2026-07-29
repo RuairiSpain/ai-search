@@ -41,7 +41,7 @@ async def _run_to_hitl(operation_id: str, prompt: str, steer_text: str, monkeypa
 
     async def steer_soon():
         await asyncio.sleep(0.1)
-        submit_steering_message(operation_id, CALLER, steer_text)
+        await submit_steering_message(operation_id, CALLER, steer_text)
 
     events, _ = await asyncio.gather(_drain(run_translation_operation(request, CALLER)), steer_soon())
     return events
@@ -55,7 +55,7 @@ async def test_steering_message_pauses_for_hitl_with_concatenated_text(monkeypat
     assert events[-1].event == "hitl_request"
     assert events[-1].data["full_text"] == "Original text\n\nplease add a postscript"
 
-    operation = get_metadata_store().get_operation(operation_id)
+    operation = await get_metadata_store().get_operation(operation_id)
     assert operation["status"] == "waiting_hitl"
     assert operation["pending_request_id"]
 
@@ -70,7 +70,7 @@ async def test_hitl_yes_translates_concatenated_text_and_completes(monkeypatch):
     assert events[-1].event == "completed"
     artifact_event = next(e for e in events if e.event == "artifact")
 
-    record = get_metadata_store().get_artifact(artifact_event.data["artifact_id"])
+    record = await get_metadata_store().get_artifact(artifact_event.data["artifact_id"])
     stream = await get_blob_store().open_read_stream(record.blob_name)
     try:
         content = stream.read().decode("utf-8")
@@ -79,7 +79,7 @@ async def test_hitl_yes_translates_concatenated_text_and_completes(monkeypatch):
     assert "Original text" in content
     assert "please add a postscript" in content
 
-    operation = get_metadata_store().get_operation(operation_id)
+    operation = await get_metadata_store().get_operation(operation_id)
     assert operation["status"] == "completed"
 
 
@@ -95,7 +95,7 @@ async def test_hitl_edit_replaces_the_prompt_entirely(monkeypatch):
     )
 
     artifact_event = next(e for e in events if e.event == "artifact")
-    record = get_metadata_store().get_artifact(artifact_event.data["artifact_id"])
+    record = await get_metadata_store().get_artifact(artifact_event.data["artifact_id"])
     stream = await get_blob_store().open_read_stream(record.blob_name)
     try:
         content = stream.read().decode("utf-8")
@@ -116,11 +116,11 @@ async def test_hitl_stop_cancels_and_cleans_up_local_file(monkeypatch):
     assert any(e.event == "stopped" for e in events)
     assert not any(e.event == "artifact" for e in events)
 
-    operation = get_metadata_store().get_operation(operation_id)
+    operation = await get_metadata_store().get_operation(operation_id)
     assert operation["status"] == "stopped"
     assert operation["artifact_id"] is None
     assert not workspace_path(operation_id).exists()
-    assert get_metadata_store().get_artifact(operation_id) is None
+    assert await get_metadata_store().get_artifact(operation_id) is None
 
 
 @pytest.mark.asyncio
@@ -147,7 +147,7 @@ async def test_steer_rejected_for_operation_owned_by_someone_else(monkeypatch):
     await _run_to_hitl(operation_id, "Original text", "steering text", monkeypatch)
 
     with pytest.raises(OperationAccessDeniedError):
-        submit_steering_message(operation_id, OTHER_CALLER, "sneaky message")
+        await submit_steering_message(operation_id, OTHER_CALLER, "sneaky message")
 
 
 @pytest.mark.asyncio
@@ -167,7 +167,7 @@ async def test_steer_rejected_once_operation_has_completed():
     await _drain(run_translation_operation(request, CALLER))
 
     with pytest.raises(OperationNotSteerableError):
-        submit_steering_message(operation_id, CALLER, "too late")
+        await submit_steering_message(operation_id, CALLER, "too late")
 
 
 @pytest.mark.asyncio

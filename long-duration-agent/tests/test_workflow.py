@@ -55,7 +55,7 @@ async def test_artifact_is_saved_bilingually_and_local_workspace_is_cleaned_up()
     artifact_event = next(e for e in events if e.event == "artifact")
     artifact_id = artifact_event.data["artifact_id"]
 
-    record = get_metadata_store().get_artifact(artifact_id)
+    record = await get_metadata_store().get_artifact(artifact_id)
     assert record is not None
     assert record.tenant_id == "tenant-a"
     assert record.user_object_id == "user-1"
@@ -113,7 +113,7 @@ async def test_replaying_after_the_artifact_has_expired_reports_an_error_not_a_s
     artifact_id = next(e for e in events if e.event == "artifact").data["artifact_id"]
 
     store = get_metadata_store()
-    store.mark_deleted(artifact_id)  # simulates the TTL sweeper (cleanup.py) having run
+    await store.mark_deleted(artifact_id)  # simulates the TTL sweeper (cleanup.py) having run
 
     replay_events = await _run(operation_id)
     assert replay_events[-1].event == "error"

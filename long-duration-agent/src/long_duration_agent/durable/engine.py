@@ -4,11 +4,10 @@
   A completed operation just gets a freshly minted download link; an
   in-progress one (e.g. the process crashed mid-pipeline) resumes from its
   last checkpoint instead of starting over.
-- Durable: checkpoints are written to disk (``FileCheckpointStorage``) after
-  every step. Swap this for a distributed ``CheckpointStorage`` backend
-  (Cosmos DB, Table Storage, or Azure Functions' own Durable Task store via
-  ``agent_framework_durabletask``) to scale beyond a single host - the
-  ``Workflow`` object in ``pipeline.py`` does not change.
+- Durable: checkpoints persist after every step, via ``FileCheckpointStorage``
+  (single host/demo) or ``TableCheckpointStorage`` (``LDA_CHECKPOINT_BACKEND=
+  azurite|azure`` - multi-instance-safe Azure Table Storage) - the ``Workflow``
+  object in ``pipeline.py`` doesn't change either way.
 - Streamed: this is an async generator of ``StreamEvent`` so the hosted-agent
   Invocations endpoint can forward each one over SSE as soon as it happens.
 - Steerable: a user can send additional text while the agent is working
@@ -21,30 +20,43 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator
-
-from agent_framework import FileCheckpointStorage
 
 from ..config import get_settings
 from ..identity import CallerIdentity
 from ..models import HitlDecisionRequest, InvocationRequest, OrchestrationStage, StreamEvent
-from ..storage.metadata_store import MetadataStore, get_metadata_store
+from ..observability import metrics, operation_log_context
+from ..storage.metadata_store import MetadataStoreProtocol, get_metadata_store
 from .pipeline import ALLOWED_CHECKPOINT_TYPES, build_workflow
 from .state import PipelineState, SteeringDecision
 
 logger = logging.getLogger(__name__)
 
-_checkpoint_storage: FileCheckpointStorage | None = None
+_checkpoint_storage: Any = None
 
 
-def _get_checkpoint_storage() -> FileCheckpointStorage:
+def _get_checkpoint_storage() -> Any:
     global _checkpoint_storage
     if _checkpoint_storage is None:
         settings = get_settings()
-        _checkpoint_storage = FileCheckpointStorage(
-            storage_path=str(settings.state_db_path.parent / "checkpoints"),
-            allowed_checkpoint_types=ALLOWED_CHECKPOINT_TYPES,
-        )
+        backend = settings.lda_checkpoint_backend
+        if backend in ("azurite", "azure"):
+            from .table_checkpoint_storage import TableCheckpointStorage
+
+            _checkpoint_storage = TableCheckpointStorage(
+                connection_string=settings.azurite_connection_string if backend == "azurite" else None,
+                account_url=settings.azure_table_account_url if backend == "azure" else None,
+                table_name=settings.lda_checkpoint_table_name,
+                allowed_checkpoint_types=ALLOWED_CHECKPOINT_TYPES,
+            )
+        else:
+            from agent_framework import FileCheckpointStorage
+
+            _checkpoint_storage = FileCheckpointStorage(
+                storage_path=str(settings.state_db_path.parent / "checkpoints"),
+                allowed_checkpoint_types=ALLOWED_CHECKPOINT_TYPES,
+            )
     return _checkpoint_storage
 
 
@@ -75,10 +87,10 @@ class OperationNotSteerableError(ValueError):
     (already completed/failed/stopped, or - for /respond - not currently paused on a HITL request)."""
 
 
-def _require_owned_operation(
-    store: MetadataStore, operation_id: str, caller: CallerIdentity, *, require_status: str | None = None
+async def _require_owned_operation(
+    store: MetadataStoreProtocol, operation_id: str, caller: CallerIdentity, *, require_status: str | None = None
 ):
-    operation = store.get_operation(operation_id)
+    operation = await store.get_operation(operation_id)
     if operation is None:
         raise OperationNotFoundError(f"No such operation: {operation_id}")
     if operation["tenant_id"] != caller.tenant_id or operation["user_object_id"] != caller.user_object_id:
@@ -90,7 +102,7 @@ def _require_owned_operation(
     return operation
 
 
-def check_operation_access(operation_id: str, caller: CallerIdentity, *, require_status: str | None = None):
+async def check_operation_access(operation_id: str, caller: CallerIdentity, *, require_status: str | None = None):
     """Eager, side-effect-free ownership/status check for the HTTP layer.
 
     An SSE response can't change its HTTP status once streaming has started, so the
@@ -98,109 +110,116 @@ def check_operation_access(operation_id: str, caller: CallerIdentity, *, require
     with a proper 404/403/409. The async generators below re-check the same conditions
     internally, so this call is optional defense-in-depth, not the only place it's enforced.
     """
-    return _require_owned_operation(get_metadata_store(), operation_id, caller, require_status=require_status)
+    return await _require_owned_operation(get_metadata_store(), operation_id, caller, require_status=require_status)
 
 
-def submit_steering_message(operation_id: str, caller: CallerIdentity, text: str) -> None:
+async def submit_steering_message(operation_id: str, caller: CallerIdentity, text: str) -> None:
     """Queues a steering message. Picked up at the workflow's next steering checkpoint -
     never applied immediately, and never redone once the artifact has already been uploaded."""
     store = get_metadata_store()
-    operation = _require_owned_operation(store, operation_id, caller)
+    operation = await _require_owned_operation(store, operation_id, caller)
     if operation["status"] in ("completed", "failed", "stopped"):
         raise OperationNotSteerableError(
             f"Operation {operation_id} is already {operation['status']}; it can no longer accept new messages."
         )
-    store.queue_steering_message(
+    await store.queue_steering_message(
         operation_id=operation_id, tenant_id=caller.tenant_id, user_object_id=caller.user_object_id, text=text
     )
+    metrics()["steering_messages_total"].inc()
 
 
 async def run_translation_operation(
     request: InvocationRequest, caller: CallerIdentity
 ) -> AsyncIterator[StreamEvent]:
     operation_id = request.operation_id or _new_operation_id()
-    workflow_name = _workflow_name_for(operation_id)
-    store = get_metadata_store()
-    checkpoint_storage = _get_checkpoint_storage()
+    with operation_log_context(operation_id):
+        workflow_name = _workflow_name_for(operation_id)
+        store = get_metadata_store()
+        checkpoint_storage = _get_checkpoint_storage()
 
-    existing = store.get_operation(operation_id)
+        existing = await store.get_operation(operation_id)
 
-    if existing is not None and (
-        existing["tenant_id"] != caller.tenant_id or existing["user_object_id"] != caller.user_object_id
-    ):
-        raise OperationAccessDeniedError(f"Operation {operation_id} was not created by you.")
+        if existing is not None and (
+            existing["tenant_id"] != caller.tenant_id or existing["user_object_id"] != caller.user_object_id
+        ):
+            raise OperationAccessDeniedError(f"Operation {operation_id} was not created by you.")
 
-    if existing is not None and existing["status"] == "completed":
-        async for event in _idempotent_replay(store, existing, _sequencer()):
-            yield event
-        return
+        if existing is not None and existing["status"] == "completed":
+            async for event in _idempotent_replay(store, existing, _sequencer()):
+                yield event
+            return
 
-    if existing is not None and existing["status"] == "waiting_hitl":
-        raise OperationNotSteerableError(
-            f"Operation {operation_id} is waiting on a HITL response; "
-            "use POST /invocations/{operation_id}/respond instead."
-        )
+        if existing is not None and existing["status"] == "waiting_hitl":
+            raise OperationNotSteerableError(
+                f"Operation {operation_id} is waiting on a HITL response; "
+                "use POST /invocations/{operation_id}/respond instead."
+            )
 
-    store.start_operation(
-        operation_id=operation_id,
-        workflow_name=workflow_name,
-        tenant_id=caller.tenant_id,
-        user_object_id=caller.user_object_id,
-    )
-
-    workflow = build_workflow(workflow_name=workflow_name, checkpoint_storage=checkpoint_storage)
-
-    resume_checkpoint_id = None
-    if existing is not None and existing["status"] == "in_progress":
-        latest = await checkpoint_storage.get_latest(workflow_name=workflow_name)
-        if latest is not None:
-            resume_checkpoint_id = latest.checkpoint_id
-
-    if resume_checkpoint_id:
-        stream = workflow.run(checkpoint_id=resume_checkpoint_id, checkpoint_storage=checkpoint_storage, stream=True)
-    else:
-        initial_state = PipelineState(
+        await store.start_operation(
             operation_id=operation_id,
+            workflow_name=workflow_name,
             tenant_id=caller.tenant_id,
             user_object_id=caller.user_object_id,
-            prompt=request.prompt,
         )
-        stream = workflow.run(initial_state, stream=True, checkpoint_storage=checkpoint_storage)
 
-    async for event in _drive_stream(stream, store, operation_id, _sequencer()):
-        yield event
+        workflow = build_workflow(workflow_name=workflow_name, checkpoint_storage=checkpoint_storage)
+
+        resume_checkpoint_id = None
+        if existing is not None and existing["status"] == "in_progress":
+            latest = await checkpoint_storage.get_latest(workflow_name=workflow_name)
+            if latest is not None:
+                resume_checkpoint_id = latest.checkpoint_id
+
+        if resume_checkpoint_id:
+            stream = workflow.run(
+                checkpoint_id=resume_checkpoint_id, checkpoint_storage=checkpoint_storage, stream=True
+            )
+        else:
+            metrics()["operations_started"].inc()
+            initial_state = PipelineState(
+                operation_id=operation_id,
+                tenant_id=caller.tenant_id,
+                user_object_id=caller.user_object_id,
+                prompt=request.prompt,
+            )
+            stream = workflow.run(initial_state, stream=True, checkpoint_storage=checkpoint_storage)
+
+        async for event in _drive_stream(stream, store, operation_id, _sequencer()):
+            yield event
 
 
 async def respond_to_hitl(
     operation_id: str, caller: CallerIdentity, decision_request: HitlDecisionRequest
 ) -> AsyncIterator[StreamEvent]:
-    store = get_metadata_store()
-    checkpoint_storage = _get_checkpoint_storage()
-    operation = _require_owned_operation(store, operation_id, caller, require_status="waiting_hitl")
-    if not operation["pending_request_id"]:
-        raise OperationFailedError(f"Operation {operation_id} has no pending HITL request id recorded.")
+    with operation_log_context(operation_id):
+        store = get_metadata_store()
+        checkpoint_storage = _get_checkpoint_storage()
+        operation = await _require_owned_operation(store, operation_id, caller, require_status="waiting_hitl")
+        if not operation["pending_request_id"]:
+            raise OperationFailedError(f"Operation {operation_id} has no pending HITL request id recorded.")
 
-    workflow_name = operation["workflow_name"]
-    request_id = operation["pending_request_id"]
-    # Clear waiting_hitl before resuming (not after): a concurrent /respond call for the same
-    # operation_id - a double-click, a client retry - would otherwise still see require_status=
-    # "waiting_hitl" satisfied and resume the same checkpoint a second time.
-    store.mark_in_progress(operation_id)
-    latest = await checkpoint_storage.get_latest(workflow_name=workflow_name)
-    if latest is None:
-        raise OperationFailedError(f"No checkpoint found to resume operation {operation_id}.")
+        workflow_name = operation["workflow_name"]
+        request_id = operation["pending_request_id"]
+        # Clear waiting_hitl before resuming (not after): a concurrent /respond call for the same
+        # operation_id - a double-click, a client retry - would otherwise still see require_status=
+        # "waiting_hitl" satisfied and resume the same checkpoint a second time.
+        await store.mark_in_progress(operation_id)
+        metrics()["waiting_hitl_gauge"].dec()
+        latest = await checkpoint_storage.get_latest(workflow_name=workflow_name)
+        if latest is None:
+            raise OperationFailedError(f"No checkpoint found to resume operation {operation_id}.")
 
-    decision = SteeringDecision(action=decision_request.decision, edited_text=decision_request.edited_text)
-    workflow = build_workflow(workflow_name=workflow_name, checkpoint_storage=checkpoint_storage)
-    stream = workflow.run(
-        checkpoint_id=latest.checkpoint_id,
-        responses={request_id: decision},
-        checkpoint_storage=checkpoint_storage,
-        stream=True,
-    )
+        decision = SteeringDecision(action=decision_request.decision, edited_text=decision_request.edited_text)
+        workflow = build_workflow(workflow_name=workflow_name, checkpoint_storage=checkpoint_storage)
+        stream = workflow.run(
+            checkpoint_id=latest.checkpoint_id,
+            responses={request_id: decision},
+            checkpoint_storage=checkpoint_storage,
+            stream=True,
+        )
 
-    async for event in _drive_stream(stream, store, operation_id, _sequencer()):
-        yield event
+        async for event in _drive_stream(stream, store, operation_id, _sequencer()):
+            yield event
 
 
 def _sequencer():
@@ -214,8 +233,8 @@ def _sequencer():
     return next_event
 
 
-async def _idempotent_replay(store: MetadataStore, existing, next_event) -> AsyncIterator[StreamEvent]:
-    artifact = store.get_artifact(existing["artifact_id"])
+async def _idempotent_replay(store: MetadataStoreProtocol, existing, next_event) -> AsyncIterator[StreamEvent]:
+    artifact = await store.get_artifact(existing["artifact_id"])
     if artifact is None:
         yield next_event("error", OrchestrationStage.FAILED, {"message": "Artifact record is missing."})
         return
@@ -252,7 +271,7 @@ async def _idempotent_replay(store: MetadataStore, existing, next_event) -> Asyn
     yield next_event("completed", OrchestrationStage.COMPLETED, {"success": True})
 
 
-async def _drive_stream(stream, store: MetadataStore, operation_id: str, next_event) -> AsyncIterator[StreamEvent]:
+async def _drive_stream(stream, store: MetadataStoreProtocol, operation_id: str, next_event) -> AsyncIterator[StreamEvent]:
     """Iterates a workflow run/resume stream, converting events to StreamEvents and
     updating operation state once the run reaches a pause, a completion, or a failure."""
     pending_request_id: str | None = None
@@ -277,21 +296,29 @@ async def _drive_stream(stream, store: MetadataStore, operation_id: str, next_ev
 
         if not outputs:
             if pending_request_id is not None:
-                store.set_waiting_on_hitl(operation_id, request_id=pending_request_id)
+                await store.set_waiting_on_hitl(operation_id, request_id=pending_request_id)
+                metrics()["waiting_hitl_gauge"].inc()
                 return
             raise OperationFailedError("Workflow paused without a pending request or a produced output.")
 
         final_state: PipelineState = outputs[0]
         if final_state.download_url:
-            store.complete_operation(operation_id, artifact_id=final_state.artifact_id)
+            operation = await store.get_operation(operation_id)
+            await store.complete_operation(operation_id, artifact_id=final_state.artifact_id)
+            metrics()["operations_completed"].inc()
+            if operation is not None:
+                elapsed = (datetime.now(timezone.utc) - datetime.fromisoformat(operation["created_at"])).total_seconds()
+                metrics()["operation_duration_seconds"].observe(max(elapsed, 0))
             yield next_event("completed", OrchestrationStage.COMPLETED, {"success": True})
         else:
-            store.stop_operation(operation_id)
+            await store.stop_operation(operation_id)
+            metrics()["operations_stopped"].inc()
             yield next_event("stopped", OrchestrationStage.STOPPED, {"success": False})
 
     except Exception as exc:  # noqa: BLE001 - reported to the caller, then logged
         logger.exception("Operation %s failed", operation_id)
-        store.fail_operation(operation_id, error=str(exc))
+        await store.fail_operation(operation_id, error=str(exc))
+        metrics()["operations_failed"].inc()
         yield next_event("error", OrchestrationStage.FAILED, {"message": str(exc)})
 
 

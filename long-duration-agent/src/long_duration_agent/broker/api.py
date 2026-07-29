@@ -20,17 +20,27 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 
 from ..identity import CallerIdentity, resolve_caller
+from ..observability import configure_json_logging, configure_observability, metrics_endpoint_response
 from ..storage.blob_store import get_blob_store
 from ..storage.metadata_store import get_metadata_store
 from .tokens import InvalidDownloadTokenError, verify_download_token
 
 logger = logging.getLogger(__name__)
 
+configure_json_logging()
+configure_observability()
+
 app = FastAPI(title="Artifact Broker API")
+
+
+@app.get("/metrics")
+async def metrics_endpoint() -> Response:
+    content, content_type = metrics_endpoint_response()
+    return Response(content=content, media_type=content_type)
 
 
 @app.get("/artifacts/{artifact_id}/download")
@@ -50,7 +60,7 @@ async def download_artifact(
         raise HTTPException(status_code=403, detail="This download link was not issued to you.")
 
     store = get_metadata_store()
-    record = store.get_artifact(artifact_id)
+    record = await store.get_artifact(artifact_id)
     if record is None or record.status != "active":
         raise HTTPException(status_code=404, detail="Artifact not found or has expired.")
     if record.tenant_id != caller.tenant_id or record.user_object_id != caller.user_object_id:

@@ -34,25 +34,31 @@ long-duration-agent/
 │   ├── config.py              # env-driven settings
 │   ├── models.py               # request/event/artifact pydantic models
 │   ├── limits.py                # 1,000,000-character input cap, artifact size cap
-│   ├── identity.py              # caller identity: Entra JWT validation, or a dev header locally
+│   ├── identity.py              # caller identity: Entra JWT validation (audience/issuer/scope/role checks), or a dev header locally
+│   ├── secrets.py                # broker signing key from Key Vault (cached) or an env var
+│   ├── observability.py          # OpenTelemetry tracing setup, Prometheus metrics, correlated JSON logs
 │   ├── translator.py            # es-ES translation (Foundry/Azure OpenAI, or an offline stub)
 │   ├── markdown_artifact.py     # bilingual Markdown rendering
 │   ├── workspace.py              # hosted-agent local scratch filesystem ($HOME/artifacts equivalent)
 │   ├── cleanup.py                # TTL sweeper (1 day) for expired artifacts
+│   ├── stale_operations.py       # sweeper for operations stuck in_progress/waiting_hitl (6h default)
 │   ├── durable/
 │   │   ├── state.py               # PipelineState - the checkpointed message
 │   │   ├── pipeline.py             # the 7-step MAF Workflow (one Executor per user-visible step)
-│   │   └── engine.py               # runs/resumes the workflow, converts events to SSE, idempotency
+│   │   ├── engine.py               # runs/resumes the workflow, converts events to SSE, idempotency
+│   │   └── table_checkpoint_storage.py  # Table Storage CheckpointStorage (multi-instance)
 │   ├── storage/
 │   │   ├── blob_store.py           # LocalDiskBlobStore (demo) / AzureBlobStore (private, managed identity)
-│   │   └── metadata_store.py        # SQLite: operation + artifact bookkeeping (no SAS stored, ever)
+│   │   ├── metadata_store.py        # SQLite: operation + artifact bookkeeping (no SAS stored, ever)
+│   │   └── table_metadata_store.py   # Table Storage equivalent (multi-instance)
 │   ├── broker/
 │   │   ├── tokens.py                 # 15-minute signed download tokens (minted fresh every time)
 │   │   └── api.py                     # Artifact Broker API: the only thing that can reach private storage
 │   └── hosted_agent/
-│       └── app.py                     # POST /invocations (SSE), /steer, /respond - the Hosted Agent entrypoint
+│       └── app.py                     # POST /invocations (SSE), /steer, /respond, /metrics - the Hosted Agent entrypoint
 ├── infra/storage-private.bicep    # private storage account + 1-day lifecycle policy + RBAC for the broker
-├── tests/                           # pytest, no Azure credentials required
+├── azure_functions/                 # reference: hosting the same Workflow on Azure Functions' Durable Task engine
+├── tests/                           # pytest, no Azure credentials required (Table Storage/Key Vault tests skip cleanly if unavailable)
 └── docs/
     ├── architecture.md              # full design, rationale, production upgrade path
     └── chat-integrations.md         # Teams / Copilot Studio / M365 Copilot / OBO notes
@@ -111,17 +117,93 @@ See `.env.example` for the full list. The defaults run the whole pipeline offlin
 - `LDA_ARTIFACT_TTL_HOURS=24`, `LDA_DOWNLOAD_TOKEN_TTL_MINUTES=15`,
   `LDA_MAX_INPUT_CHARS=1000000`.
 
+### Distributed checkpoint and metadata backends (multi-instance)
+
+The defaults (`LDA_CHECKPOINT_BACKEND=file`, `LDA_METADATA_BACKEND=sqlite`) are single-instance
+only - fine for local runs, wrong for anything horizontally scaled, since a resumed operation
+has to land back on the same process that paused it. Set both to `azurite` (against the same
+local emulator used for blob storage) or `azure` (against a real Storage account) to move
+checkpoints and operation/artifact/steering bookkeeping into Azure Table Storage, shared by every
+instance:
+
+- `LDA_CHECKPOINT_BACKEND=azurite|azure`, `LDA_CHECKPOINT_TABLE_NAME=workflowcheckpoints`
+- `LDA_METADATA_BACKEND=azurite|azure`, `LDA_OPERATIONS_TABLE_NAME=operations`,
+  `LDA_ARTIFACTS_TABLE_NAME=artifacts`, `LDA_STEERING_TABLE_NAME=steeringmessages`
+- `AZURE_TABLE_ACCOUNT_URL` - required when either backend is `azure` (uses
+  `DefaultAzureCredential`, same as blob storage); with `azurite` both reuse
+  `AZURITE_CONNECTION_STRING`.
+
+Requires the `production` extra (`pip install -e ".[production]"`, adds `azure-data-tables`).
+`tests/test_table_storage_backends.py` exercises both backends end-to-end (including a full
+steering/HITL resume) but skips cleanly if the extra isn't installed or Azurite isn't reachable.
+
+### Observability
+
+- `LDA_OTEL_EXPORTER=none|console|otlp` - `none` (default) does nothing; `console` prints spans
+  for local debugging; `otlp` exports to `LDA_OTEL_ENDPOINT` (e.g. an Azure Monitor/App Insights
+  OTLP ingestion endpoint or a local collector). `LDA_SERVICE_NAME` sets the resource
+  `service.name`. The Workflow's own `agent_framework.observability` instrumentation produces
+  `workflow.run` spans automatically once a provider is configured - no custom spans needed.
+- `LDA_METRICS_ENABLED=1` (default) exposes Prometheus metrics at `/metrics` on both the hosted
+  agent and broker (operation counts/duration, HITL-wait gauge, translation duration) - degrades
+  to no-op automatically if `prometheus-client` isn't installed.
+- Logs are correlated JSON (`operation_id` on every line inside a running operation) once
+  `configure_json_logging()` runs, which both apps do at import time.
+- Requires the `observability` extra (`pip install -e ".[observability]"`) for real OTEL export
+  and real Prometheus metrics; without it, both degrade to safe no-ops so the app still runs.
+
+### Stale operation sweep
+
+Operations that get stuck `in_progress` or `waiting_hitl` (crashed worker, abandoned HITL
+prompt) are never automatically retried - `LDA_OPERATION_STALE_HOURS=6` (default) controls how
+old is "stuck". Run `python -m long_duration_agent.stale_operations` on a schedule (cron, or a
+Functions timer trigger) to mark them `stopped` and clean up their workspace scratch files; it
+never touches `completed`/`failed`/`stopped` operations regardless of age.
+
+### Entra hardening
+
+Beyond `LDA_IDENTITY_MODE=entra` + `ENTRA_TENANT_ID` / `ENTRA_AUDIENCE`, validation now also
+checks:
+
+- `ENTRA_REQUIRE_ISSUER_MATCH=1` (default) - rejects tokens whose `iss` claim doesn't match the
+  expected v1 (`https://sts.windows.net/{tenant}/`) or v2
+  (`https://login.microsoftonline.com/{tenant}/v2.0`) issuer for the resolved tenant.
+- `ENTRA_REQUIRED_SCOPE` / `ENTRA_REQUIRED_ROLE` - optional; when set, a token missing that
+  `scp` entry or `roles` entry is rejected with `403`.
+- A missing `ENTRA_AUDIENCE` now fails closed (`500`) instead of silently accepting unverified
+  tokens.
+
+### Key Vault secrets
+
+`LDA_KEY_VAULT_URL` - when set, the broker's HMAC signing key is fetched from
+`LDA_KEY_VAULT_SIGNING_KEY_SECRET_NAME` (default `lda-broker-signing-key`) via
+`DefaultAzureCredential`, cached in-process for `LDA_KEY_VAULT_CACHE_SECONDS` (default 3600).
+Leave `LDA_KEY_VAULT_URL` empty to fall back to `LDA_BROKER_SIGNING_KEY` directly (local/dev
+only). Requires the `production` extra (`azure-keyvault-secrets`); `tests/test_secrets.py`'s
+Key-Vault-backed cases skip cleanly without it.
+
 ## Production checklist
 
-This is a working demo, not a finished production deployment. Before shipping:
+This is a working demo, but most of the production hardening below is now implemented -
+what's left is largely deployment/ops, not code:
 
-- Set `LDA_IDENTITY_MODE=entra` and configure `ENTRA_TENANT_ID` / `ENTRA_AUDIENCE`.
-- Deploy `infra/storage-private.bicep` (public network access disabled, private endpoint,
+- [x] Entra hardening - `LDA_IDENTITY_MODE=entra`, audience fails closed, issuer/scope/role
+  checks (`identity.py`, `docs/architecture.md`).
+- [x] Distributed checkpoint + metadata store - Table Storage backends for both, so a resumed
+  operation doesn't need to land back on the same instance (`durable/table_checkpoint_storage.py`,
+  `storage/table_metadata_store.py`).
+- [x] Key Vault secret sourcing for the broker signing key (`secrets.py`), cached with a TTL.
+- [x] Stale/orphaned operation sweep (`stale_operations.py`) - schedule it, don't just have it.
+- [x] Observability - OpenTelemetry tracing, Prometheus `/metrics`, correlated JSON logs
+  (`observability.py`).
+- [ ] Deploy `infra/storage-private.bicep` (public network access disabled, private endpoint,
   1-day lifecycle policy) and set `LDA_STORAGE_BACKEND=azure`.
-- Generate a real `LDA_BROKER_SIGNING_KEY` (`openssl rand -hex 32`) from Key Vault, not
-  the repo default.
-- Point `checkpoint_storage` (`durable/engine.py`) at a distributed backend, or host the
-  same `Workflow` behind Azure Functions' Durable Task extension
-  (`agent-framework-durabletask`) - see `docs/architecture.md`.
-- Schedule `python -m long_duration_agent.cleanup` (or a Functions timer trigger) for the
-  metadata-side TTL sweep.
+- [ ] Generate a real `LDA_BROKER_SIGNING_KEY` (`openssl rand -hex 32`) and store it in Key
+  Vault rather than relying on the env fallback.
+- [ ] Schedule `python -m long_duration_agent.cleanup` and
+  `python -m long_duration_agent.stale_operations` (cron, or Functions timer triggers).
+- [ ] `azure_functions/` is a reviewed hosting reference for Azure Functions' Durable Task
+  extension (`agent-framework-durabletask`), not a deployed/live-tested target yet - see
+  `docs/architecture.md` before relying on it.
+- [ ] Rate limiting, real-translation-path test coverage, and content-safety guardrails are
+  still open (see `docs/architecture.md`'s production upgrade path for the full list).

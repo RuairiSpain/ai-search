@@ -18,3 +18,14 @@ pytest-asyncio>=0.23
 # (versioned lower than agent-framework-core: these connector packages trail its version numbers)
 # agent-framework-openai>=1.10.0
 # agent-framework-foundry>=1.10.0
+
+# Required only for LDA_CHECKPOINT_BACKEND/LDA_METADATA_BACKEND=azurite|azure and/or
+# LDA_KEY_VAULT_URL - see storage/table_metadata_store.py, durable/table_checkpoint_storage.py, secrets.py
+# azure-data-tables>=12.5
+# azure-keyvault-secrets>=4.8
+
+# Required only for LDA_OTEL_EXPORTER=console|otlp (tracing) and to get real Prometheus
+# metrics instead of no-ops - see observability.py
+# opentelemetry-sdk>=1.30
+# opentelemetry-exporter-otlp-proto-http>=1.30
+# prometheus-client>=0.20

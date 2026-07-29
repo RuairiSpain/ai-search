@@ -1,0 +1,18 @@
+# Azure Functions Python worker requirements. Deploy this directory as the Functions app
+# root (function_app.py at the top level, per the Python v2 programming model); the rest of
+# this repo's package (long_duration_agent) needs to be installed alongside it, e.g. via a
+# `pip install -e ../..` step in your build, or by vendoring src/long_duration_agent into
+# this directory before packaging - Azure Functions doesn't run `pip install -e` for you.
+azure-functions>=1.21
+agent-framework-core>=1.12.0
+agent-framework-azurefunctions>=1.0.0b1
+agent-framework-durabletask>=1.0.0b1
+
+# Same runtime deps long_duration_agent itself needs - see ../requirements.txt
+pydantic>=2.7
+pydantic-settings>=2.3
+python-dotenv>=1.0
+azure-identity>=1.17
+azure-storage-blob[aio]>=12.20
+azure-data-tables>=12.5
+pyjwt[crypto]>=2.8
