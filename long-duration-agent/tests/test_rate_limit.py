@@ -3,11 +3,7 @@ from fastapi import HTTPException
 
 from long_duration_agent.config import get_settings
 from long_duration_agent.models import CallerIdentity
-from long_duration_agent.rate_limit import (
-    enforce_download_rate_limit,
-    enforce_invocation_rate_limit,
-    reset_rate_limiter_cache,
-)
+from long_duration_agent.rate_limit import enforce_invocation_rate_limit, reset_rate_limiter_cache
 
 CALLER = CallerIdentity(tenant_id="tenant-a", user_object_id="user-1")
 OTHER_CALLER = CallerIdentity(tenant_id="tenant-b", user_object_id="user-2")
@@ -43,23 +39,6 @@ def test_invocation_limit_is_scoped_per_caller(monkeypatch):
     enforce_invocation_rate_limit(OTHER_CALLER)
 
 
-def test_download_limit_is_independent_of_invocation_limit(monkeypatch):
-    _configure(
-        monkeypatch,
-        LDA_RATE_LIMIT_INVOCATIONS_PER_MINUTE="1",
-        LDA_RATE_LIMIT_DOWNLOADS_PER_MINUTE="1",
-    )
-
-    enforce_invocation_rate_limit(CALLER)
-    with pytest.raises(HTTPException):
-        enforce_invocation_rate_limit(CALLER)
-
-    # Exhausting the invocation bucket does not affect the download bucket.
-    enforce_download_rate_limit(CALLER)
-    with pytest.raises(HTTPException):
-        enforce_download_rate_limit(CALLER)
-
-
 def test_zero_disables_a_limiter(monkeypatch):
     _configure(monkeypatch, LDA_RATE_LIMIT_INVOCATIONS_PER_MINUTE="0")
 
@@ -67,17 +46,11 @@ def test_zero_disables_a_limiter(monkeypatch):
         enforce_invocation_rate_limit(CALLER)  # never raises
 
 
-def test_rate_limit_enabled_false_disables_all_limiters(monkeypatch):
-    _configure(
-        monkeypatch,
-        LDA_RATE_LIMIT_ENABLED="false",
-        LDA_RATE_LIMIT_INVOCATIONS_PER_MINUTE="1",
-        LDA_RATE_LIMIT_DOWNLOADS_PER_MINUTE="1",
-    )
+def test_rate_limit_enabled_false_disables_the_limiter(monkeypatch):
+    _configure(monkeypatch, LDA_RATE_LIMIT_ENABLED="false", LDA_RATE_LIMIT_INVOCATIONS_PER_MINUTE="1")
 
     for _ in range(10):
         enforce_invocation_rate_limit(CALLER)
-        enforce_download_rate_limit(CALLER)
 
 
 def test_reset_rate_limiter_cache_clears_accumulated_state(monkeypatch):

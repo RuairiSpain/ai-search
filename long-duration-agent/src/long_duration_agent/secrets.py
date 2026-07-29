@@ -1,13 +1,13 @@
 """Fetches secrets from Azure Key Vault when configured, falling back to a plain env var
-for local dev - starting with the broker's HMAC signing key (broker/tokens.py). Extend
-``get_secret`` to any other value that shouldn't live in an env var in production (e.g.
+for local dev - starting with the Content Safety API key (content_safety.py's "azure" mode).
+Extend ``get_secret`` to any other value that shouldn't live in an env var in production (e.g.
 ``AZURE_OPENAI_API_KEY``).
 
 Uses the synchronous Key Vault/Identity clients, not the aio variants - deliberately, and
 for the same reason identity.py's JWKS fetch is synchronous: this only ever runs once per
 ``LDA_KEY_VAULT_CACHE_SECONDS`` window (default 1 hour), not on every request, so a brief
 blocking call here and there is a reasonable trade-off against threading an async Key Vault
-client through every caller of broker/tokens.py for a fetch that's this infrequent.
+client through every caller for a fetch that's this infrequent.
 """
 
 from __future__ import annotations
@@ -45,9 +45,11 @@ def get_secret(secret_name: str, *, env_fallback: str) -> str:
     return secret.value
 
 
-def get_broker_signing_key() -> str:
+def get_content_safety_api_key() -> str:
     settings = get_settings()
-    return get_secret(settings.lda_key_vault_signing_key_secret_name, env_fallback=settings.lda_broker_signing_key)
+    return get_secret(
+        settings.lda_key_vault_content_safety_key_secret_name, env_fallback=settings.azure_content_safety_api_key
+    )
 
 
 def reset_secret_cache() -> None:

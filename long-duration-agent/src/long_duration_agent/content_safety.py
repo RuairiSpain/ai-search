@@ -68,10 +68,13 @@ async def _check_azure(text: str, settings: Settings) -> None:
             "(pip install '.[content-safety]') or set LDA_CONTENT_SAFETY_MODE=off/blocklist."
         ) from exc
 
-    if settings.azure_content_safety_api_key:
+    from .secrets import get_content_safety_api_key
+
+    api_key = get_content_safety_api_key()
+    if api_key:
         from azure.core.credentials import AzureKeyCredential
 
-        credential = AzureKeyCredential(settings.azure_content_safety_api_key)
+        credential = AzureKeyCredential(api_key)
     else:
         from azure.identity.aio import DefaultAzureCredential
 

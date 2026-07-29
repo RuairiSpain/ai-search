@@ -34,7 +34,7 @@ onto:
 - `GetWorkflowStatus` (polled by Copilot Studio, backed by the same durable operation state
   in `storage/metadata_store.py` - since the workflow is checkpointed, this can be a cheap
   "what's the latest stage" read rather than holding an SSE connection open)
-- `GetArtifact` (returns the broker download link once `link_ready`)
+- `GetArtifact` (returns the SAS download link once `link_ready`)
 
 **OBO for Copilot Studio**: Copilot Studio's connector/custom-connector layer authenticates
 the end user and forwards a validated token (or performs its own OBO exchange) to the

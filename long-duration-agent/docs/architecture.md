@@ -13,7 +13,7 @@ Hosted Agent - Invocations endpoint (hosted_agent/app.py)
   ▼
 Durable MAF Workflow (durable/pipeline.py), one Executor per step, checkpointed after each:
   │
-  ├─ Validate          → reject if prompt > 1,000,000 characters
+  ├─ Validate          → reject if prompt > 1,000,000 characters; content safety guardrail
   ├─ SSE status: "The agent is working..."
   ├─ Translate          → es-ES, via Foundry/Azure OpenAI chat client
   ├─ SSE status: "The text has been translated."
@@ -23,20 +23,23 @@ Durable MAF Workflow (durable/pipeline.py), one Executor per step, checkpointed 
   ├─ Steering gate       → any queued steering messages? (see "Steering while the agent is
   │                         working" below) - if yes, HITL confirm, then loop back to Validate
   ├─ wait 2s
-  ├─ Upload             → private Blob Storage, users/<tenant>/<object-id>/<artifact-id>.md
+  ├─ Upload             → Blob Storage, users/<tenant>/<object-id>/<artifact-id>.md
   ├─ SSE status: "The artifact was saved to secure storage."
   ├─ Delete local copy  → cleans up the hosted-agent's scratch file
-  ├─ Mint download link → Artifact Broker API, 15-minute signed token, freshly issued
+  ├─ Mint SAS link      → generate_download_url() - a real, signed Blob SAS URL, freshly issued
   └─ SSE artifact: { artifact_id, download_url, expires_at }
   │
   ▼
-Private Storage Account (infra/storage-private.bicep)
-  - public network access disabled
+Storage Account (infra/storage-public.bicep)
+  - public network access enabled; anonymous blob access disabled
   - 1-day blob lifecycle policy
-  - only reachable by the Artifact Broker API's managed identity
+  - every read/write/delete logged to Log Analytics (diagnostic settings)
+  - only the hosted agent's managed identity has standing RBAC access (upload/delete,
+    and permission to mint the User Delegation Key that signs each SAS)
   │
   ▼
-User's browser ── GET {download_url} ──▶ Artifact Broker API ──▶ streams the blob
+User's browser ── GET {download_url} (a signed SAS URL) ──▶ Blob Storage directly
+                                                             (no broker/proxy in between)
 ```
 
 ## Local development storage backends
@@ -56,20 +59,27 @@ User's browser ── GET {download_url} ──▶ Artifact Broker API ──▶
   newer SDK versions sending an API version an older Azurite build doesn't recognize yet) and
   pointing the pipeline at it produces and reads back the same bilingual Markdown artifact as
   the `local` backend, through the real SDK.
-- `azure` - `AzureBlobStore` against a real, private storage account via `account_url` +
-  `DefaultAzureCredential` (Managed Identity in production, `az login` for a developer).
+- `azure` - `AzureBlobStore` against a real, public-network storage account via `account_url` +
+  `DefaultAzureCredential` (Managed Identity in production, `az login` for a developer) - see
+  "Public storage + SAS" below.
 
 Azurite's connection string uses its own published, well-known development account key -
 not a secret, and not usable against any real Azure account.
 
-`AzureBlobStore` uses `azure.storage.blob.aio.ContainerClient` / `azure.identity.aio.
+`AzureBlobStore` uses `azure.storage.blob.aio.BlobServiceClient` / `azure.identity.aio.
 DefaultAzureCredential` deliberately - not the sync clients. Its methods are `await`ed from
-request-handling code (executors, the broker), so a sync client would block the whole asyncio
-event loop for every upload/download/delete's full network round-trip, stalling every other
-concurrent request on the process. It also normalizes `azure.core.exceptions
-.ResourceNotFoundError` (what the SDK actually raises for a missing blob) into `FileNotFoundError`,
-so callers (`broker/api.py`, `cleanup.py`, `StopExecutor`) can stay backend-agnostic instead of
-special-casing the Azure SDK's own exception hierarchy.
+request-handling code (executors), so a sync client would block the whole asyncio event loop
+for every upload/download/delete's full network round-trip, stalling every other concurrent
+request on the process. It also normalizes `azure.core.exceptions.ResourceNotFoundError` (what
+the SDK actually raises for a missing blob) into `FileNotFoundError`, so callers (`cleanup.py`,
+`StopExecutor`) can stay backend-agnostic instead of special-casing the Azure SDK's own
+exception hierarchy.
+
+`AzureBlobStore` holds a `BlobServiceClient` (not a bare `ContainerClient`) specifically so it
+can also call `get_user_delegation_key()` - a `BlobServiceClient`-only method needed for
+`generate_download_url`'s SAS signing (see "Public storage + SAS" below); the container client
+used for upload/download/delete is derived from it via `get_container_client()`, so there's still
+only one credential/session per store instance.
 
 ## Why a durable MAF Workflow instead of a hand-rolled step runner
 
@@ -226,47 +236,52 @@ serve that JWKS) - no live Entra tenant needed to test the validation logic itse
 
 ## Key Vault secrets
 
-The broker's HMAC signing key (`broker/tokens.py`) is the one long-lived secret in this system -
-a leaked key would let someone mint valid-looking download tokens. `secrets.py` centralizes
-sourcing it: if `LDA_KEY_VAULT_URL` is set, `get_broker_signing_key()` fetches
-`LDA_KEY_VAULT_SIGNING_KEY_SECRET_NAME` (default `lda-broker-signing-key`) from Key Vault via a
-synchronous `azure.keyvault.secrets.SecretClient` + `DefaultAzureCredential` (sync is deliberate
-here, matching the JWKS-fetch precedent in `identity.py` - this is called once per token
-mint/verify, not from a hot per-request path that would need to avoid blocking the event loop),
-caching the value in-process for `LDA_KEY_VAULT_CACHE_SECONDS` (default 3600s) to avoid a Key
-Vault round-trip on every signed download link. With `LDA_KEY_VAULT_URL` unset, it falls back to
-`LDA_BROKER_SIGNING_KEY` directly - the local-dev/demo path, not for production use.
+There's no broker signing key anymore - SAS URLs are signed by Azure Storage itself (via a User
+Delegation Key obtained through Managed Identity, or an account key for Azurite), not by this
+app, so there's no app-level HMAC secret to protect for that path. The one optional secret left
+is the Azure AI Content Safety API key (`content_safety.py`'s `"azure"` mode, if used with key
+auth rather than Managed Identity). `secrets.py` centralizes sourcing it: if `LDA_KEY_VAULT_URL`
+is set, `get_content_safety_api_key()` fetches `LDA_KEY_VAULT_CONTENT_SAFETY_KEY_SECRET_NAME`
+(default `lda-content-safety-api-key`) from Key Vault via a synchronous
+`azure.keyvault.secrets.SecretClient` + `DefaultAzureCredential` (sync is deliberate here,
+matching the JWKS-fetch precedent in `identity.py` - this is called at most once per
+`LDA_KEY_VAULT_CACHE_SECONDS` window, not from a hot per-request path that would need to avoid
+blocking the event loop), caching the value in-process for that TTL (default 3600s). With
+`LDA_KEY_VAULT_URL` unset, it falls back to `AZURE_CONTENT_SAFETY_API_KEY` directly - the
+local-dev/demo path (or simply don't set an API key at all and use `DefaultAzureCredential`
+against Content Safety instead, the same either-key-or-managed-identity pattern used
+everywhere else in this codebase). `get_secret()` itself is generic - reused for any future
+value that shouldn't live in a plain env var in production.
 
 ## Rate limiting
 
-Two calls cost a real resource per request: starting a *new* translation operation (a model
-call) and downloading an artifact (a private-storage read). `rate_limit.py` caps both per caller
-(`tenant_id:user_object_id`) with a plain in-memory sliding window (`_SlidingWindowLimiter` - one
-`deque` of hit timestamps per key, pruned lazily on each check) over a 60-second window:
-`LDA_RATE_LIMIT_INVOCATIONS_PER_MINUTE` (default 30) and `LDA_RATE_LIMIT_DOWNLOADS_PER_MINUTE`
-(default 60); either set to `0` disables just that limiter, and `LDA_RATE_LIMIT_ENABLED=0`
-disables both.
+Starting a *new* translation operation costs a real resource per request (a model call).
+`rate_limit.py` caps it per caller (`tenant_id:user_object_id`) with a plain in-memory sliding
+window (`_SlidingWindowLimiter` - one `deque` of hit timestamps per key, pruned lazily on each
+check) over a 60-second window: `LDA_RATE_LIMIT_INVOCATIONS_PER_MINUTE` (default 30); `0`
+disables it, as does `LDA_RATE_LIMIT_ENABLED=0`.
 
-The invocation limiter is deliberately wired to skip resumed operations: `hosted_agent/app.py`'s
-`invoke()` only calls `enforce_invocation_rate_limit()` when `check_operation_access()` couldn't
-find an existing operation for that `operation_id` (`is_new_operation`). A dropped-connection
-reconnect or a client retry replaying the same `operation_id` never repeats the translation call
-- charging it against the limit would penalize exactly the reconnect story
-`durable/engine.py`'s idempotent replay exists to support. The download limiter has no such
-carve-out - every `GET /artifacts/{id}/download` costs a private-storage read regardless of
-whether it's a first or repeated fetch of the same artifact.
+The limiter is deliberately wired to skip resumed operations: `hosted_agent/app.py`'s `invoke()`
+only calls `enforce_invocation_rate_limit()` when `check_operation_access()` couldn't find an
+existing operation for that `operation_id` (`is_new_operation`). A dropped-connection reconnect
+or a client retry replaying the same `operation_id` never repeats the translation call -
+charging it against the limit would penalize exactly the reconnect story `durable/engine.py`'s
+idempotent replay exists to support.
 
 A caller over the limit gets `HTTPException(429, ...)` with a `Retry-After` header computed from
 when its oldest in-window hit will age out; rejections also increment
-`lda_invocation_rate_limited_total`/`lda_download_rate_limited_total` (see Observability above).
+`lda_invocation_rate_limited_total` (see Observability above).
 
 This is intentionally a per-process, in-memory limiter - correct and sufficient for a single
-hosted-agent/broker instance, same scoping caveat as the default `file`/`sqlite`
-checkpoint/metadata backends. A multi-instance deployment would need the counters in a shared
-store instead (Redis, or the same Table Storage backend already used for checkpoints/metadata)
-so the limit applies across replicas, not per-replica; `enforce_invocation_rate_limit()` and
-`enforce_download_rate_limit()` are the only two call sites that would need to change to make
-that swap.
+hosted-agent instance, same scoping caveat as the default `file`/`sqlite` checkpoint/metadata
+backends. A multi-instance deployment would need the counters in a shared store instead (Redis,
+or the same Table Storage backend already used for checkpoints/metadata) so the limit applies
+across replicas, not per-replica; `enforce_invocation_rate_limit()` is the only call site that
+would need to change to make that swap.
+
+Downloads are **not** rate limited by this app at all - since there's no broker, a download
+never passes through it (see "Public storage + SAS" below); Blob Storage's own request-rate
+behavior and the diagnostic logs described there are what govern and audit that path instead.
 
 ## Content safety guardrail
 
@@ -332,39 +347,69 @@ closes that gap:
   installed, unlike the namespace-package `find_spec` gotcha documented for `azure.*` packages
   elsewhere in this test suite.
 
-## Storage and identity: what changed from the initial design
+## Public storage + SAS: how downloads work without a broker
 
-The first draft of this design considered handing the browser a raw Azure Blob SAS URL.
-That does not work once the storage account has public network access disabled (the
-explicit requirement here) - there is no public endpoint for a SAS URL to point at. The
-corrected design:
+An earlier version of this design kept the storage account private (public network access
+disabled, reachable only via a private endpoint) and put an Artifact Broker API in front of it:
+the chat UI got a broker-issued, HMAC-signed download token, and the broker re-verified the
+token *and* re-checked artifact ownership against the metadata store before streaming any bytes
+back. That gave a server-side re-check on every single download, at the cost of an extra service
+to run, deploy, and keep patched, and an extra network hop (browser → broker → storage) for
+every artifact fetch.
 
-- **The storage account is never reachable from outside the VNet.** Only the Artifact
-  Broker API's managed identity (RBAC: Storage Blob Data Contributor) can read/write/delete
-  blobs.
-- **The chat UI gets a broker-issued download link, not a Blob SAS.** `broker/tokens.py`
-  mints an HMAC-signed, single-artifact, 15-minute token on every request - never persisted,
-  never reused. The broker (`broker/api.py`) verifies the token *and* re-checks ownership
-  against the authoritative metadata record before streaming anything, so a leaked-but-valid
-  token still can't read another user's artifact.
+The current design removes the broker entirely and hands the chat UI a real, direct Azure Blob
+SAS URL instead:
+
+- **The storage account is reachable over the public internet** (`infra/storage-public.bicep`,
+  `publicNetworkAccess: 'Enabled'`) - no private endpoint, no VNet integration required. Nothing
+  about that makes the data public: anonymous blob/container access stays disabled
+  (`allowBlobPublicAccess: false`, container `publicAccess: 'None'`); the only way to read a
+  blob is with a valid, unexpired SAS token.
+- **`storage/blob_store.py`'s `generate_download_url` mints that SAS directly** - no broker, no
+  app-level signing scheme. For the `azure` backend it's a **User Delegation SAS**: the hosted
+  agent's Managed Identity calls `BlobServiceClient.get_user_delegation_key()` (RBAC: Storage
+  Blob Delegator) to get a key valid for about an hour, cached and reused across requests, and
+  `generate_blob_sas(..., user_delegation_key=...)` signs each individual download link with it -
+  no storage account key is ever used or needed. For the `azurite` backend (no real Azure
+  Entra ID to delegate from), the same `generate_blob_sas` call is signed with Azurite's
+  well-known account key instead - same code path, different credential.
+- **The trade-off, explicitly**: a SAS URL is a bearer secret. Anyone holding a valid link can
+  use it until it expires (`LDA_DOWNLOAD_SAS_TTL_MINUTES`, default 15) - there is no per-request
+  server-side re-check of caller identity or artifact ownership the way the broker used to do.
+  This is the same trade-off any presigned-URL design makes (S3 presigned URLs, GCS signed URLs);
+  it's mitigated by keeping the TTL short and by the fact that a leaked link only exposes one
+  artifact for a few minutes, not standing access to the account. If a deployment needs a
+  server-side re-check on every download (e.g. to support revocation before expiry), that's
+  exactly what reintroducing a broker buys back - this design deliberately trades that off for
+  simplicity and one fewer service to operate.
+- **Downloads are logged at the storage layer, not the app layer.** Since the browser talks to
+  Blob Storage directly, the app never observes the actual SAS-authenticated `GET` - there is no
+  code path to add an app-side download log to. `infra/storage-public.bicep` instead enables a
+  diagnostic setting on the blob service (`StorageRead`/`StorageWrite`/`StorageDelete`
+  categories) sent to a Log Analytics workspace, so every read is still auditable - just from
+  Storage's own logs rather than this app's.
 - **No SAS, no credential of any kind, is ever written to the metadata store.** SQLite here
   holds only `artifact_id → (tenant_id, user_object_id, blob_container, blob_name,
-  display_name, size_bytes, created_at, expires_at, status)` - enough to resume operations,
-  enforce ownership, and sweep expired artifacts. It is not an artifact catalogue (no
-  list/browse UI is exposed to users, by design) and it is intentionally swappable for Table
-  Storage/Cosmos DB in a multi-instance deployment (`storage/metadata_store.py` is a single
-  narrow class; nothing outside it touches SQLite directly).
-- **User isolation is enforced server-side, from the validated token, never from the request
-  body.** `identity.py` extracts `tid`/`oid` from a verified Entra JWT (or, for local dev
-  only, a `X-Debug-User` header); `blob_name` is always built from that, and the broker
-  double-checks the artifact record's owner against the caller on every download.
+  display_name, size_bytes, created_at, expires_at, status)` - enough to resume operations and
+  sweep expired artifacts. It is not an artifact catalogue (no list/browse UI is exposed to
+  users, by design) and it is intentionally swappable for Table Storage/Cosmos DB in a
+  multi-instance deployment (`storage/metadata_store.py` is a single narrow class; nothing
+  outside it touches SQLite directly).
+- **User isolation for who gets *handed* a link is still enforced server-side, from the
+  validated token, never from the request body.** `identity.py` extracts `tid`/`oid` from a
+  verified Entra JWT (or, for local dev only, a `X-Debug-User` header); `blob_name` is always
+  built from that. What changed is what happens *after* the link is handed out: previously the
+  broker re-checked on every fetch, now the SAS itself (plus its short TTL) is the only gate from
+  that point on.
 
 ## TTL and cleanup
 
 - **1-day artifact lifetime**, enforced two ways: the storage account's own lifecycle
-  management policy (`infra/storage-private.bicep`, `daysAfterModificationGreaterThan: 1`)
+  management policy (`infra/storage-public.bicep`, `daysAfterModificationGreaterThan: 1`)
   deletes the blob independent of the application; `cleanup.py` sweeps the metadata store so
-  expired records read as gone (the broker 404s) even before the storage-side deletion runs.
+  `run_translation_operation`'s idempotent replay reports the artifact expired (rather than
+  minting a fresh SAS link for a blob that's already gone) even before the storage-side deletion
+  runs.
 - **The hosted agent's local copy is deleted immediately after a successful upload**
   (`CleanupLocalExecutor`), so the compute host's disk never accumulates artifacts across
   invocations - the local scratch directory is not the artifact store, only a workspace.

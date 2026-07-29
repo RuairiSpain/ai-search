@@ -12,8 +12,6 @@ def isolated_settings(tmp_path, monkeypatch):
     monkeypatch.setenv("LDA_LOCAL_STORAGE_ROOT", str(tmp_path / "blob-store"))
     monkeypatch.setenv("LDA_STATE_DB_PATH", str(tmp_path / "state.db"))
     monkeypatch.setenv("LDA_IDENTITY_MODE", "dev")
-    monkeypatch.setenv("LDA_BROKER_SIGNING_KEY", "test-signing-key")
-    monkeypatch.setenv("LDA_BROKER_BASE_URL", "http://localhost:8081")
     monkeypatch.setenv("LDA_WAIT_AFTER_SAVE_SECONDS", "0")
     monkeypatch.setenv("LDA_WAIT_BEFORE_UPLOAD_SECONDS", "0")
     monkeypatch.chdir(tmp_path)

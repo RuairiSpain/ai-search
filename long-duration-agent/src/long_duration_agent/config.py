@@ -69,10 +69,10 @@ class Settings(BaseSettings):
     # stopped and cleaned up, the same way a user-initiated "stop" decision would.
     lda_operation_stale_hours: int = 6
 
-    # Key Vault (see secrets.py): when set, LDA_BROKER_SIGNING_KEY is fetched from this
+    # Key Vault (see secrets.py): when set, AZURE_CONTENT_SAFETY_API_KEY is fetched from this
     # vault instead of the env var below, cached for lda_key_vault_cache_seconds.
     lda_key_vault_url: str = ""
-    lda_key_vault_signing_key_secret_name: str = "lda-broker-signing-key"
+    lda_key_vault_content_safety_key_secret_name: str = "lda-content-safety-api-key"
     lda_key_vault_cache_seconds: int = 3600
 
     # Observability (see observability.py)
@@ -88,21 +88,22 @@ class Settings(BaseSettings):
 
     # Artifact policy
     lda_artifact_ttl_hours: int = 24
-    lda_download_token_ttl_minutes: int = 15
     lda_max_input_chars: int = 1_000_000
     lda_max_markdown_bytes: int = 5 * 1024 * 1024
 
-    # Broker
-    lda_broker_signing_key: str = "dev-only-change-me"
-    lda_broker_base_url: str = "http://localhost:8081"
+    # Download links: a real, time-limited Azure Blob SAS URL minted directly against Blob
+    # Storage (storage/blob_store.py's generate_download_url) - no broker/proxy in between, so
+    # this is the only authorization a download gets beyond knowing the link itself. Keep this
+    # short; anyone holding the URL can use it until it expires.
+    lda_download_sas_ttl_minutes: int = 15
 
     # Rate limiting (see rate_limit.py): in-memory, per-caller (tenant_id + user_object_id)
-    # sliding window over 60 seconds. Applies only to genuinely new operations (not resumes/
-    # reconnects) and artifact downloads - the two calls that cost a model invocation or a
-    # private-storage read per request. 0 disables a given limiter.
+    # sliding window over 60 seconds, applied only to genuinely new operations (not resumes/
+    # reconnects) - the one call that costs a model invocation per request. 0 disables it.
+    # Downloads aren't rate limited here - they never pass through this app (see
+    # generate_download_url above); use Blob Storage's own throttling/logging for that.
     lda_rate_limit_enabled: bool = True
     lda_rate_limit_invocations_per_minute: int = 30
-    lda_rate_limit_downloads_per_minute: int = 60
 
     # Content safety guardrail (see content_safety.py), checked on the English prompt before
     # Translate. "off" (default, unchanged demo behavior) | "blocklist" (offline, deterministic

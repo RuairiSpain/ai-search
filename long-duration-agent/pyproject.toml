@@ -1,7 +1,7 @@
 [project]
 name = "long-duration-agent"
 version = "0.1.0"
-description = "Hosted MAF agent that translates a prompt to Spain Spanish, saves a bilingual Markdown artifact to private Blob Storage, and returns a broker download link to the chat UI."
+description = "Hosted MAF agent that translates a prompt to Spain Spanish, saves a bilingual Markdown artifact to Blob Storage, and returns a direct, signed SAS download link to the chat UI."
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115",

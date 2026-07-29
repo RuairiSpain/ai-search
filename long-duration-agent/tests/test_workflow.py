@@ -44,8 +44,12 @@ async def test_full_pipeline_emits_expected_status_sequence_and_artifact():
     assert created.data["message"] == "The artifact was created successfully."
 
     artifact_event = next(e for e in events if e.event == "artifact")
-    assert artifact_event.data["download_url"].startswith("http://localhost:8081/artifacts/")
-    assert "token=" in artifact_event.data["download_url"]
+    # No broker: the local backend's "download_url" is a direct file:// URI onto the blob-store
+    # stand-in (see storage/blob_store.py's LocalDiskBlobStore.generate_download_url) - a real
+    # backend (azurite/azure) instead returns a genuine, signed Blob SAS URL.
+    download_url = artifact_event.data["download_url"]
+    assert download_url.startswith("file://")
+    assert f"{artifact_event.data['artifact_id']}.md?t=" in download_url
 
 
 @pytest.mark.asyncio

@@ -39,9 +39,9 @@ async def translate_to_spanish(text: str) -> str:
 def _stub_translate(text: str) -> str:
     """Deterministic, offline stand-in for the model call.
 
-    Not a real translation - it exists so the workflow, storage, and broker
-    layers can be exercised end-to-end without an Azure OpenAI/Foundry
-    deployment. Replace with a real model in production by setting
+    Not a real translation - it exists so the workflow and storage layers can be exercised
+    end-to-end without an Azure OpenAI/Foundry deployment. Replace with a real model in
+    production by setting
     LDA_USE_STUB_TRANSLATOR=0 and configuring FOUNDRY_* or AZURE_OPENAI_*.
     """
     return f"[es-ES traducción simulada]\n{text}"

@@ -27,6 +27,7 @@ from ..config import get_settings
 from ..identity import CallerIdentity
 from ..models import HitlDecisionRequest, InvocationRequest, OrchestrationStage, StreamEvent
 from ..observability import metrics, operation_log_context
+from ..storage.blob_store import get_blob_store
 from ..storage.metadata_store import MetadataStoreProtocol, get_metadata_store
 from .pipeline import ALLOWED_CHECKPOINT_TYPES, build_workflow
 from .state import PipelineState, SteeringDecision
@@ -106,9 +107,9 @@ async def check_operation_access(operation_id: str, caller: CallerIdentity, *, r
     """Eager, side-effect-free ownership/status check for the HTTP layer.
 
     An SSE response can't change its HTTP status once streaming has started, so the
-    hosted-agent and broker endpoints call this *before* opening the stream to fail fast
-    with a proper 404/403/409. The async generators below re-check the same conditions
-    internally, so this call is optional defense-in-depth, not the only place it's enforced.
+    hosted-agent's endpoints call this *before* opening the stream to fail fast with a proper
+    404/403/409. The async generators below re-check the same conditions internally, so this
+    call is optional defense-in-depth, not the only place it's enforced.
     """
     return await _require_owned_operation(get_metadata_store(), operation_id, caller, require_status=require_status)
 
@@ -240,7 +241,7 @@ async def _idempotent_replay(store: MetadataStoreProtocol, existing, next_event)
         return
     if artifact.status != "active":
         # Already swept by the TTL sweeper (cleanup.py) - reporting "completed" with a link
-        # here would be a lie: the blob is gone and the broker would just 404 it.
+        # here would be a lie: the blob itself is gone.
         yield next_event(
             "error",
             OrchestrationStage.FAILED,
@@ -248,10 +249,8 @@ async def _idempotent_replay(store: MetadataStoreProtocol, existing, next_event)
         )
         return
 
-    from ..broker.tokens import build_download_link
-
-    download_url, expires_at = build_download_link(
-        artifact_id=artifact.artifact_id, tenant_id=artifact.tenant_id, user_object_id=artifact.user_object_id
+    download_url, expires_at = await get_blob_store().generate_download_url(
+        artifact.blob_name, ttl_minutes=get_settings().lda_download_sas_ttl_minutes
     )
     yield next_event(
         "status",

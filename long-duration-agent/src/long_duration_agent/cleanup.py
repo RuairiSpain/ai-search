@@ -1,9 +1,10 @@
 """TTL sweeper for expired artifacts (default: 1 day).
 
 In production the storage account's own lifecycle management policy
-(infra/storage-private.bicep) deletes the blob automatically - this sweeper
-exists to keep the metadata store in sync (mark the row deleted so the
-broker returns 404 instead of a stale "active" record) and to clean up in
+(infra/storage-public.bicep) deletes the blob automatically - this sweeper
+exists to keep the metadata store in sync (mark the row deleted so
+run_translation_operation's idempotent replay reports "expired" instead of
+minting a fresh SAS link for a blob that's already gone) and to clean up in
 the local-disk demo backend, which has no lifecycle policy of its own.
 
 Run periodically (cron, an Azure Function timer trigger, a Kubernetes

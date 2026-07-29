@@ -10,8 +10,10 @@ that span with no extra instrumentation code needed anywhere in ``pipeline.py``.
 Metrics: a small set of ``prometheus_client`` counters/histograms tracking what actually
 matters for a long-running-agent workload - operations started/completed/failed/stopped,
 end-to-end duration, translation call duration, steering messages processed, and how many
-operations are currently paused waiting on a human. Scraped via ``/metrics`` on both the
-hosted-agent and broker FastAPI apps (see ``metrics_endpoint``).
+operations are currently paused waiting on a human. Scraped via ``/metrics`` on the hosted-agent
+app (see ``metrics_endpoint``). Downloads themselves aren't tracked here - they go straight to
+Blob Storage via a SAS URL, never through this app; see Azure Storage's own diagnostic logs for
+that (docs/architecture.md's "Public storage + SAS" section).
 
 Logging: ``operation_log_context`` binds an operation_id to a contextvar for the duration of
 a request; ``JsonLogFormatter`` includes it in every log line emitted while that context is
@@ -161,9 +163,6 @@ def _make_metrics():
         "invocation_rate_limited_total": Counter(
             "lda_invocation_rate_limited_total", "New-operation requests rejected by the rate limiter"
         ),
-        "download_rate_limited_total": Counter(
-            "lda_download_rate_limited_total", "Download requests rejected by the rate limiter"
-        ),
         "content_safety_blocked_total": Counter(
             "lda_content_safety_blocked_total", "Prompts rejected by the content safety guardrail"
         ),
@@ -180,7 +179,6 @@ _METRIC_NAMES = [
     "steering_messages_total",
     "waiting_hitl_gauge",
     "invocation_rate_limited_total",
-    "download_rate_limited_total",
     "content_safety_blocked_total",
 ]
 

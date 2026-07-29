@@ -29,7 +29,6 @@ from pathlib import Path
 from agent_framework import Executor, WorkflowBuilder, WorkflowContext, WorkflowEvent, handler, response_handler
 from typing_extensions import Never
 
-from ..broker.tokens import build_download_link
 from ..config import get_settings
 from ..content_safety import check_content_safety
 from ..limits import validate_markdown_size, validate_prompt_length
@@ -252,12 +251,16 @@ class StopExecutor(Executor):
 
 
 class LinkExecutor(Executor):
-    """Mints a fresh, short-lived broker download link and yields the final result."""
+    """Mints a fresh, short-lived SAS download URL directly against Blob Storage and yields
+    the final result. No broker/proxy: the caller is handed a real, time-limited link and
+    talks to Blob Storage directly - see "Public storage + SAS" in docs/architecture.md for
+    the security model and how reads get logged (Azure Storage diagnostic logs, not app code)."""
 
     @handler
     async def process(self, state: PipelineState, ctx: WorkflowContext[Never, PipelineState]) -> None:
-        download_url, expires_at = build_download_link(
-            artifact_id=state.artifact_id, tenant_id=state.tenant_id, user_object_id=state.user_object_id
+        settings = get_settings()
+        download_url, expires_at = await get_blob_store().generate_download_url(
+            state.blob_name, ttl_minutes=settings.lda_download_sas_ttl_minutes
         )
         final_state = state.model_copy(
             update={"download_url": download_url, "expires_at_iso": expires_at.isoformat()}

@@ -3,13 +3,13 @@
 Deliberately minimal - this is bookkeeping, not an artifact catalogue (the
 user explicitly does not want a "my artifacts" list/browse feature). It
 stores just enough to: resume an in-flight operation idempotently, know
-which blob belongs to which artifact_id, enforce per-user ownership before
-the broker will stream a download, sweep expired (TTL) artifacts, and sweep
-stale operations that never got resumed.
+which blob belongs to which artifact_id, sweep expired (TTL) artifacts, and
+sweep stale operations that never got resumed.
 
-No SAS token, download URL, or other credential is ever persisted here -
-see broker/tokens.py, which mints a fresh short-lived token per download
-request instead.
+No SAS token, download URL, or other credential is ever persisted here - see
+storage/blob_store.py's ``generate_download_url``, which mints a fresh
+short-lived SAS URL per download request instead, straight from Blob
+Storage, with no broker/proxy in between.
 
 All methods are async - not because SQLite needs it (it doesn't have a
 non-blocking API, so the SQLite implementation below runs its queries via

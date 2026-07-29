@@ -27,16 +27,16 @@ def reset_secret_state():
 
 def test_falls_back_to_env_var_when_key_vault_not_configured(monkeypatch):
     monkeypatch.setenv("LDA_KEY_VAULT_URL", "")
-    monkeypatch.setenv("LDA_BROKER_SIGNING_KEY", "env-value")
+    monkeypatch.setenv("AZURE_CONTENT_SAFETY_API_KEY", "env-value")
     get_settings.cache_clear()
 
-    assert secrets.get_broker_signing_key() == "env-value"
+    assert secrets.get_content_safety_api_key() == "env-value"
 
 
 @requires_key_vault_sdk
 def test_fetches_from_key_vault_when_configured(monkeypatch):
     monkeypatch.setenv("LDA_KEY_VAULT_URL", "https://fake-vault.vault.azure.net")
-    monkeypatch.setenv("LDA_BROKER_SIGNING_KEY", "env-value-unused")
+    monkeypatch.setenv("AZURE_CONTENT_SAFETY_API_KEY", "env-value-unused")
     get_settings.cache_clear()
 
     fake_secret = mock.Mock(value="vault-value")
@@ -45,7 +45,7 @@ def test_fetches_from_key_vault_when_configured(monkeypatch):
         mock.patch("azure.identity.DefaultAzureCredential"),
     ):
         mock_client_cls.return_value.get_secret.return_value = fake_secret
-        value = secrets.get_broker_signing_key()
+        value = secrets.get_content_safety_api_key()
 
     assert value == "vault-value"
 
@@ -62,8 +62,8 @@ def test_key_vault_fetch_is_cached_within_the_ttl(monkeypatch):
         mock.patch("azure.identity.DefaultAzureCredential"),
     ):
         mock_client_cls.return_value.get_secret.return_value = fake_secret
-        secrets.get_broker_signing_key()
-        secrets.get_broker_signing_key()
+        secrets.get_content_safety_api_key()
+        secrets.get_content_safety_api_key()
         assert mock_client_cls.return_value.get_secret.call_count == 1
 
 
@@ -79,6 +79,6 @@ def test_key_vault_fetch_refreshes_after_ttl_expires(monkeypatch):
         mock.patch("azure.identity.DefaultAzureCredential"),
     ):
         mock_client_cls.return_value.get_secret.return_value = fake_secret
-        secrets.get_broker_signing_key()
-        secrets.get_broker_signing_key()
+        secrets.get_content_safety_api_key()
+        secrets.get_content_safety_api_key()
         assert mock_client_cls.return_value.get_secret.call_count == 2

@@ -1,9 +1,8 @@
 """Azure Table Storage-backed MetadataStore - the multi-instance production backend.
 
 Implements the exact same async interface as ``MetadataStore`` (SQLite), so
-``durable/engine.py``, ``durable/pipeline.py``, ``broker/api.py``, ``cleanup.py`` and
-``stale_operations.py`` all work unchanged regardless of which one is selected via
-``LDA_METADATA_BACKEND``.
+``durable/engine.py``, ``durable/pipeline.py``, ``cleanup.py`` and ``stale_operations.py``
+all work unchanged regardless of which one is selected via ``LDA_METADATA_BACKEND``.
 
 Entity schema:
     operations table: PartitionKey = "operation" (fixed - the only read pattern callers use

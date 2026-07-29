@@ -8,9 +8,6 @@
     "LDA_STORAGE_BACKEND": "azurite",
     "AZURE_STORAGE_CONTAINER": "artifacts",
 
-    "LDA_BROKER_BASE_URL": "http://localhost:8081",
-    "LDA_BROKER_SIGNING_KEY": "dev-only-change-me",
-
     "LDA_IDENTITY_MODE": "dev"
   }
 }
