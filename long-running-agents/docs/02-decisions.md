@@ -364,6 +364,19 @@ call, rather than through the event queue the executor also owns (which the
 producer's own teardown may be concurrently closing — an event enqueued
 there is silently dropped, not merely delayed).
 
+**Real race this design shape opened up, found and fixed:** that direct
+write and the SDK's own event consumer (still possibly draining an
+already-queued status event through `GatewayTaskStoreAdapter.save()`) can
+both call `TaskStore.append_event()` concurrently for the same task, and
+used to be able to race each other into `gw_task.state` — a stale, later-
+arriving non-terminal write could revert an already-terminal `'canceled'`
+back to `'working'`, silently losing the cancellation. Fixed by making
+terminal states sticky at the SQL level (`append_event()`'s status UPDATE
+now guards `state NOT IN (terminal states)`) — see
+`docs/08-open-items-and-experiments.md` item 23 for the full account,
+including how it was found (a test that looked merely flaky turned out to
+be reporting a real bug).
+
 ### Mid-run steering — supported, tier-dependent, cooperative
 
 **The universal constraint:** steering is always *cooperative* and

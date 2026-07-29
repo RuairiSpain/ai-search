@@ -229,7 +229,32 @@ class TaskStore:
         once at completion; found via the interject endpoint's "is this
         task actually working" check, which could never see `working`
         because of it (docs/08). "artifact" events carry no task state and
-        never touch this column."""
+        never touch this column.
+
+        The terminal-state guard on the UPDATE below (`state NOT IN
+        (...)`) fixes a real race, not just a defensive nicety —
+        found chasing a genuinely flaky CancelTask convergence test, not
+        invented speculatively. `GatewayAgentExecutor.cancel()` writes
+        'canceled' directly here at the same moment the SDK is still
+        draining an already-queued status event (e.g. the initial
+        WORKING transition) through `GatewayTaskStoreAdapter.save()`,
+        which also calls this method. Both derive `sequence` from a
+        separately-fetched, stale `task_row.last_sequence + 1` read in
+        Python — under concurrency they can independently compute the
+        *same* next sequence number. The INSERT's `ON CONFLICT DO
+        NOTHING` silently drops whichever one loses that collision, but
+        its accompanying UPDATE ran unconditionally regardless — so
+        whichever writer's UPDATE physically executed *last* won,
+        non-deterministically. If the stale WORKING write landed after
+        cancel()'s CANCELED write, state reverted to 'working' with
+        nothing left to ever fix it: not a slow convergence, a genuinely
+        lost cancellation. Once a task reaches a terminal state
+        (`TaskState.TERMINAL_STATES` in `gateway.upstream.base` — kept
+        as literal strings here since this is raw SQL, not importing the
+        enum), no further status write may move it to a different
+        state, regardless of arrival order — a real, always-true
+        invariant this project wants, not a band-aid scoped to this one
+        race."""
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """
@@ -244,8 +269,11 @@ class TaskStore:
             )
             if kind == "status":
                 await conn.execute(
-                    "UPDATE gw_task SET state = $2, last_sequence = $3, updated_at = now() "
-                    "WHERE task_id = $1",
+                    """
+                    UPDATE gw_task SET state = $2, last_sequence = $3, updated_at = now()
+                    WHERE task_id = $1
+                      AND state NOT IN ('completed', 'failed', 'canceled', 'rejected')
+                    """,
                     task_id,
                     payload["state"],
                     sequence,

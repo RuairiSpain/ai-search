@@ -686,6 +686,63 @@ real than a `FakeAdapter`. In order found:
     gateway sends a correctly-formed header on every call it makes — the
     half actually in this codebase's control.
 
+23. **A real, if rare, lost-cancellation race — found chasing what looked
+    like test flakiness, not invented speculatively.**
+    `tests/test_a2a_api.py::test_cancel_relays_to_adapter_and_state_converges`
+    started failing intermittently (roughly 1 run in 4–5) after the trace-
+    correlation work above added more tests to the same file — not because
+    that feature touched anything relevant, but because the added load
+    widened an existing race's window. Initial instinct was "the test's
+    polling budget is too tight for a noisy shared container" — widened
+    `tests/test_a2a_api.py`'s five separate `for _ in range(100):
+    asyncio.sleep(0.05)` polling loops (all migrated to two new shared
+    helpers, `_poll_until`/`_poll_task_state`, cutting real duplication
+    along the way) from a 5s budget to 30s. That made it *worse*, not
+    better: a reproduction run hung for the full 30s and still failed,
+    which is not what "scheduling jitter" looks like — genuine jitter
+    would show up as occasional slowness, not a hang that outlasts a
+    30-second budget on a test that talks to nothing but a local Postgres
+    and an in-process ASGI app.
+
+    Root cause, found via a standalone repro script and reading
+    `GatewayTaskStoreAdapter.save()` directly: `GatewayAgentExecutor.cancel()`
+    (`src/gateway/a2a_server/executor.py`) writes `'canceled'` straight to
+    `gw_task` at the same moment a2a-sdk's own event consumer can still be
+    draining an already-queued status event (e.g. the task's initial
+    WORKING transition) through `GatewayTaskStoreAdapter.save()`
+    (`src/gateway/a2a_server/task_store.py`) — both call
+    `TaskStore.append_event()`. Both derive their `sequence` argument from
+    a separately-fetched, stale `task_row.last_sequence + 1` read in
+    Python, so under concurrency they can independently compute the
+    *identical* next sequence number. `append_event()`'s
+    `INSERT ... ON CONFLICT (task_id, sequence) DO NOTHING` silently drops
+    whichever writer loses that collision, but its accompanying
+    `UPDATE gw_task SET state = ...` ran unconditionally regardless of the
+    INSERT's outcome — so whichever writer's UPDATE physically executed
+    *last* won, non-deterministically. When the stale WORKING write landed
+    after the CANCELED write, state reverted to `'working'` with nothing
+    left to ever fix it: not a slow convergence, a **genuinely lost
+    cancellation** — a real production correctness bug this test happened
+    to be the only thing exercising concurrently enough to surface.
+
+    Fix: `append_event()`'s status UPDATE (`src/gateway/store/task_store.py`)
+    now carries `AND state NOT IN ('completed', 'failed', 'canceled',
+    'rejected')` — once a task reaches a terminal state, no further status
+    write can move it to a different state, regardless of arrival order.
+    Matches `TaskState.TERMINAL_STATES` in `gateway.upstream.base` exactly
+    (kept as literal strings since this is raw SQL). This is a real,
+    always-true invariant worth having on its own merits, not a band-aid
+    scoped to this one race. Verified the fix, not just the symptom: 25
+    consecutive full runs of `tests/test_a2a_api.py` after the fix, versus
+    a reproducible failure roughly 1 run in 4–5 before it. New dedicated
+    regression tests against real Postgres,
+    `tests/test_task_store_terminal_state_sticky.py`, exercise the guard
+    directly (a late-arriving higher-sequence write cannot revert a
+    terminal state; all four terminal states are sticky; ordinary
+    non-terminal transitions still apply normally) — independent of the
+    SDK machinery that originally surfaced it, so this stays covered even
+    on a run that doesn't happen to hit the race.
+
 ## D. Duplicate source documents collapsed during merge
 
 For traceability: these upload sets were identical or near-identical

@@ -227,6 +227,46 @@ async def _rpc(client: AsyncClient, method: str, params: dict, *, headers: dict,
     return resp.json()
 
 
+async def _poll_until(check, *, timeout_s: float = 30.0, interval_s: float = 0.05, message: str):
+    """Poll the async zero-arg `check` until it returns a truthy value,
+    then return that value -- or fail after `timeout_s`.
+
+    A generous default budget on purpose. Every convergence this file
+    polls for (state transitions the FakeAdapter's follow() loop drives
+    asynchronously, a push notification delivered via a background task)
+    is normally near-instant, but this suite runs against a real Postgres
+    and a real ASGI stack sharing whatever CPU this container happens to
+    get -- a tight budget flakes on scheduling noise that has nothing to
+    do with correctness. Observed directly: one of these polls took ~18s
+    in an otherwise fully-passing run, against a ~3.5s baseline for the
+    whole file. `interval_s` stays short so the fast path -- the
+    overwhelming common case -- pays nothing extra; only a genuinely slow
+    run spends more of the larger ceiling."""
+    deadline = time.monotonic() + timeout_s
+    while True:
+        result = await check()
+        if result:
+            return result
+        if time.monotonic() >= deadline:
+            pytest.fail(message)
+        await asyncio.sleep(interval_s)
+
+
+async def _poll_task_state(
+    client: AsyncClient, task_id: str, headers: dict, want_state: str, *, req_id: str = "poll"
+) -> dict:
+    """The common case among this file's polling loops: wait for GetTask's
+    status.state to reach `want_state`, returning the full result once it
+    does."""
+
+    async def _check():
+        get_body = await _rpc(client, "GetTask", {"id": task_id}, headers=headers, req_id=req_id)
+        result = get_body["result"]
+        return result if result["status"]["state"] == want_state else None
+
+    return await _poll_until(_check, message=f"task never converged to {want_state}")
+
+
 @pytest.mark.asyncio
 async def test_send_message_blocks_until_terminal_then_get(app_and_adapter, rsa_key):
     fastapi_app, adapter, _pushed = app_and_adapter
@@ -329,15 +369,18 @@ async def test_status_message_gets_demoted_to_history_on_a_later_update(app_and_
         task_id = send_body["result"]["task"]["id"]
 
         try:
-            for _ in range(100):
+
+            async def _second_narration_arrived():
                 get_body = await _rpc(client, "GetTask", {"id": task_id}, headers=headers, req_id="2")
                 result = get_body["result"]
                 message = result["status"].get("message")
                 if message and message["parts"][0]["text"] == "second narration":
-                    break
-                await asyncio.sleep(0.05)
-            else:
-                pytest.fail("task never reached the second narration step")
+                    return result
+                return None
+
+            result = await _poll_until(
+                _second_narration_arrived, message="task never reached the second narration step"
+            )
 
             assert result["status"]["state"] == "TASK_STATE_WORKING"
             history_texts = [
@@ -441,12 +484,11 @@ async def test_push_notification_config_delivers_on_completion(app_and_adapter, 
         assert len(listed["result"]["configs"]) == 1
 
         adapter._release.set()
-        for _ in range(100):
-            if pushed:
-                break
-            await asyncio.sleep(0.05)  # up to 5s total, headroom under a busy suite
-        else:
-            pytest.fail("no push notification delivered")
+
+        async def _pushed_something():
+            return pushed
+
+        await _poll_until(_pushed_something, message="no push notification delivered")
         assert str(pushed[-1].url) == "https://push.example.com/cb"
         assert pushed[-1].headers["X-A2A-Notification-Token"] == "verify-me"
 
@@ -476,13 +518,7 @@ async def test_cancel_relays_to_adapter_and_state_converges(app_and_adapter, rsa
 
         # D7: never optimistic -- state only flips once follow() observes
         # the upstream confirm it, which happens asynchronously here.
-        for _ in range(100):
-            get_body = await _rpc(client, "GetTask", {"id": task["id"]}, headers=headers, req_id="3")
-            if get_body["result"]["status"]["state"] == "TASK_STATE_CANCELED":
-                break
-            await asyncio.sleep(0.05)  # up to 5s total, headroom under a busy suite
-        else:
-            pytest.fail("task never converged to TASK_STATE_CANCELED")
+        await _poll_task_state(client, task["id"], headers, "TASK_STATE_CANCELED", req_id="3")
 
 
 @pytest.mark.asyncio
@@ -511,13 +547,7 @@ async def test_interject_relays_to_adapter_and_is_recorded(app_and_adapter, rsa_
         # reads gw_task directly, not the SDK's in-memory event stream. A
         # real caller wouldn't interject in the same instant as submitting
         # either; poll like any other post-submit convergence in this file.
-        for _ in range(100):
-            get_body = await _rpc(client, "GetTask", {"id": task["id"]}, headers=headers, req_id="1b")
-            if get_body["result"]["status"]["state"] == "TASK_STATE_WORKING":
-                break
-            await asyncio.sleep(0.05)  # up to 5s total, headroom under a busy suite
-        else:
-            pytest.fail("task never converged to TASK_STATE_WORKING in the store")
+        await _poll_task_state(client, task["id"], headers, "TASK_STATE_WORKING", req_id="1b")
 
         resp = await client.post(
             f"/apps/ticket-triage/tasks/{task['id']}/interject",
@@ -543,13 +573,7 @@ async def test_interject_relays_to_adapter_and_is_recorded(app_and_adapter, rsa_
         # Release the task and confirm interjecting into a terminal task
         # is rejected -- there's nothing left to steer.
         adapter._release.set()
-        for _ in range(100):
-            get_body = await _rpc(client, "GetTask", {"id": task["id"]}, headers=headers, req_id="2")
-            if get_body["result"]["status"]["state"] == "TASK_STATE_COMPLETED":
-                break
-            await asyncio.sleep(0.05)  # up to 5s total, headroom under a busy suite
-        else:
-            pytest.fail("task never converged to TASK_STATE_COMPLETED")
+        await _poll_task_state(client, task["id"], headers, "TASK_STATE_COMPLETED", req_id="2")
 
         late = await client.post(
             f"/apps/ticket-triage/tasks/{task['id']}/interject",
