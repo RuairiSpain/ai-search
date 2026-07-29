@@ -37,6 +37,29 @@ Private Storage Account (infra/storage-private.bicep)
 User's browser ── GET {download_url} ──▶ Artifact Broker API ──▶ streams the blob
 ```
 
+## Local development storage backends
+
+`storage/blob_store.py` has three backends behind one `BlobStore` interface
+(`LDA_STORAGE_BACKEND`):
+
+- `local` (default) - `LocalDiskBlobStore`, pure Python, no external process. Fastest option
+  and what the test suite uses.
+- `azurite` - `AzureBlobStore` pointed at a local
+  [Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite) instance via
+  connection string. This is the *same* `AzureBlobStore` class and the *same*
+  `azure-storage-blob` SDK calls used against real Azure - Azurite implements the real Blob
+  REST API, so this exercises the actual production code path (auth handshake shape,
+  container/blob semantics, SDK error types) without any cloud resources. Verified manually:
+  running Azurite locally (`npx azurite-blob --skipApiVersionCheck` - the flag works around
+  newer SDK versions sending an API version an older Azurite build doesn't recognize yet) and
+  pointing the pipeline at it produces and reads back the same bilingual Markdown artifact as
+  the `local` backend, through the real SDK.
+- `azure` - `AzureBlobStore` against a real, private storage account via `account_url` +
+  `DefaultAzureCredential` (Managed Identity in production, `az login` for a developer).
+
+Azurite's connection string uses its own published, well-known development account key -
+not a secret, and not usable against any real Azure account.
+
 ## Why a durable MAF Workflow instead of a hand-rolled step runner
 
 `agent_framework.WorkflowBuilder` lets each step be an `Executor` connected by edges; when

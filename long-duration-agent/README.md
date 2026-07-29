@@ -86,9 +86,14 @@ See `.env.example` for the full list. The defaults run the whole pipeline offlin
 
 - `LDA_USE_STUB_TRANSLATOR=1` - skips the model call (set to `0` and configure
   `FOUNDRY_*`/`AZURE_OPENAI_*` for real es-ES translations).
-- `LDA_STORAGE_BACKEND=local` - writes artifacts under `.data/blob-store` instead of Azure
-  Blob Storage (set to `azure` and configure `AZURE_STORAGE_ACCOUNT_URL` for the private,
-  production backend - see `infra/storage-private.bicep`).
+- `LDA_STORAGE_BACKEND=local` - writes artifacts under `.data/blob-store`, no dependencies.
+  Set to `azurite` to exercise the real `azure-storage-blob` SDK against a local
+  [Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite) emulator
+  instead (`docker run -p 10000:10000 mcr.microsoft.com/azure-storage/azurite` or
+  `npx azurite-blob --blobHost 0.0.0.0`) - a much closer rehearsal of production than the
+  local-disk stand-in, still with zero real Azure resources. Set to `azure` and configure
+  `AZURE_STORAGE_ACCOUNT_URL` for the private, production backend - see
+  `infra/storage-private.bicep`.
 - `LDA_IDENTITY_MODE=dev` - trusts an `X-Debug-User: <tenant_id>:<user_object_id>` header
   instead of validating a bearer token (set to `entra` in any real deployment).
 - `LDA_ARTIFACT_TTL_HOURS=24`, `LDA_DOWNLOAD_TOKEN_TTL_MINUTES=15`,

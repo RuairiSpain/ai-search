@@ -5,9 +5,18 @@ The hosted-agent local filesystem ($HOME/... equivalent, see
 artifacts land here, and this is what the Artifact Broker API reads from
 when it streams a download. In production this is a private Azure Storage
 account (public network access disabled, accessed only via the broker's
-managed identity - see docs/architecture.md). For local demo/test runs,
-``LocalDiskBlobStore`` stands in for that account so the whole pipeline
-runs without any Azure resources.
+managed identity - see docs/architecture.md).
+
+Two stand-ins are available so the pipeline runs without any real Azure
+resources:
+
+- ``LocalDiskBlobStore`` - pure Python, no external process, used as the
+  default and in the test suite for speed and zero setup.
+- ``AzureBlobStore`` pointed at Azurite (the official local Azure Storage
+  emulator) - exercises the real ``azure-storage-blob`` SDK code path
+  against a real Blob REST API implementation, so it's a much closer
+  rehearsal of production than the local-disk stand-in. See
+  docs/architecture.md for how to run it.
 """
 
 from __future__ import annotations
@@ -60,25 +69,57 @@ class LocalDiskBlobStore:
 
 
 class AzureBlobStore:
-    """Private Azure Blob Storage, authenticated via Managed Identity (no account keys, no SAS).
+    """Real Azure Blob Storage, via the actual ``azure-storage-blob`` SDK client.
 
-    Requires public network access disabled + a private endpoint on the
-    storage account (see infra/storage-private.bicep); the account is never
-    reachable directly from a browser. Only this process's managed identity
-    (or a developer's `az login` credential locally) can read/write it, which
-    is exactly why the Artifact Broker API - not a handed-out SAS URL - is the
-    thing users' browsers talk to.
+    Two ways to connect:
+
+    - Production: ``account_url`` + Managed Identity (no account keys, no SAS).
+      Requires public network access disabled + a private endpoint on the
+      storage account (see infra/storage-private.bicep); the account is never
+      reachable directly from a browser. Only this process's managed identity
+      (or a developer's `az login` credential locally) can read/write it, which
+      is exactly why the Artifact Broker API - not a handed-out SAS URL - is
+      the thing users' browsers talk to.
+    - Local demo: ``connection_string`` pointed at Azurite. Azurite's
+      well-known account key is a published emulator default, not a secret -
+      it only ever authenticates against a local emulator, never a real
+      Azure account. ``create_container_if_missing`` is only meant for this
+      path; a real account's container is provisioned by
+      infra/storage-private.bicep instead.
     """
 
-    def __init__(self, account_url: str, container: str) -> None:
-        from azure.identity import DefaultAzureCredential
+    def __init__(
+        self,
+        *,
+        container: str,
+        account_url: str | None = None,
+        connection_string: str | None = None,
+        create_container_if_missing: bool = False,
+    ) -> None:
         from azure.storage.blob import ContainerClient
 
-        self._container = ContainerClient(
-            account_url=account_url,
-            container_name=container,
-            credential=DefaultAzureCredential(),
-        )
+        if connection_string:
+            self._container = ContainerClient.from_connection_string(
+                connection_string, container_name=container
+            )
+        else:
+            from azure.identity import DefaultAzureCredential
+
+            if not account_url:
+                raise ValueError("AzureBlobStore requires either account_url or connection_string.")
+            self._container = ContainerClient(
+                account_url=account_url,
+                container_name=container,
+                credential=DefaultAzureCredential(),
+            )
+
+        if create_container_if_missing:
+            from azure.core.exceptions import ResourceExistsError
+
+            try:
+                self._container.create_container()
+            except ResourceExistsError:
+                pass
 
     async def upload_file(self, *, local_path: Path, blob_name: str) -> int:
         size = local_path.stat().st_size
@@ -104,8 +145,18 @@ def get_blob_store() -> BlobStore:
     if _STORE is not None:
         return _STORE
     settings = get_settings()
-    if settings.lda_storage_backend == "azure":
-        _STORE = AzureBlobStore(settings.azure_storage_account_url, settings.azure_storage_container)
+    backend = settings.lda_storage_backend
+    if backend == "azure":
+        _STORE = AzureBlobStore(
+            account_url=settings.azure_storage_account_url,
+            container=settings.azure_storage_container,
+        )
+    elif backend == "azurite":
+        _STORE = AzureBlobStore(
+            connection_string=settings.azurite_connection_string,
+            container=settings.azure_storage_container,
+            create_container_if_missing=True,
+        )
     else:
         _STORE = LocalDiskBlobStore(settings.local_storage_root)
     return _STORE

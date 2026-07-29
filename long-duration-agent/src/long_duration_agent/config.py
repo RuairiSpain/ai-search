@@ -25,10 +25,20 @@ class Settings(BaseSettings):
     lda_use_stub_translator: bool = True
 
     # Storage backend
-    lda_storage_backend: str = "local"  # "local" | "azure"
+    lda_storage_backend: str = "local"  # "local" | "azurite" | "azure"
     lda_local_storage_root: str = ".data/blob-store"
     azure_storage_account_url: str = ""
     azure_storage_container: str = "artifacts"
+
+    # Azurite (local Azure Storage emulator) connection string, used only when
+    # lda_storage_backend == "azurite". This is Azurite's published, well-known
+    # development account key - it authenticates against a local emulator only
+    # and is not a secret (see https://learn.microsoft.com/azure/storage/common/storage-use-azurite).
+    azurite_connection_string: str = (
+        "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+        "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
+        "BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
+    )
 
     # Orchestration + metadata state
     lda_state_db_path: str = ".data/state.db"
