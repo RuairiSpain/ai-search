@@ -20,6 +20,7 @@ def isolated_settings(tmp_path, monkeypatch):
 
     from long_duration_agent.config import get_settings
     from long_duration_agent.durable.engine import reset_checkpoint_storage_cache
+    from long_duration_agent.rate_limit import reset_rate_limiter_cache
     from long_duration_agent.storage.blob_store import reset_blob_store_cache
     from long_duration_agent.storage.metadata_store import reset_metadata_store_cache
 
@@ -27,6 +28,7 @@ def isolated_settings(tmp_path, monkeypatch):
     reset_blob_store_cache()
     reset_metadata_store_cache()
     reset_checkpoint_storage_cache()
+    reset_rate_limiter_cache()
 
     yield
 
@@ -34,3 +36,4 @@ def isolated_settings(tmp_path, monkeypatch):
     reset_blob_store_cache()
     reset_metadata_store_cache()
     reset_checkpoint_storage_cache()
+    reset_rate_limiter_cache()

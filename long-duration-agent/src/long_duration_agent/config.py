@@ -96,6 +96,26 @@ class Settings(BaseSettings):
     lda_broker_signing_key: str = "dev-only-change-me"
     lda_broker_base_url: str = "http://localhost:8081"
 
+    # Rate limiting (see rate_limit.py): in-memory, per-caller (tenant_id + user_object_id)
+    # sliding window over 60 seconds. Applies only to genuinely new operations (not resumes/
+    # reconnects) and artifact downloads - the two calls that cost a model invocation or a
+    # private-storage read per request. 0 disables a given limiter.
+    lda_rate_limit_enabled: bool = True
+    lda_rate_limit_invocations_per_minute: int = 30
+    lda_rate_limit_downloads_per_minute: int = 60
+
+    # Content safety guardrail (see content_safety.py), checked on the English prompt before
+    # Translate. "off" (default, unchanged demo behavior) | "blocklist" (offline, deterministic
+    # substring match against lda_content_safety_blocklist) | "azure" (real Azure AI Content
+    # Safety analyze_text call).
+    lda_content_safety_mode: str = "off"  # "off" | "blocklist" | "azure"
+    lda_content_safety_blocklist: str = ""  # comma-separated terms, "blocklist" mode only
+    azure_content_safety_endpoint: str = ""
+    azure_content_safety_api_key: str = ""
+    # FourSeverityLevels output is 0/2/4/6 per category; block at or above this. 4 is Azure's
+    # own default "Medium" threshold.
+    lda_content_safety_max_severity: int = 4
+
     # Identity
     lda_identity_mode: str = "dev"  # "dev" | "entra"
     entra_tenant_id: str = ""

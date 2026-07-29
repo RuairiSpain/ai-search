@@ -29,3 +29,6 @@ pytest-asyncio>=0.23
 # opentelemetry-sdk>=1.30
 # opentelemetry-exporter-otlp-proto-http>=1.30
 # prometheus-client>=0.20
+
+# Required only for LDA_CONTENT_SAFETY_MODE=azure - see content_safety.py
+# azure-ai-contentsafety>=1.0.0

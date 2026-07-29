@@ -31,6 +31,7 @@ from typing_extensions import Never
 
 from ..broker.tokens import build_download_link
 from ..config import get_settings
+from ..content_safety import check_content_safety
 from ..limits import validate_markdown_size, validate_prompt_length
 from ..markdown_artifact import build_markdown
 from ..models import ArtifactRecord, OrchestrationStage
@@ -57,6 +58,7 @@ class ValidateExecutor(Executor):
     @handler
     async def process(self, state: PipelineState, ctx: WorkflowContext[PipelineState]) -> None:
         validate_prompt_length(state.prompt)
+        await check_content_safety(state.prompt)
         await ctx.add_event(_status_event(self.id, OrchestrationStage.STARTED, "The agent is working..."))
         await ctx.send_message(state.model_copy(update={"english_text": state.prompt}))
 

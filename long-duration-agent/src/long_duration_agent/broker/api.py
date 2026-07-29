@@ -25,6 +25,7 @@ from fastapi.responses import StreamingResponse
 
 from ..identity import CallerIdentity, resolve_caller
 from ..observability import configure_json_logging, configure_observability, metrics_endpoint_response
+from ..rate_limit import enforce_download_rate_limit
 from ..storage.blob_store import get_blob_store
 from ..storage.metadata_store import get_metadata_store
 from .tokens import InvalidDownloadTokenError, verify_download_token
@@ -49,6 +50,8 @@ async def download_artifact(
     token: str = Query(...),
     caller: CallerIdentity = Depends(resolve_caller),
 ) -> StreamingResponse:
+    enforce_download_rate_limit(caller)
+
     try:
         token_payload = verify_download_token(token)
     except InvalidDownloadTokenError as exc:

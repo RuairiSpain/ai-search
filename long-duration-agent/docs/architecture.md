@@ -237,6 +237,101 @@ caching the value in-process for `LDA_KEY_VAULT_CACHE_SECONDS` (default 3600s) t
 Vault round-trip on every signed download link. With `LDA_KEY_VAULT_URL` unset, it falls back to
 `LDA_BROKER_SIGNING_KEY` directly - the local-dev/demo path, not for production use.
 
+## Rate limiting
+
+Two calls cost a real resource per request: starting a *new* translation operation (a model
+call) and downloading an artifact (a private-storage read). `rate_limit.py` caps both per caller
+(`tenant_id:user_object_id`) with a plain in-memory sliding window (`_SlidingWindowLimiter` - one
+`deque` of hit timestamps per key, pruned lazily on each check) over a 60-second window:
+`LDA_RATE_LIMIT_INVOCATIONS_PER_MINUTE` (default 30) and `LDA_RATE_LIMIT_DOWNLOADS_PER_MINUTE`
+(default 60); either set to `0` disables just that limiter, and `LDA_RATE_LIMIT_ENABLED=0`
+disables both.
+
+The invocation limiter is deliberately wired to skip resumed operations: `hosted_agent/app.py`'s
+`invoke()` only calls `enforce_invocation_rate_limit()` when `check_operation_access()` couldn't
+find an existing operation for that `operation_id` (`is_new_operation`). A dropped-connection
+reconnect or a client retry replaying the same `operation_id` never repeats the translation call
+- charging it against the limit would penalize exactly the reconnect story
+`durable/engine.py`'s idempotent replay exists to support. The download limiter has no such
+carve-out - every `GET /artifacts/{id}/download` costs a private-storage read regardless of
+whether it's a first or repeated fetch of the same artifact.
+
+A caller over the limit gets `HTTPException(429, ...)` with a `Retry-After` header computed from
+when its oldest in-window hit will age out; rejections also increment
+`lda_invocation_rate_limited_total`/`lda_download_rate_limited_total` (see Observability above).
+
+This is intentionally a per-process, in-memory limiter - correct and sufficient for a single
+hosted-agent/broker instance, same scoping caveat as the default `file`/`sqlite`
+checkpoint/metadata backends. A multi-instance deployment would need the counters in a shared
+store instead (Redis, or the same Table Storage backend already used for checkpoints/metadata)
+so the limit applies across replicas, not per-replica; `enforce_invocation_rate_limit()` and
+`enforce_download_rate_limit()` are the only two call sites that would need to change to make
+that swap.
+
+## Content safety guardrail
+
+`content_safety.py`'s `check_content_safety()` runs once, in `ValidateExecutor`, on the original
+English prompt - right after the character-limit check and before Translate, so a blocked prompt
+never reaches the model or gets written to storage. Three modes
+(`LDA_CONTENT_SAFETY_MODE`):
+
+- `"off"` (default) - a no-op; unchanged behavior for the existing demo/test suite.
+- `"blocklist"` - deterministic and offline: a case-insensitive substring match against
+  `LDA_CONTENT_SAFETY_BLOCKLIST` (comma-separated terms). No external dependency, so this is
+  what the always-run test coverage exercises.
+- `"azure"` - calls Azure AI Content Safety's real async client
+  (`azure.ai.contentsafety.aio.ContentSafetyClient.analyze_text`, `AnalyzeTextOptions(text=...)`)
+  and blocks the prompt if any `TextCategoriesAnalysis.severity` returned is at or above
+  `LDA_CONTENT_SAFETY_MAX_SEVERITY` (default 4). Azure's default "FourSeverityLevels" output type
+  returns 0/2/4/6 per category (`Hate`/`SelfHarm`/`Sexual`/`Violence`) - 4 is Azure's own
+  "Medium" cutoff. Auth is `AZURE_CONTENT_SAFETY_API_KEY` (an `AzureKeyCredential`) if set, else
+  `DefaultAzureCredential` - the same either-key-or-managed-identity pattern as
+  `AzureBlobStore`. Requires the `content-safety` extra (`azure-ai-contentsafety`); like the
+  Foundry/OpenAI translator branches, the import is attempted lazily inside `_check_azure()` and
+  turned into a clear `RuntimeError` naming the extra to install if it's missing, rather than a
+  raw `ModuleNotFoundError` reaching the caller.
+
+A blocked prompt raises `ContentSafetyBlockedError` (a `ValueError` subclass), which propagates
+out of the executor exactly like `InputTooLargeError` already does - `durable/engine.py`'s
+`_drive_stream()` has one generic `except Exception` handler that fails the operation and yields
+`event: error` with the exception's message, so no special-casing was needed to wire this in.
+
+This is checked only on the input prompt, not the translated output: the translator is
+instructed to translate meaning faithfully, not add new content, so screening the input is the
+meaningful checkpoint. A stricter deployment could call `check_content_safety()` a second time
+on `state.spanish_text` in `TranslateExecutor`, using the exact same function.
+
+## Tests for the real (non-stub) translation path
+
+Every other test in this repo sets `LDA_USE_STUB_TRANSLATOR=1`, so `translator._model_translate`
+- the code path that actually constructs a `FoundryChatClient`/`OpenAIChatCompletionClient` and
+calls `get_response()` - had no coverage beyond "does the stub work". `tests/test_translator_model_path.py`
+closes that gap:
+
+- **Always runs, no extra needed**: `agent_framework.foundry`/`agent_framework.openai` are lazy
+  shim modules inside `agent-framework-core` itself - `import agent_framework.foundry` always
+  succeeds, but accessing `FoundryChatClient` on it raises `ModuleNotFoundError` at attribute-
+  access time if the real `agent-framework-foundry` distribution isn't installed. Two tests
+  exercise exactly that (real, always-reproducible in the base `[dev]` install) failure mode,
+  verifying `translate_to_spanish` turns it into a `TranslationError` naming the extra to
+  install - not a raw traceback.
+- **Skipped without the `translate` extra, real otherwise**: the rest mock only
+  `FoundryChatClient.__init__`/`OpenAIChatCompletionClient.__init__` (via
+  `mock.patch.object(cls, "__init__", return_value=None)`) and `get_response` (via
+  `new_callable=mock.AsyncMock`) - everything else is the real SDK class. This verifies, against
+  the actual installed package: the Foundry client is constructed with `project_endpoint=`/
+  `model=`/`credential=` (not, say, `endpoint=` or `deployment=`); the Azure OpenAI branch passes
+  `azure_endpoint=`/`api_key=`/`model=`; the plain-OpenAI fallback omits `azure_endpoint`; a
+  `get_response()` exception becomes a `TranslationError` with the original message; an
+  all-whitespace response is rejected; and - a regression test for a bug already fixed once
+  (see "Errors and fixes" history) - the messages sent are real `agent_framework.Message`
+  objects with `role="system"`/`role="user"`, not raw dicts.
+- Detection uses `importlib.util.find_spec("agent_framework_foundry")` /
+  `find_spec("agent_framework_openai")` - the actual top-level distribution names (underscored,
+  not the dotted `agent_framework.foundry` shim) - which return a clean `None` when not
+  installed, unlike the namespace-package `find_spec` gotcha documented for `azure.*` packages
+  elsewhere in this test suite.
+
 ## Storage and identity: what changed from the initial design
 
 The first draft of this design considered handing the browser a raw Azure Blob SAS URL.

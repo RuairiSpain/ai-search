@@ -37,6 +37,8 @@ long-duration-agent/
 │   ├── identity.py              # caller identity: Entra JWT validation (audience/issuer/scope/role checks), or a dev header locally
 │   ├── secrets.py                # broker signing key from Key Vault (cached) or an env var
 │   ├── observability.py          # OpenTelemetry tracing setup, Prometheus metrics, correlated JSON logs
+│   ├── rate_limit.py             # per-caller sliding-window limits: new operations, downloads
+│   ├── content_safety.py         # optional guardrail on the prompt before Translate: off/blocklist/Azure AI Content Safety
 │   ├── translator.py            # es-ES translation (Foundry/Azure OpenAI, or an offline stub)
 │   ├── markdown_artifact.py     # bilingual Markdown rendering
 │   ├── workspace.py              # hosted-agent local scratch filesystem ($HOME/artifacts equivalent)
@@ -182,6 +184,32 @@ Leave `LDA_KEY_VAULT_URL` empty to fall back to `LDA_BROKER_SIGNING_KEY` directl
 only). Requires the `production` extra (`azure-keyvault-secrets`); `tests/test_secrets.py`'s
 Key-Vault-backed cases skip cleanly without it.
 
+### Rate limiting
+
+`LDA_RATE_LIMIT_ENABLED=1` (default) caps two calls per caller (`tenant_id` + `user_object_id`),
+using an in-memory sliding window over 60 seconds - `LDA_RATE_LIMIT_INVOCATIONS_PER_MINUTE=30`
+for genuinely *new* `POST /invocations` (never a resumed/replayed `operation_id` - see
+`rate_limit.py`) and `LDA_RATE_LIMIT_DOWNLOADS_PER_MINUTE=60` for
+`GET /artifacts/{id}/download`. Either limit set to `0` disables just that limiter. A caller over
+the limit gets `429` with a `Retry-After` header; rejections also increment
+`lda_invocation_rate_limited_total`/`lda_download_rate_limited_total` on `/metrics`. This is
+per-process - correct for a single instance, but a multi-instance deployment needs a shared
+store (e.g. the same Table Storage already used for checkpoints/metadata) for the limit to apply
+across replicas; see `docs/architecture.md`.
+
+### Content safety guardrail
+
+`LDA_CONTENT_SAFETY_MODE=off` (default, unchanged demo behavior) checks nothing.
+`LDA_CONTENT_SAFETY_MODE=blocklist` rejects a prompt containing any comma-separated term from
+`LDA_CONTENT_SAFETY_BLOCKLIST`, case-insensitively - no dependency, good for CI/tests.
+`LDA_CONTENT_SAFETY_MODE=azure` calls Azure AI Content Safety's `analyze_text` and rejects the
+prompt if any category's severity is at or above `LDA_CONTENT_SAFETY_MAX_SEVERITY` (default 4,
+Azure's own "Medium" threshold); requires `AZURE_CONTENT_SAFETY_ENDPOINT` and either
+`AZURE_CONTENT_SAFETY_API_KEY` or a Managed Identity, plus the `content-safety` extra
+(`pip install -e ".[content-safety]"`). Checked once, on the English prompt, in `ValidateExecutor`
+- before any translation call or storage write; a blocked prompt surfaces as a normal
+`event: error` on the SSE stream, the same way an oversized prompt does.
+
 ## Production checklist
 
 This is a working demo, but most of the production hardening below is now implemented -
@@ -196,6 +224,13 @@ what's left is largely deployment/ops, not code:
 - [x] Stale/orphaned operation sweep (`stale_operations.py`) - schedule it, don't just have it.
 - [x] Observability - OpenTelemetry tracing, Prometheus `/metrics`, correlated JSON logs
   (`observability.py`).
+- [x] Rate limiting on new operations and downloads (`rate_limit.py`) - in-memory/per-process;
+  swap for a shared store before running more than one instance.
+- [x] Content safety guardrail on the prompt before translation (`content_safety.py`) - `off` by
+  default; turn on `blocklist` or `azure` before accepting untrusted input.
+- [x] Tests for the real (non-stub) translation path (`tests/test_translator_model_path.py`) -
+  mocked chat clients verifying request/response wiring against the actual SDK, not just the
+  offline stub.
 - [ ] Deploy `infra/storage-private.bicep` (public network access disabled, private endpoint,
   1-day lifecycle policy) and set `LDA_STORAGE_BACKEND=azure`.
 - [ ] Generate a real `LDA_BROKER_SIGNING_KEY` (`openssl rand -hex 32`) and store it in Key
@@ -205,5 +240,3 @@ what's left is largely deployment/ops, not code:
 - [ ] `azure_functions/` is a reviewed hosting reference for Azure Functions' Durable Task
   extension (`agent-framework-durabletask`), not a deployed/live-tested target yet - see
   `docs/architecture.md` before relying on it.
-- [ ] Rate limiting, real-translation-path test coverage, and content-safety guardrails are
-  still open (see `docs/architecture.md`'s production upgrade path for the full list).

@@ -158,6 +158,15 @@ def _make_metrics():
         "waiting_hitl_gauge": Gauge(
             "lda_operations_waiting_hitl", "Operations currently paused waiting on a HITL response"
         ),
+        "invocation_rate_limited_total": Counter(
+            "lda_invocation_rate_limited_total", "New-operation requests rejected by the rate limiter"
+        ),
+        "download_rate_limited_total": Counter(
+            "lda_download_rate_limited_total", "Download requests rejected by the rate limiter"
+        ),
+        "content_safety_blocked_total": Counter(
+            "lda_content_safety_blocked_total", "Prompts rejected by the content safety guardrail"
+        ),
     }
 
 
@@ -170,6 +179,9 @@ _METRIC_NAMES = [
     "translation_duration_seconds",
     "steering_messages_total",
     "waiting_hitl_gauge",
+    "invocation_rate_limited_total",
+    "download_rate_limited_total",
+    "content_safety_blocked_total",
 ]
 
 _metrics: dict | None = None

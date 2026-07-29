@@ -40,6 +40,7 @@ from ..durable.engine import (
 from ..identity import CallerIdentity, resolve_caller
 from ..models import HitlDecisionRequest, InvocationRequest, SteerRequest
 from ..observability import configure_json_logging, configure_observability, metrics_endpoint_response
+from ..rate_limit import enforce_invocation_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,7 @@ async def healthz() -> dict:
 
 @app.post("/invocations")
 async def invoke(request: InvocationRequest, caller: CallerIdentity = Depends(resolve_caller)) -> EventSourceResponse:
+    is_new_operation = True
     if request.operation_id:
         # Fail fast with a real HTTP status before the SSE stream opens - once streaming
         # starts the status code can no longer change. run_translation_operation()
@@ -90,10 +92,11 @@ async def invoke(request: InvocationRequest, caller: CallerIdentity = Depends(re
         try:
             operation = await check_operation_access(request.operation_id, caller)
         except OperationNotFoundError:
-            operation = None  # a brand-new operation_id chosen by the client - nothing to check yet
+            pass  # a brand-new operation_id chosen by the client - nothing to check yet
         except (OperationAccessDeniedError, OperationNotSteerableError) as exc:
             raise _domain_error_to_http(exc) from exc
         else:
+            is_new_operation = False
             if operation["status"] == "waiting_hitl":
                 raise HTTPException(
                     status_code=409,
@@ -102,6 +105,11 @@ async def invoke(request: InvocationRequest, caller: CallerIdentity = Depends(re
                         "use POST /invocations/{operation_id}/respond instead."
                     ),
                 )
+
+    if is_new_operation:
+        # Only a genuinely new operation costs a fresh translation call - a resumed/replayed
+        # operation_id is never rate limited, since it never repeats already-completed work.
+        enforce_invocation_rate_limit(caller)
 
     return _sse_events(run_translation_operation(request, caller))
 

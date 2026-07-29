@@ -45,6 +45,11 @@ observability = [
   "opentelemetry-exporter-otlp-proto-http>=1.30",
   "prometheus-client>=0.20",
 ]
+# Required only for LDA_CONTENT_SAFETY_MODE=azure. Not needed for "off" (default) or
+# "blocklist", both of which are pure Python - see content_safety.py.
+content-safety = [
+  "azure-ai-contentsafety>=1.0.0",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
