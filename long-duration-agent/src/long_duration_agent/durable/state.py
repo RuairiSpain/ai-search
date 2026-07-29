@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -24,3 +26,18 @@ class PipelineState(BaseModel):
 
     download_url: str = ""
     expires_at_iso: str = ""
+
+
+class SteeringConfirmation(BaseModel):
+    """The HITL request payload: shown to the user so they can decide whether to
+    proceed with the concatenated text, edit it, or stop the operation."""
+
+    question: str
+    full_text: str
+
+
+class SteeringDecision(BaseModel):
+    """The user's answer to a SteeringConfirmation request."""
+
+    action: Literal["yes", "edit", "stop"]
+    edited_text: str = ""

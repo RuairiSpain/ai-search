@@ -51,21 +51,50 @@ class OrchestrationStage(str, Enum):
     TRANSLATED = "translated"
     MARKDOWN_SAVED = "markdown_saved"
     ARTIFACT_CREATED = "artifact_created"
+    STEERING_DETECTED = "steering_detected"
+    HITL_PENDING = "hitl_pending"
     UPLOADED = "uploaded"
     LOCAL_CLEANED_UP = "local_cleaned_up"
     LINK_READY = "link_ready"
     COMPLETED = "completed"
+    STOPPED = "stopped"
     FAILED = "failed"
 
 
 class StreamEvent(BaseModel):
     """One SSE event. ``event`` maps to the SSE ``event:`` field."""
 
-    event: Literal["status", "artifact", "error", "completed"]
+    event: Literal["status", "artifact", "error", "completed", "hitl_request", "stopped"]
     stage: OrchestrationStage
     data: dict[str, Any]
     sequence: int
     emitted_at: datetime = Field(default_factory=utcnow)
+
+
+class SteerRequest(BaseModel):
+    """Body of ``POST /invocations/{operation_id}/steer``.
+
+    A message the user sends while the agent is still working. It is queued,
+    not applied immediately - the workflow only picks it up (and asks for
+    HITL confirmation before acting on it) at its next steering checkpoint,
+    which always runs before the artifact is copied to Blob Storage.
+    """
+
+    text: str = Field(..., description="Additional/steering text from the user.")
+
+
+class HitlDecisionRequest(BaseModel):
+    """Body of ``POST /invocations/{operation_id}/respond`` - the user's answer to a HITL request.
+
+    - "yes": translate the concatenated text shown in the HITL request as-is.
+    - "edit": translate ``edited_text`` instead (fully replaces the prompt; re-validated
+      against the character limit like any other prompt).
+    - "stop": cancel the operation. The hosted agent's local file and any already-uploaded
+      artifact are deleted; no download link is produced.
+    """
+
+    decision: Literal["yes", "edit", "stop"]
+    edited_text: str = ""
 
 
 class ArtifactRecord(BaseModel):

@@ -11,6 +11,15 @@ A hosted Microsoft Agent Framework (MAF) agent that:
 7. Mints a fresh 15-minute download link (via an Artifact Broker API, since the storage
    account has no public endpoint) and sends it back to the chat UI.
 
+The user can also **steer the agent while it's working**: `POST` additional text to
+`/invocations/{operation_id}/steer` at any point before the artifact reaches Blob Storage. The
+workflow's steering checkpoint concatenates it with the current prompt, asks the user to
+confirm via a human-in-the-loop (HITL) request (`event: hitl_request`, showing the full
+combined text), and - depending on the answer sent to `/invocations/{operation_id}/respond`
+(`yes` / `edit` / `stop`) - either re-translates the combined text, re-translates a fully
+edited replacement, or cancels the operation and cleans up. See "Steering while the agent is
+working" in `docs/architecture.md` for the full flow.
+
 The pipeline is a durable, checkpointed [MAF Workflow](https://github.com/microsoft/agent-framework)
 (`src/long_duration_agent/durable/pipeline.py`) - if the process crashes between any two
 steps, resubmitting the same `operation_id` resumes from the last completed step instead of
@@ -41,7 +50,7 @@ long-duration-agent/
 │   │   ├── tokens.py                 # 15-minute signed download tokens (minted fresh every time)
 │   │   └── api.py                     # Artifact Broker API: the only thing that can reach private storage
 │   └── hosted_agent/
-│       └── app.py                     # POST /invocations (SSE) - the Hosted Agent entrypoint
+│       └── app.py                     # POST /invocations (SSE), /steer, /respond - the Hosted Agent entrypoint
 ├── infra/storage-private.bicep    # private storage account + 1-day lifecycle policy + RBAC for the broker
 ├── tests/                           # pytest, no Azure credentials required
 └── docs/

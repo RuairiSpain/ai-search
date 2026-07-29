@@ -13,16 +13,20 @@ the hosted-agent Invocations endpoint sends to the chat UI. This same
 ``Workflow`` object is what you would hand to
 ``agent_framework_durabletask``'s Azure Functions Durable Task host for a
 production deployment - see docs/architecture.md.
-"""
 
-from __future__ import annotations
+Note: this module deliberately does *not* use
+``from __future__ import annotations``. agent_framework's ``@response_handler``
+signature validator inspects raw (unresolved) annotations rather than calling
+``typing.get_type_hints``, so postponed evaluation breaks its
+``WorkflowContext[...]`` detection on ``SteeringGateExecutor.on_steering_decision``.
+"""
 
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from agent_framework import Executor, WorkflowBuilder, WorkflowContext, WorkflowEvent, handler
+from agent_framework import Executor, WorkflowBuilder, WorkflowContext, WorkflowEvent, handler, response_handler
 from typing_extensions import Never
 
 from ..broker.tokens import build_download_link
@@ -34,7 +38,7 @@ from ..storage.blob_store import get_blob_store
 from ..storage.metadata_store import get_metadata_store
 from ..translator import translate_to_spanish
 from ..workspace import delete_workspace_file, write_workspace_file
-from .state import PipelineState
+from .state import PipelineState, SteeringConfirmation, SteeringDecision
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +117,67 @@ class ArtifactCreatedExecutor(Executor):
         await ctx.send_message(state)
 
 
+class SteeringGateExecutor(Executor):
+    """The single checkpoint before the artifact is copied to Blob Storage.
+
+    Checks whether the user sent any steering messages while the agent was
+    working. If nothing is queued, the pipeline proceeds straight to Upload -
+    the common case is completely unaffected by this feature. If one or more
+    messages arrived, they're concatenated with the current prompt and a HITL
+    request asks the user whether to translate the combined text, edit it, or
+    stop the operation entirely; ``durable/engine.py`` resumes this pause via
+    ``POST /invocations/{operation_id}/respond``.
+    """
+
+    @handler
+    async def process(self, state: PipelineState, ctx: WorkflowContext[PipelineState]) -> None:
+        pending = get_metadata_store().drain_steering_messages(state.operation_id)
+        if not pending:
+            await ctx.send_message(state, target_id="upload")
+            return
+
+        concatenated = "\n\n".join([state.prompt, *pending])
+        ctx.set_state("steering_base_state", state.model_dump())
+        await ctx.add_event(
+            _status_event(
+                self.id,
+                OrchestrationStage.STEERING_DETECTED,
+                f"Received {len(pending)} new message(s) while working - checking with you before translating them.",
+            )
+        )
+        await ctx.request_info(
+            SteeringConfirmation(
+                question=(
+                    "You sent additional message(s) while I was working. "
+                    "Translate the combined text below?"
+                ),
+                full_text=concatenated,
+            ),
+            SteeringDecision,
+        )
+
+    @response_handler
+    async def on_steering_decision(
+        self,
+        original_request: SteeringConfirmation,
+        response: SteeringDecision,
+        ctx: WorkflowContext[PipelineState],
+    ) -> None:
+        base = PipelineState.model_validate(ctx.get_state("steering_base_state"))
+        if response.action == "stop":
+            await ctx.send_message(base, target_id="stop")
+            return
+
+        new_prompt = response.edited_text.strip() if response.action == "edit" else original_request.full_text
+        if not new_prompt:
+            # Nothing usable to edit to - fall back to the concatenated text rather than
+            # silently dropping the loop.
+            new_prompt = original_request.full_text
+        # Restart from Validate (not straight back to Translate) so an edited or
+        # concatenated prompt is re-checked against the character limit too.
+        await ctx.send_message(base.model_copy(update={"prompt": new_prompt}), target_id="validate")
+
+
 class UploadExecutor(Executor):
     """Waits 2 seconds, then uploads the artifact to durable, private Blob Storage."""
 
@@ -156,6 +221,34 @@ class CleanupLocalExecutor(Executor):
         await ctx.send_message(state)
 
 
+class StopExecutor(Executor):
+    """Cancels the operation: cleans up the hosted agent's local file and any
+    already-uploaded artifact. Reachable only via a "stop" HITL decision, which
+    by construction happens before Upload ever runs - so blob_name is normally
+    empty here; the delete is still attempted defensively."""
+
+    @handler
+    async def process(self, state: PipelineState, ctx: WorkflowContext[Never, PipelineState]) -> None:
+        delete_workspace_file(state.operation_id)
+        if state.blob_name:
+            try:
+                await get_blob_store().delete(state.blob_name)
+            except FileNotFoundError:
+                pass
+        await ctx.add_event(
+            WorkflowEvent(
+                "data",
+                executor_id=self.id,
+                data={
+                    "kind": "stopped",
+                    "stage": OrchestrationStage.STOPPED.value,
+                    "message": "The request was stopped at your request.",
+                },
+            )
+        )
+        await ctx.yield_output(state)
+
+
 class LinkExecutor(Executor):
     """Mints a fresh, short-lived broker download link and yields the final result."""
 
@@ -184,7 +277,11 @@ class LinkExecutor(Executor):
         await ctx.yield_output(final_state)
 
 
-ALLOWED_CHECKPOINT_TYPES = ["long_duration_agent.durable.state:PipelineState"]
+ALLOWED_CHECKPOINT_TYPES = [
+    "long_duration_agent.durable.state:PipelineState",
+    "long_duration_agent.durable.state:SteeringConfirmation",
+    "long_duration_agent.durable.state:SteeringDecision",
+]
 
 
 def build_workflow(*, workflow_name: str, checkpoint_storage):
@@ -192,16 +289,21 @@ def build_workflow(*, workflow_name: str, checkpoint_storage):
     translate = TranslateExecutor(id="translate")
     save_markdown = SaveMarkdownExecutor(id="save_markdown")
     artifact_created = ArtifactCreatedExecutor(id="artifact_created")
+    steering_gate = SteeringGateExecutor(id="steering_gate")
     upload = UploadExecutor(id="upload")
     cleanup_local = CleanupLocalExecutor(id="cleanup_local")
     link = LinkExecutor(id="link")
+    stop = StopExecutor(id="stop")
 
     return (
         WorkflowBuilder(start_executor=validate, name=workflow_name, checkpoint_storage=checkpoint_storage)
         .add_edge(validate, translate)
         .add_edge(translate, save_markdown)
         .add_edge(save_markdown, artifact_created)
-        .add_edge(artifact_created, upload)
+        .add_edge(artifact_created, steering_gate)
+        .add_edge(steering_gate, upload)  # fast path: nothing queued
+        .add_edge(steering_gate, validate)  # loop back: "yes" or "edit"
+        .add_edge(steering_gate, stop)  # "stop"
         .add_edge(upload, cleanup_local)
         .add_edge(cleanup_local, link)
         .build()

@@ -20,6 +20,8 @@ Durable MAF Workflow (durable/pipeline.py), one Executor per step, checkpointed 
   ├─ Save Markdown      → hosted-agent local scratch workspace (temporary only)
   ├─ wait 5s
   ├─ SSE status: "The artifact was created successfully."
+  ├─ Steering gate       → any queued steering messages? (see "Steering while the agent is
+  │                         working" below) - if yes, HITL confirm, then loop back to Validate
   ├─ wait 2s
   ├─ Upload             → private Blob Storage, users/<tenant>/<object-id>/<artifact-id>.md
   ├─ SSE status: "The artifact was saved to secure storage."
@@ -80,6 +82,74 @@ it is the same `Workflow` object Microsoft's own Azure Functions Durable Task ex
 (`agent-framework-durabletask`) hosts for production-scale, cross-process durability. See
 "Scaling beyond a single host" below for the concrete migration path - no rewrite of
 `pipeline.py` is required.
+
+## Steering while the agent is working
+
+The user can send additional text after the initial prompt, before the artifact has reached
+Blob Storage:
+
+```text
+POST /invocations/{operation_id}/steer   { "text": "..." }
+```
+
+This only queues the message (`storage/metadata_store.py`'s `steering_messages` table) - it
+never interrupts the running pipeline directly. The workflow has exactly one place that looks
+at that queue: `SteeringGateExecutor`, which runs right after the "artifact created" wait and
+right before Upload (`durable/pipeline.py`). That single checkpoint is what makes "only before
+the file has been copied to Blob Storage" true: once Upload has run, the gate is never visited
+again for that operation, so a `/steer` call on a completed operation is rejected outright
+(`409`, `OperationNotSteerableError`) rather than silently doing nothing.
+
+If the gate finds nothing queued, it proceeds straight to Upload - the common case is
+completely unaffected by this feature, with no extra latency or events.
+
+If one or more messages are queued, the gate:
+
+1. Concatenates them with the current prompt (`state.prompt + queued messages, in arrival order`).
+2. Emits a `status` event (`steering_detected`).
+3. Issues a **HITL (human-in-the-loop) request** via `ctx.request_info(...)` - the workflow
+   suspends here. The SSE stream delivers this as `event: hitl_request`, carrying the full
+   concatenated text so the UI can show the user exactly what would be translated:
+
+   ```json
+   {"stage": "hitl_pending", "request_id": "...", "question": "...", "full_text": "..."}
+   ```
+
+4. The chat UI answers with:
+
+   ```text
+   POST /invocations/{operation_id}/respond   { "decision": "yes" | "edit" | "stop", "edited_text"?: "..." }
+   ```
+
+   - **`yes`** - translate the concatenated text shown in the HITL request.
+   - **`edit`** - translate `edited_text` instead; it fully replaces the prompt (not another
+     concatenation).
+   - **`stop`** - cancel the operation. `StopExecutor` deletes the hosted agent's local scratch
+     file (and, defensively, any blob that might exist - normally none does, since this gate
+     always runs before Upload) and the operation ends with no download link.
+
+   Both `yes` and `edit` route back to **Validate**, not directly to Translate - so an edited
+   or concatenated prompt is re-checked against the 1,000,000-character limit like any other
+   prompt, and the pipeline genuinely "starts again" from there (a fresh "The agent is working..."
+   status, then Translate, Save Markdown, the 5s wait, and the gate again). This is a real loop
+   in the workflow graph (`steering_gate → validate → ... → steering_gate`), not a special case:
+   it keeps looping for as many rounds of steering as the user sends, and only reaches Upload
+   once a pass through the gate finds the queue empty.
+
+Resuming a HITL pause uses the same checkpoint/`responses={}` mechanism as any other resume:
+`workflow.run(checkpoint_id=..., responses={request_id: SteeringDecision(...)}, ...)`. The
+operation's `pending_request_id` (persisted on the `operations` row when the pause happens) is
+what lets a *separate* HTTP call - which has no access to the original SSE stream - resume the
+right pending request. Ownership is checked the same way as everywhere else: `/steer` and
+`/respond` both 403 if the caller isn't the operation's original owner, and `/respond` 409s if
+the operation isn't currently `waiting_hitl`.
+
+**Implementation note for future maintainers:** `durable/pipeline.py` deliberately does not use
+`from __future__ import annotations`. agent_framework's `@response_handler` decorator validates
+its `WorkflowContext[...]` parameter by inspecting the *raw* annotation rather than resolving it
+via `typing.get_type_hints`, so PEP 563 postponed evaluation makes that check see the literal
+string `"WorkflowContext[PipelineState]"` and reject it. `@handler` doesn't have this issue - only
+`@response_handler`, used by `SteeringGateExecutor.on_steering_decision`.
 
 ## Storage and identity: what changed from the initial design
 

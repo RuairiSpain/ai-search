@@ -40,16 +40,28 @@ def _from_iso(s: str) -> datetime:
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS operations (
-    operation_id   TEXT PRIMARY KEY,
-    workflow_name  TEXT NOT NULL,
+    operation_id       TEXT PRIMARY KEY,
+    workflow_name      TEXT NOT NULL,
+    tenant_id          TEXT NOT NULL,
+    user_object_id     TEXT NOT NULL,
+    status             TEXT NOT NULL,
+    artifact_id        TEXT,
+    pending_request_id TEXT,
+    error              TEXT,
+    created_at         TEXT NOT NULL,
+    updated_at         TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS steering_messages (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    operation_id   TEXT NOT NULL,
     tenant_id      TEXT NOT NULL,
     user_object_id TEXT NOT NULL,
-    status         TEXT NOT NULL,
-    artifact_id    TEXT,
-    error          TEXT,
-    created_at     TEXT NOT NULL,
-    updated_at     TEXT NOT NULL
+    text           TEXT NOT NULL,
+    created_at     TEXT NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_steering_operation ON steering_messages (operation_id);
 
 CREATE TABLE IF NOT EXISTS artifacts (
     artifact_id     TEXT PRIMARY KEY,
@@ -105,9 +117,9 @@ class MetadataStore:
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO operations
-                   (operation_id, workflow_name, tenant_id, user_object_id, status, artifact_id, error,
-                    created_at, updated_at)
-                   VALUES (?, ?, ?, ?, 'in_progress', NULL, NULL, ?, ?)""",
+                   (operation_id, workflow_name, tenant_id, user_object_id, status, artifact_id,
+                    pending_request_id, error, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, 'in_progress', NULL, NULL, NULL, ?, ?)""",
                 (operation_id, workflow_name, tenant_id, user_object_id, now, now),
             )
         return self.get_operation(operation_id)  # type: ignore[return-value]
@@ -115,16 +127,72 @@ class MetadataStore:
     def complete_operation(self, operation_id: str, *, artifact_id: str) -> None:
         with self._connect() as conn:
             conn.execute(
-                "UPDATE operations SET status = 'completed', artifact_id = ?, updated_at = ? WHERE operation_id = ?",
+                """UPDATE operations
+                   SET status = 'completed', artifact_id = ?, pending_request_id = NULL, updated_at = ?
+                   WHERE operation_id = ?""",
                 (artifact_id, _to_iso(_now()), operation_id),
             )
 
     def fail_operation(self, operation_id: str, *, error: str) -> None:
         with self._connect() as conn:
             conn.execute(
-                "UPDATE operations SET status = 'failed', error = ?, updated_at = ? WHERE operation_id = ?",
+                """UPDATE operations
+                   SET status = 'failed', error = ?, pending_request_id = NULL, updated_at = ?
+                   WHERE operation_id = ?""",
                 (error, _to_iso(_now()), operation_id),
             )
+
+    def stop_operation(self, operation_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """UPDATE operations
+                   SET status = 'stopped', pending_request_id = NULL, updated_at = ?
+                   WHERE operation_id = ?""",
+                (_to_iso(_now()), operation_id),
+            )
+
+    def set_waiting_on_hitl(self, operation_id: str, *, request_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """UPDATE operations
+                   SET status = 'waiting_hitl', pending_request_id = ?, updated_at = ?
+                   WHERE operation_id = ?""",
+                (request_id, _to_iso(_now()), operation_id),
+            )
+
+    def mark_in_progress(self, operation_id: str) -> None:
+        """Clears a resolved HITL pause so the operation reads as actively running again."""
+        with self._connect() as conn:
+            conn.execute(
+                """UPDATE operations
+                   SET status = 'in_progress', pending_request_id = NULL, updated_at = ?
+                   WHERE operation_id = ?""",
+                (_to_iso(_now()), operation_id),
+            )
+
+    # ---- steering messages -------------------------------------------------
+
+    def queue_steering_message(self, *, operation_id: str, tenant_id: str, user_object_id: str, text: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO steering_messages (operation_id, tenant_id, user_object_id, text, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (operation_id, tenant_id, user_object_id, text, _to_iso(_now())),
+            )
+
+    def drain_steering_messages(self, operation_id: str) -> list[str]:
+        """Returns all queued steering texts for this operation, in arrival order, and clears them."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, text FROM steering_messages WHERE operation_id = ? ORDER BY id ASC",
+                (operation_id,),
+            ).fetchall()
+            if rows:
+                conn.execute(
+                    "DELETE FROM steering_messages WHERE operation_id = ?",
+                    (operation_id,),
+                )
+        return [row["text"] for row in rows]
 
     # ---- artifacts --------------------------------------------------------
 
