@@ -32,6 +32,7 @@ import httpx
 from a2a.utils import constants as a2a_constants
 
 from gateway.auth.principal import Principal
+from gateway.tracing import new_trace_id, outbound_header
 from gateway.upstream.base import (
     ArtifactEvent,
     Capabilities,
@@ -53,6 +54,18 @@ from gateway.upstream.base import (
 # already fixed on the gateway's own inbound surface in
 # a2a_server/context.py, just on the outbound side this time.
 _A2A_HEADERS = {a2a_constants.VERSION_HEADER: a2a_constants.PROTOCOL_VERSION_1_0}
+
+
+def _headers(trace_id: str) -> dict[str, str]:
+    """docs/06 §6.3 "trace correlation ... harder than T2": this gateway's
+    own responsibility ends at attaching a correctly-formed traceparent to
+    the outbound SendMessage call. Whether it survives INTO the
+    orchestration and its activities depends on the T3 app's own code --
+    see samples/tier3/01-durable-hello-world-status's README for a worked
+    example of the receiving half (this sample's a2a/server.py already
+    gets `state["headers"]["traceparent"]` for free from a2a-sdk's own
+    DefaultServerCallContextBuilder, verified there directly)."""
+    return {**_A2A_HEADERS, "traceparent": outbound_header(trace_id)}
 
 # a2a-sdk's wire-format task state strings -> our TaskState vocabulary.
 # The task_id/context_id fields already happen to match our own naming
@@ -139,11 +152,12 @@ class DurableAdapter:
         files: list[InboundFile],
         blocking: bool,
         budget_ms: int,
+        trace_id: str,
     ) -> Submission:
         message_id = uuid4().hex
         resp = await self._client.post(
             f"{self._base_url()}/",
-            headers=_A2A_HEADERS,
+            headers=_headers(trace_id),
             json={
                 "jsonrpc": "2.0",
                 "id": message_id,
@@ -186,14 +200,24 @@ class DurableAdapter:
         )
 
     async def follow(
-        self, ref: UpstreamRef, *, task_id: str, principal: Principal, from_sequence: int = 0
+        self,
+        ref: UpstreamRef,
+        *,
+        task_id: str,
+        principal: Principal,
+        trace_id: str,
+        from_sequence: int = 0,
     ) -> AsyncIterator[StatusEvent | ArtifactEvent]:
         """Relay events the webhook receiver already persisted under
         `task_id` (the gateway's own id — the T3 orchestrator posts to
         `/callback/tasks/{task_id}/events` using the id we handed back
         from submit(), so this is already the right key; `ref` is unused
         here but kept for Protocol symmetry with T2). No polling of the
-        upstream — T3 pushes (docs/06 §4.1)."""
+        upstream — T3 pushes (docs/06 §4.1).
+
+        `trace_id` is accepted-but-unused: this method makes no outbound
+        call of its own, it only reads already-persisted `gw_event` rows
+        (see `UpstreamAdapter.follow()`'s own docstring for why)."""
         seq = from_sequence
         while True:
             batch = await self._events.events_after(task_id, seq)
@@ -239,20 +263,39 @@ class DurableAdapter:
             return resp.content, mime
 
     async def resume(
-        self, ref: UpstreamRef, *, principal: Principal, text: str, files: list[InboundFile]
+        self,
+        ref: UpstreamRef,
+        *,
+        principal: Principal,
+        text: str,
+        files: list[InboundFile],
+        trace_id: str,
     ) -> Submission:
         # Maps onto client.raise_event(instance_id, "APPROVAL", payload) on
         # the T3 side, fronted by the same message/send path with a task
         # reference (docs/06 §5.3).
         return await self.submit(
-            app="", principal=principal, ref=ref, text=text, files=files, blocking=False, budget_ms=0
+            app="",
+            principal=principal,
+            ref=ref,
+            text=text,
+            files=files,
+            blocking=False,
+            budget_ms=0,
+            trace_id=trace_id,
         )
 
     async def steer(self, ref: UpstreamRef, *, principal: Principal, text: str) -> SteerResult:
         # ⚠ Verify whether the targeted A2A version permits message/send
         # against a `working` task (docs/02-decisions.md D7). Until
         # verified, treat as queued rather than claim real-time effect.
-        await self.resume(ref, principal=principal, text=text, files=[])
+        #
+        # steer() isn't in scope for trace_id propagation yet (docs/08) --
+        # it has no inbound trace_id of its own to forward, so this internal
+        # resume() call gets a fresh standalone one rather than silently
+        # reusing whatever trace happened to be active from an unrelated
+        # earlier call.
+        await self.resume(ref, principal=principal, text=text, files=[], trace_id=new_trace_id())
         return SteerResult(outcome="queued", applies_at="next orchestration step")
 
     async def cancel(self, ref: UpstreamRef, *, principal: Principal) -> None:

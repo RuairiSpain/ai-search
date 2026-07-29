@@ -54,10 +54,24 @@ class HelloWorldExecutor(AgentExecutor):
         )
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
         text = "\n".join(get_text_parts(context.message.parts)) if context.message else ""
+        # Trace correlation (docs/05 §6.3, docs/06 §6.3 "the gap to close
+        # first"): the gateway's own DurableAdapter.submit() attaches a
+        # traceparent header to this exact SendMessage call
+        # (src/gateway/upstream/durable.py), and a2a-sdk's own
+        # DefaultServerCallContextBuilder -- verified directly, this app
+        # never installs a custom one -- already captures every inbound
+        # header into `state["headers"]` with zero extra plumbing needed
+        # here. Passed through raw rather than parsed: this sample has no
+        # dependency on the gateway's own `gateway.tracing` module (samples
+        # stay independently deployable), and `orchestrations/hello_world.py`
+        # only needs the trace-id segment, which it extracts itself.
+        traceparent = context.call_context.state.get("headers", {}).get("traceparent")
         # instance_id = task_id: makes a duplicate SendMessage retry land on
         # the same orchestration instance instead of starting a second run
         # (same idempotency reasoning as docs/06 §4.2's cron example).
-        await self._start_orchestration(context.task_id, {"task_id": context.task_id, "text": text})
+        await self._start_orchestration(
+            context.task_id, {"task_id": context.task_id, "text": text, "traceparent": traceparent}
+        )
         await updater.start_work()
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:

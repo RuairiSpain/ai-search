@@ -22,7 +22,7 @@ capability claims.
 | 6 | ~~A2A protocol version: does `message/send` accept a task in `working` state, or only `input-required`?~~ **Resolved:** disallowed (confirmed against the spec building `a2a_server/executor.py`, Phase 3). The gateway-local endpoint this predicted is built — see item E.9. | ~~If disallowed, interjections need a gateway-local endpoint~~ | `02-decisions.md` D7 |
 | 7 | T2 container sizing: 0.5/1/2 vCPU-GiB list vs. 0.25–4.0 vCPU / 0.5–8.0 GiB range — both documented as current | Capacity planning | `05-tier2-hosted-agents.md` §1 |
 | 8 | Model quota/TPM: per-deployment or shared across a project's agents? | Whether noisy T2 apps need dedicated deployments | `05-tier2-hosted-agents.md` §6.2 |
-| 9 | W3C `traceparent` propagation gateway → Responses call → container span (T2) and gateway → A2A → orchestration → activity (T3) | End-to-end debuggability; **the gap to close first**, per both tier docs | `05-tier2-hosted-agents.md` §6.3, `06-tier3-durable-agents.md` §6.3 |
+| 9 | ~~W3C `traceparent` propagation gateway → Responses call → container span (T2) and gateway → A2A → orchestration → activity (T3)~~ **Partially resolved (item 22):** the gateway's own outbound propagation is built and tested for both tiers, and T3's receiving half has a real worked example (`samples/tier3/01-durable-hello-world-status`). Still genuinely empirical and unresolved: whether Foundry's hosted-agent Responses API proxy actually reads the header and correlates it into its own container span — needs a live endpoint this repo doesn't have. | End-to-end debuggability | `05-tier2-hosted-agents.md` §6.3, `06-tier3-durable-agents.md` §6.3 |
 | 10 | Does the platform serialise concurrent requests to one `agent_session_id`? | Serialise per session in the gateway regardless — but confirm the failure mode if you don't | `05-tier2-hosted-agents.md` §6.3 |
 | 11 | Cold-start restore time after 15-minute idle deprovision | Gateway timeout and reaper lease durations must exceed worst case | `05-tier2-hosted-agents.md` §6.3 |
 | 12 | Payload/upload limits on `/responses` and `/files` | The MCP-data-to-code-interpreter path with real datasets | `05-tier2-hosted-agents.md` §6.3 |
@@ -610,6 +610,81 @@ real than a `FakeAdapter`. In order found:
     already-tracked risk: LLM instruction-following reliability for the
     docx-writing recipe in `instructions.md`), not a harvest still in
     flight.
+
+22. **End-to-end trace correlation, gateway-side built.** docs/05 §6.3 and
+    docs/06 §6.3 both flagged this "the gap to close first" — without a
+    shared trace-id, one slow or failing turn can't be followed from the
+    chat client through the gateway into the upstream. New module
+    `src/gateway/tracing.py`: W3C `traceparent` parse/generate, no
+    `opentelemetry-api` dependency — the header format is a small, stable,
+    public spec, not an Azure/OpenAI-specific behavior this project's
+    "verify against the installed SDK" discipline applies to, and actual
+    span recording/export is already the platform's own job (docs/05 §6.3:
+    "App Insights is injected... by default").
+
+    Wired at the one place every piece of per-request state already enters
+    the system: `GatewayCallContextBuilder.build()`
+    (`src/gateway/a2a_server/context.py`), which already captured every
+    inbound header into `state["headers"]` for the SDK's own
+    `validate_version` check — extracting `traceparent` there cost nothing
+    extra. `trace_id_from()` mirrors `principal_from()`'s own
+    single-source-of-truth pattern. Threaded through
+    `GatewayAgentExecutor` (`execute()`/`_continue_existing()`/
+    `_follow_and_relay()`) into `UpstreamAdapter.submit()`/`follow()`/
+    `resume()` — a real Protocol signature change, not just an internal
+    detail, since `FakeAdapter` and every direct test caller needed
+    updating too. Persisted on `gw_task.trace_id` (new column, same bare-
+    pointer/no-FK style as `run_id`/`current_message_id`), overwritten on
+    resume to reflect the current turn rather than accumulating history.
+
+    `steer()`/`cancel()` deliberately NOT in scope — both make their own
+    outbound calls but neither has an inbound trace_id of its own to
+    propagate from its current call sites; `steer()`'s internal reuse of
+    `resume()` now needs a trace_id, so it mints a fresh standalone one
+    rather than reusing whatever happened to be active from an unrelated
+    earlier call. Flagged here, not silently left inconsistent.
+
+    T2 (`FoundryResponsesAdapter`/`FoundryHostedAdapter`): a fresh
+    `traceparent` header (same trace-id, new span-id per hop) on every
+    `submit()`/`follow()`-poll/`resume()` call to the Responses API, plus
+    `FoundryHostedAdapter.health()`'s own startup probe (no inbound
+    request to correlate with, so it mints a standalone one-off trace
+    rather than requiring every `_headers()` caller to supply one that
+    doesn't exist yet at startup). T3 (`DurableAdapter`): same header on
+    `submit()`/`resume()`'s outbound `SendMessage`/`raise_event` HTTP
+    calls; `follow()` accepts `trace_id` for Protocol uniformity but never
+    uses it — it makes no outbound call, only reads already-persisted
+    `gw_event` rows.
+
+    T3's receiving half — propagating the trace-id INTO the orchestration
+    and its activities — can't be built by the gateway at all, since T3
+    apps run arbitrary code the gateway has no visibility into. Built as a
+    real worked example instead: `samples/tier3/01-durable-hello-world-status`
+    now reads `context.call_context.state["headers"]["traceparent"]` in its
+    own A2A server (free, courtesy of a2a-sdk's own
+    `DefaultServerCallContextBuilder`), threads it through
+    `client_input`, and includes the trace-id segment in every `notify`
+    payload — a plain string extraction, no clock/randomness/I/O, so it
+    stays replay-safe (docs/06 §5.1). Not retrofitted onto
+    `samples/tier3/03-hitl-durable` or `samples/tier3/05-push-notifications`
+    (both literal-copy-derived from sample 01's structure, same three-line
+    change would apply identically to each) — a documented gap, not a
+    silent one.
+
+    Tests: `tests/test_tracing.py` (parse/generate unit tests),
+    `tests/test_a2a_api.py::test_inbound_traceparent_propagates_to_the_adapter`
+    / `test_missing_traceparent_mints_a_fresh_trace_id` (end-to-end through
+    the real mounted FastAPI routes), `tests/test_task_store_trace_id.py`
+    (persistence against real Postgres), a new
+    `test_submit_attaches_a_traceparent_header_with_the_same_trace_id` in
+    `tests/test_foundry_hosted_adapter.py`.
+
+    **Not verified against a live Foundry endpoint** — same class of risk
+    flagged elsewhere in this file: whether Foundry's hosted-agent
+    Responses API proxy actually reads this header and correlates it into
+    its own container span is unconfirmed. What's verified is that the
+    gateway sends a correctly-formed header on every call it makes — the
+    half actually in this codebase's control.
 
 ## D. Duplicate source documents collapsed during merge
 

@@ -11,6 +11,7 @@ import logging
 from typing import Any, ClassVar
 
 from gateway.auth.principal import Principal
+from gateway.tracing import new_trace_id, outbound_header
 from gateway.upstream.base import (
     InboundFile,
     Submission,
@@ -97,10 +98,15 @@ class FoundryHostedAdapter(FoundryResponsesAdapter):
         this class."""
         return self._project.get_openai_client(agent_name=self._agent_name)
 
-    def _headers(self, principal: Principal) -> dict[str, str]:
+    def _headers(self, principal: Principal, trace_id: str | None = None) -> dict[str, str]:
         h = dict(self._PREVIEW)
         if self._identity_mode == "per_user":
             h["x-ms-user-identity"] = principal.user_identity_header()
+        # trace_id is None only from health()'s own startup probe, which
+        # has no inbound client request to correlate with -- mint a
+        # standalone one-off trace for it rather than making every caller
+        # of _headers() pass a trace_id that doesn't exist yet at startup.
+        h["traceparent"] = outbound_header(trace_id or new_trace_id())
         return h
 
     async def health(self) -> bool:
@@ -138,13 +144,14 @@ class FoundryHostedAdapter(FoundryResponsesAdapter):
         files: list[InboundFile],
         blocking: bool,
         budget_ms: int,
+        trace_id: str,
     ) -> Submission:
         uploaded = await _upload_files(self._openai, files)
         kwargs: dict[str, Any] = dict(
             background=not blocking,
             conversation=ref.conversation_id,
             input=_build_input(text, uploaded),
-            extra_headers=self._headers(principal),
+            extra_headers=self._headers(principal, trace_id),
             prompt_cache_key=principal.subject,
             safety_identifier=principal.subject,
         )

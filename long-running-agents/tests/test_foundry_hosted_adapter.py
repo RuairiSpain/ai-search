@@ -40,10 +40,14 @@ class _FakeResponse:
 
 
 class _FakeResponses:
+    def __init__(self):
+        self.create_calls: list[dict] = []
+
     async def create(self, **kwargs):
+        self.create_calls.append(kwargs)
         return _FakeResponse()
 
-    async def retrieve(self, run_id):
+    async def retrieve(self, run_id, **kwargs):
         return _FakeResponse()
 
     async def cancel(self, run_id):
@@ -72,10 +76,12 @@ class _FakeOpenAI:
 class _FakeProjectClient:
     def __init__(self):
         self.get_client_calls = 0
+        self.last_client: _FakeOpenAI | None = None
 
     def get_openai_client(self, *, agent_name: str):
         self.get_client_calls += 1
-        return _FakeOpenAI()
+        self.last_client = _FakeOpenAI()
+        return self.last_client
 
 
 @pytest.mark.asyncio
@@ -84,14 +90,18 @@ async def test_inherited_methods_get_a_real_client_not_none():
     adapter = FoundryHostedAdapter(project_client=project, agent_name="a")
     ref = UpstreamRef(conversation_id="conv_1", run_id="resp_1")
 
-    events = [e async for e in adapter.follow(ref, task_id="task_1", principal=PRINCIPAL)]
+    events = [
+        e async for e in adapter.follow(ref, task_id="task_1", principal=PRINCIPAL, trace_id="test-trace")
+    ]
     assert len(events) == 1
     assert events[0].final
 
     # None of these may raise AttributeError on self._openai being None.
     await adapter.cancel(ref, principal=PRINCIPAL)
     await adapter.steer(ref, principal=PRINCIPAL, text="hi")
-    submission = await adapter.resume(ref, principal=PRINCIPAL, text="reply", files=[])
+    submission = await adapter.resume(
+        ref, principal=PRINCIPAL, text="reply", files=[], trace_id="test-trace"
+    )
     assert submission.ref.conversation_id == "conv_1"
 
     assert project.get_client_calls > 0
@@ -106,3 +116,32 @@ def test_capabilities_input_required_true_with_output_schema():
     schema = {"properties": {"status": {"type": "string", "required": True}}}
     adapter = FoundryHostedAdapter(project_client=_FakeProjectClient(), agent_name="a", output_schema=schema)
     assert adapter.capabilities.input_required is True
+
+
+@pytest.mark.asyncio
+async def test_submit_attaches_a_traceparent_header_with_the_same_trace_id():
+    """docs/05 §6.3 "trace correlation -- the gap to close first": every
+    outbound Responses API call this adapter makes must carry a
+    correctly-formed traceparent -- same trace-id as the one the gateway
+    was handed, not a fresh unrelated one."""
+    project = _FakeProjectClient()
+    adapter = FoundryHostedAdapter(project_client=project, agent_name="a")
+    ref = UpstreamRef()
+    trace_id = "4bf92f3577b34da6a3ce929d0e0e4736"
+
+    await adapter.submit(
+        app="a",
+        principal=PRINCIPAL,
+        ref=ref,
+        text="hi",
+        files=[],
+        blocking=False,
+        budget_ms=0,
+        trace_id=trace_id,
+    )
+
+    assert project.last_client is not None
+    [call] = project.last_client.responses.create_calls
+    traceparent = call["extra_headers"]["traceparent"]
+    assert traceparent.startswith(f"00-{trace_id}-")
+    assert traceparent.endswith("-01")

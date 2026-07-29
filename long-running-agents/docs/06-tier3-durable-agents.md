@@ -627,7 +627,7 @@ don't assume.
 | Shared blob container | ✓ decided — see `07-artifacts-and-code-interpreter.md` |
 | State size ceiling | ✓ mitigated by design; ⚠ one gap |
 | Session TTL vs D5 retention | ◆ conflict |
-| Trace correlation across three panes | ⚠ close early |
+| Trace correlation across three panes | ✓ gateway→A2A call built; ⚠ into orchestration/activities is per-T3-app work |
 
 **State size ceiling.** The 1 MB figure is a Durable Task Scheduler
 boundary — not Azure Tables (DTS manages state internally with no separate
@@ -670,12 +670,29 @@ states the shorter horizon. **Decide before the first month-long app
 ships** — this is one of the sharper unresolved conflicts in the whole
 design (see `08-open-items-and-experiments.md`).
 
-**Trace correlation.** ⚠ Harder than T2: gateway → A2A → orchestration →
-activity, spread across the DTS dashboard, App Insights and your own
-traces. Three panes, one request. Propagate W3C `traceparent` from the
-gateway through the A2A call and into activity inputs, and confirm it
-survives replay. Close this early — everything else is harder to debug
-without it.
+**Trace correlation.** Harder than T2, and the gateway's own reach ends
+sooner: `src/gateway/upstream/durable.py` attaches a `traceparent` header
+(same trace-id, fresh span-id — `src/gateway/tracing.py`) to every outbound
+`SendMessage`/`raise_event` call the gateway makes to a T3 app's own A2A
+server — that half is built and tested
+(`tests/test_durable_adapter_wire_format.py`,
+`tests/test_a2a_api.py::test_inbound_traceparent_propagates_to_the_adapter`).
+What the gateway CANNOT do for you is reach into your orchestration: T3
+apps run arbitrary code the gateway has no visibility into, so propagating
+the trace-id from the inbound HTTP request into `client_input` and then
+into every `notify`/activity call is **your own app's responsibility**.
+`samples/tier3/01-durable-hello-world-status` has a real, working example
+of exactly this (its own README's "Trace correlation, closing the loop"
+section) — three small pieces: read `context.call_context.state
+["headers"]["traceparent"]` in your A2A server's `execute()` (a2a-sdk's
+own `DefaultServerCallContextBuilder` already captures it, no extra
+plumbing needed), pass it through `client_input`, extract the trace-id
+segment once at the top of the orchestration (a plain string op — stays
+replay-safe per §5.1) and include it in every `notify` payload. Confirming
+it survives replay specifically means: the extraction happens from
+`client_input`, which Durable Functions replays byte-for-byte on every
+replay pass, same as any other plain input value — no different from any
+other deterministic read of `context.get_input()`.
 
 ## 7. Checklists
 

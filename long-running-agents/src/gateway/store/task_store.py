@@ -27,6 +27,7 @@ class TaskRow:
     state: str
     run_id: str | None
     current_message_id: str | None
+    trace_id: str | None
     last_sequence: int
     created_at: datetime
     updated_at: datetime
@@ -41,6 +42,7 @@ def _row_to_task(row: asyncpg.Record) -> TaskRow:
         state=row["state"],
         run_id=row["run_id"],
         current_message_id=row["current_message_id"],
+        trace_id=row["trace_id"],
         last_sequence=row["last_sequence"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -82,13 +84,21 @@ class TaskStore:
         self._pool = pool
 
     async def create_task(
-        self, *, task_id: str, context_id: str, app: str, tier: str, state: TaskState, run_id: str | None
+        self,
+        *,
+        task_id: str,
+        context_id: str,
+        app: str,
+        tier: str,
+        state: TaskState,
+        run_id: str | None,
+        trace_id: str | None = None,
     ) -> None:
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """
-                INSERT INTO gw_task (task_id, context_id, app, tier, state, run_id)
-                VALUES ($1, $2, $3, $4, $5, $6)
+                INSERT INTO gw_task (task_id, context_id, app, tier, state, run_id, trace_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
                 """,
                 task_id,
                 context_id,
@@ -96,6 +106,7 @@ class TaskStore:
                 tier,
                 state.value,
                 run_id,
+                trace_id,
             )
 
     async def get_task(self, task_id: str) -> TaskRow | None:
@@ -142,6 +153,21 @@ class TaskStore:
                 "UPDATE gw_task SET run_id = $2, updated_at = now() WHERE task_id = $1",
                 task_id,
                 run_id,
+            )
+
+    async def set_trace_id(self, task_id: str, trace_id: str | None) -> None:
+        """Called on resume (GatewayAgentExecutor._continue_existing) so
+        `gw_task.trace_id` reflects the trace of the most recently active
+        turn -- same "overwrite, don't accumulate" reasoning as run_id and
+        current_message_id. The original submit's trace_id still lives in
+        whatever log lines it was written to; this column is for "what's
+        the trace of the turn happening on this task right now," not a
+        full history (docs/05 §6.3, docs/06 §6.3)."""
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE gw_task SET trace_id = $2, updated_at = now() WHERE task_id = $1",
+                task_id,
+                trace_id,
             )
 
     async def set_current_message_id(self, task_id: str, message_id: str | None) -> None:

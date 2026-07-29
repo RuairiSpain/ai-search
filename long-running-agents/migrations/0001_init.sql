@@ -121,6 +121,15 @@ CREATE INDEX IF NOT EXISTS gw_message_by_task ON gw_message (task_id, seq);
 -- as every other change this file has grown since gw_task was first created.
 ALTER TABLE gw_task ADD COLUMN IF NOT EXISTS current_message_id TEXT;
 
+-- The W3C traceparent trace-id for this task's most recently active turn
+-- (docs/05 §6.3, docs/06 §6.3 "trace correlation -- the gap to close
+-- first"). Bare pointer, not a foreign key -- there is nothing in this
+-- database to reference, the trace lives in App Insights/the DTS
+-- dashboard/wherever the platform's own auto-instrumentation exports it.
+-- Overwritten on resume, same "reflects the current turn, not full
+-- history" reasoning as run_id and current_message_id above.
+ALTER TABLE gw_task ADD COLUMN IF NOT EXISTS trace_id TEXT;
+
 -- User interjections into a running task (D7). Deliberately NOT in gw_event:
 -- events are things the upstream told us, interjections are things the user
 -- asked us to tell the upstream. Different direction, different lifecycle.

@@ -77,6 +77,41 @@ Gateway ◀──webhook POST── notify activity  (x5, one per step + complet
 Gateway ──tasks/get─────▶ T3 A2A server   (reconciliation only -- not exercised by this sample)
 ```
 
+## Trace correlation, closing the loop
+
+docs/05 §6.3 / docs/06 §6.3 both flag trace correlation as "the gap to
+close first" — without a shared trace-id, one slow or failing turn can't
+be followed from the chat client through the gateway into this
+orchestration's own steps. The gateway's half is built
+(`src/gateway/tracing.py`, `src/gateway/upstream/durable.py`): every
+`SendMessage` `DurableAdapter.submit()`/`resume()` makes to this sample's
+own A2A server carries a `traceparent` header. This sample demonstrates
+the **receiving** half, since that part is necessarily this app's own
+responsibility, not the gateway's:
+
+1. `src/a2a/server.py`'s `execute()` reads `context.call_context.state
+   ["headers"]["traceparent"]` — already populated for free by a2a-sdk's
+   own `DefaultServerCallContextBuilder` (verified directly; this sample
+   never installs a custom one) — and passes it into the orchestration's
+   `client_input`.
+2. `src/orchestrations/hello_world.py` extracts the trace-id segment once
+   at the top of the run (a plain string operation — no clock, no
+   randomness, no I/O, so it stays replay-safe per §5.1) and includes it
+   in every `notify` activity's payload, under a `trace_id` key that isn't
+   part of `ProgressPayload`'s own contract but is inert to the gateway's
+   processing of it (`webhooks.py` stores the payload as opaque JSONB).
+
+The payoff: an operator who has a trace-id from a gateway log line can
+grep this sample's own Function App logs for the exact same value and
+find every step of the matching orchestration run.
+
+**Not retrofitted onto `../03-hitl-durable` or `../05-push-notifications`**
+— both are literal-copy-derived from this sample's own structure, and the
+same three-line change (read the header, thread it through client_input,
+include it in `notify` payloads) applies identically to each, but doing so
+wasn't part of this change and is left as a documented gap rather than a
+silent one (see `docs/08-open-items-and-experiments.md`).
+
 ## ⚠ What's NOT fully verified here
 
 Consistent with `docs/06`'s own posture on its T3 snippets (most of which

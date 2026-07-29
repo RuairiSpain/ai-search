@@ -248,7 +248,7 @@ class _FakeResponses:
     def __init__(self, resp):
         self._resp = resp
 
-    async def retrieve(self, run_id):
+    async def retrieve(self, run_id, **kwargs):
         return self._resp
 
 
@@ -270,7 +270,9 @@ async def _first_event(adapter, ref):
     generator -- follow() loops (sleeping between polls) until it sees a
     terminal state, so consuming it fully would hang for a non-terminal
     fake response."""
-    async for event in adapter.follow(ref, task_id="task_1", principal=PRINCIPAL, from_sequence=0):
+    async for event in adapter.follow(
+        ref, task_id="task_1", principal=PRINCIPAL, trace_id="test-trace", from_sequence=0
+    ):
         return event
     raise AssertionError("follow() yielded no events")
 
@@ -338,7 +340,9 @@ async def test_follow_detects_input_required_when_output_schema_configured():
     # stop and re-yielding the same question forever (a bare `state in
     # TERMINAL_STATES` check would do exactly that, since INPUT_REQUIRED
     # is deliberately not a terminal state).
-    events = [e async for e in adapter.follow(ref, task_id="task_1", principal=PRINCIPAL)]
+    events = [
+        e async for e in adapter.follow(ref, task_id="task_1", principal=PRINCIPAL, trace_id="test-trace")
+    ]
 
     assert len(events) == 1
     event = events[0]
@@ -391,7 +395,9 @@ async def test_follow_yields_artifacts_before_the_terminal_status_event():
     adapter = FoundryHostedAdapter(project_client=_FakeProjectClient(resp), agent_name="a")
     ref = UpstreamRef(conversation_id="conv_1", run_id="resp_1")
 
-    events = [e async for e in adapter.follow(ref, task_id="task_1", principal=PRINCIPAL)]
+    events = [
+        e async for e in adapter.follow(ref, task_id="task_1", principal=PRINCIPAL, trace_id="test-trace")
+    ]
 
     assert len(events) == 2
     assert isinstance(events[0], ArtifactEvent)

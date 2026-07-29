@@ -797,7 +797,7 @@ Retrofitting is painful; do it at first deploy.
 
 | Item | State |
 |---|---|
-| Trace correlation | ⚠ close first |
+| Trace correlation | ✓ gateway-side built; ⚠ Foundry's own handling unverified |
 | Concurrent turns in one session | ⚠ verify; serialise regardless |
 | Session creation race | ✓ decided — advisory lock |
 | Session/conversation divergence | ◆ open |
@@ -805,12 +805,23 @@ Retrofitting is painful; do it at first deploy.
 | Submit idempotency | ✓ decided — dedupe on messageId |
 | Payload / upload limits | ⚠ unknown |
 
-**Trace correlation — the gap to close first.** App Insights is injected
-and the protocol libraries emit OpenTelemetry by default, but whether a
-W3C `traceparent` from the gateway propagates through the Responses call
-into the container span is unverified. Without it you cannot follow one
-slow turn from chat client to container, which is most of the value of
-having traces.
+**Trace correlation.** The gateway's own half is built, not just designed:
+`src/gateway/tracing.py` extracts the inbound `traceparent` (or mints a
+fresh one) at `GatewayCallContextBuilder.build()` — the same single entry
+point request principal validation already runs through — persists the
+active trace-id per task (`gw_task.trace_id`), and attaches a
+correctly-formed outbound `traceparent` header (same trace-id, fresh
+span-id) to every `submit()`/`follow()`/`resume()` call
+`FoundryResponsesAdapter`/`FoundryHostedAdapter` make. What's still
+unverified — and can only be verified against a live endpoint, which this
+repo doesn't have — is the other half: whether Foundry's hosted-agent
+Responses API proxy actually reads that header and correlates it into its
+own container span, or just ignores it. App Insights being injected and
+the protocol libraries emitting OpenTelemetry by default (per Microsoft's
+own docs) doesn't by itself confirm this specific header survives that
+specific hop. Until verified, treat "one trace-id, gateway through
+container" as designed-for, not confirmed. See
+`docs/08-open-items-and-experiments.md`.
 
 **Concurrent turns.** ⚠ Unknown whether the platform serialises requests
 to one `agent_session_id`. Serialise per session in the gateway

@@ -203,6 +203,17 @@ of each, item by item.
   not per fine-grained step, and nothing at all before the first item
   appears), and `Capabilities.progress` reports what the adapter actually
   has rather than fabricating granularity (docs/00 design premise #4).
+- End-to-end trace correlation (docs/05 §6.3, docs/06 §6.3, "the gap to
+  close first") is built on the gateway side: a W3C `traceparent` is
+  extracted or minted per request, persisted (`gw_task.trace_id`), and
+  attached to every outbound T2 Responses-API call and T3 `SendMessage`/
+  `raise_event` call. T3's receiving half (threading the trace-id INTO an
+  orchestration and its activities) is necessarily a per-T3-app concern —
+  `samples/tier3/01-durable-hello-world-status` has a real worked example,
+  not yet retrofitted onto the other two T3 samples. **Not verified
+  against a live Foundry endpoint**: whether the hosted-agent Responses
+  API proxy actually reads the header and correlates it into its own
+  container span is unconfirmed.
 - No VNet/private endpoint on Postgres or storage (deliberately deferred).
 - `gwlint` only covers the safety rules (L013, L020, L022, L023, L030,
   L032) checkable from this repo's own `apps.yaml` and source tree — the

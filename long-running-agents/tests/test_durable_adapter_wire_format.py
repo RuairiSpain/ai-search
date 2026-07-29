@@ -108,6 +108,7 @@ async def test_submit_round_trips_through_a_real_a2a_sdk_server(durable_adapter)
         files=[],
         blocking=False,
         budget_ms=0,
+        trace_id="test-trace",
     )
     assert submission.task_id
     assert submission.state.value in {"completed", "working", "submitted"}
@@ -125,6 +126,7 @@ async def test_submit_with_file_parts_round_trips(durable_adapter):
         files=[InboundFile(name="brief.txt", mime="text/plain", data=b"do the research")],
         blocking=False,
         budget_ms=0,
+        trace_id="test-trace",
     )
     assert submission.task_id
 
@@ -141,6 +143,7 @@ async def test_cancel_round_trips_without_error(durable_adapter):
         files=[],
         blocking=False,
         budget_ms=0,
+        trace_id="test-trace",
     )
     ref = UpstreamRef(run_id=submission.task_id)
     await durable_adapter.cancel(ref, principal=Principal(subject="t3.alice", tenant="t3"))

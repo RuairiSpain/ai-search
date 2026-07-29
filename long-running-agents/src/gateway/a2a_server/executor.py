@@ -29,7 +29,7 @@ from a2a.server.tasks import TaskUpdater
 from a2a.types.a2a_pb2 import TaskState as SdkTaskState
 from a2a.utils.errors import InvalidParamsError, UnsupportedOperationError
 
-from gateway.a2a_server.context import principal_from
+from gateway.a2a_server.context import principal_from, trace_id_from
 from gateway.artifacts import ArtifactHarvester
 from gateway.auth.principal import Principal
 from gateway.store.context_store import ContextStore
@@ -85,9 +85,10 @@ class GatewayAgentExecutor(AgentExecutor):
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         principal = principal_from(context.call_context)
+        trace_id = trace_id_from(context.call_context)
 
         if context.current_task is not None:
-            await self._continue_existing(context, event_queue, principal)
+            await self._continue_existing(context, event_queue, principal, trace_id)
             return
 
         ctx_row = await self._contexts.get_or_create_context(
@@ -108,6 +109,7 @@ class GatewayAgentExecutor(AgentExecutor):
             tier=self._tier,
             state=GwTaskState.SUBMITTED,
             run_id=None,
+            trace_id=trace_id,
         )
         await self._tasks.renew_lease(context.task_id, self._lease_seconds)
         if message_id:
@@ -135,6 +137,7 @@ class GatewayAgentExecutor(AgentExecutor):
             files=files,
             blocking=self._default_blocking,
             budget_ms=self._budget_ms,
+            trace_id=trace_id,
         )
         await self._tasks.set_run_id(context.task_id, submission.ref.run_id)
         _, won = await self._contexts.record_upstream_ref(
@@ -150,6 +153,7 @@ class GatewayAgentExecutor(AgentExecutor):
             ref=submission.ref,
             principal=principal,
             updater=updater,
+            trace_id=trace_id,
         )
 
     async def _terminate_orphaned_session(self, context_id: str, ref: UpstreamRef) -> None:
@@ -222,7 +226,7 @@ class GatewayAgentExecutor(AgentExecutor):
         )
 
     async def _continue_existing(
-        self, context: RequestContext, event_queue: EventQueue, principal: Principal
+        self, context: RequestContext, event_queue: EventQueue, principal: Principal, trace_id: str
     ) -> None:
         task = context.current_task
         assert task is not None
@@ -239,9 +243,10 @@ class GatewayAgentExecutor(AgentExecutor):
             text = _extract_text(context)
             files = _extract_files(context)
             submission = await self._adapter.resume(
-                ref, principal=principal, text=text, files=files
+                ref, principal=principal, text=text, files=files, trace_id=trace_id
             )
             await self._tasks.set_run_id(task.id, submission.ref.run_id)
+            await self._tasks.set_trace_id(task.id, trace_id)
             await self._tasks.renew_lease(task.id, self._lease_seconds)
             await updater.start_work()
             await self._follow_and_relay(
@@ -250,6 +255,7 @@ class GatewayAgentExecutor(AgentExecutor):
                 ref=submission.ref,
                 principal=principal,
                 updater=updater,
+                trace_id=trace_id,
             )
             return
 
@@ -267,10 +273,11 @@ class GatewayAgentExecutor(AgentExecutor):
         ref: UpstreamRef,
         principal: Principal,
         updater: TaskUpdater,
+        trace_id: str,
     ) -> None:
         fetch_bytes = getattr(self._adapter, "fetch_artifact_bytes", None)
         events: AsyncIterator[StatusEvent | ArtifactEvent] = self._adapter.follow(
-            ref, task_id=task_id, principal=principal, from_sequence=0
+            ref, task_id=task_id, principal=principal, from_sequence=0, trace_id=trace_id
         )
         async for event in events:
             # Heartbeat: a lease only expires once events genuinely stop

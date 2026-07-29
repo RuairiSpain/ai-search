@@ -8,6 +8,13 @@ and re-raised as-is by the SDK's dispatchers (verified against the
 installed a2a-sdk source: `jsonrpc_dispatcher.py`'s outer `except
 HTTPException as e: ... raise e`), so a 401 comes back clean, never
 wrapped in a JSON-RPC error envelope.
+
+Also where trace correlation starts (docs/05 §6.3, docs/06 §6.3, "the gap
+to close first"): every inbound request's raw headers land in
+`state["headers"]` below regardless, so extracting `traceparent` here —
+rather than adding a separate middleware — costs nothing extra and keeps
+every piece of per-request state entering the system through the one
+place this module's own docstring already calls out as the entry point.
 """
 from __future__ import annotations
 
@@ -17,8 +24,10 @@ from starlette.exceptions import HTTPException
 from starlette.requests import Request
 
 from gateway.auth.principal import AuthError, EntraValidator, Principal
+from gateway.tracing import trace_id_for
 
 _PRINCIPAL_KEY = "principal"
+_TRACE_ID_KEY = "trace_id"
 
 
 class GatewayCallContextBuilder(ServerCallContextBuilder):
@@ -39,7 +48,11 @@ class GatewayCallContextBuilder(ServerCallContextBuilder):
         # e.g. `validate_version` reads context.state["headers"] to check
         # A2A-Version, and defaults to rejecting the request as version
         # 0.3 if it's missing entirely. Mirrors DefaultServerCallContextBuilder.
-        return ServerCallContext(state={_PRINCIPAL_KEY: principal, "headers": dict(request.headers)})
+        headers = dict(request.headers)
+        trace_id = trace_id_for(headers.get("traceparent"))
+        return ServerCallContext(
+            state={_PRINCIPAL_KEY: principal, _TRACE_ID_KEY: trace_id, "headers": headers}
+        )
 
 
 def principal_from(call_context: ServerCallContext) -> Principal:
@@ -52,3 +65,15 @@ def principal_from(call_context: ServerCallContext) -> Principal:
         # fail loudly rather than silently treat as unauthenticated.
         raise AuthError("no principal on this call context")
     return principal
+
+
+def trace_id_from(call_context: ServerCallContext) -> str:
+    """Same single-source-of-truth reasoning as principal_from() above.
+    Unlike a missing principal, a missing trace_id is not a hard failure
+    mode worth raising over — mint one on the spot, so a call context built
+    by anything other than GatewayCallContextBuilder (a test double, say)
+    degrades to "starts its own trace" rather than crashing."""
+    trace_id = call_context.state.get(_TRACE_ID_KEY)
+    if trace_id is None:
+        return trace_id_for(None)
+    return trace_id

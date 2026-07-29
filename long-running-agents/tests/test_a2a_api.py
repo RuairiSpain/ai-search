@@ -80,12 +80,14 @@ class FakeAdapter:
         # final_detail sets `detail` on the terminal event.
         self.narration_steps: list[str] = []
         self.final_detail: str | None = None
+        self.received_trace_ids: list[str] = []
 
-    async def submit(self, *, app, principal, ref, text, files, blocking, budget_ms):
+    async def submit(self, *, app, principal, ref, text, files, blocking, budget_ms, trace_id):
         # A fresh id per call -- this fake stands in for multiple test
         # functions sharing one persistent local Postgres with no
         # per-test teardown, so a hardcoded id would collide across tests.
         self.received_files = list(files)
+        self.received_trace_ids.append(trace_id)
         return Submission(
             task_id=f"task_fake_{uuid4().hex[:8]}",
             context_id="ignored-by-executor",
@@ -93,7 +95,7 @@ class FakeAdapter:
             ref=UpstreamRef(run_id=f"run_{uuid4().hex[:8]}"),
         )
 
-    async def follow(self, ref, *, task_id, principal, from_sequence=0):
+    async def follow(self, ref, *, task_id, principal, trace_id, from_sequence=0):
         seq = from_sequence + 1
         yield StatusEvent(task_id=task_id, state=TaskState.WORKING, sequence=seq)
         for step_detail in self.narration_steps:
@@ -106,7 +108,7 @@ class FakeAdapter:
             task_id=task_id, state=final_state, sequence=seq, final=True, detail=self.final_detail
         )
 
-    async def resume(self, ref, *, principal, text, files):
+    async def resume(self, ref, *, principal, text, files, trace_id):
         raise NotImplementedError
 
     async def steer(self, ref, *, principal, text):
@@ -555,3 +557,52 @@ async def test_interject_relays_to_adapter_and_is_recorded(app_and_adapter, rsa_
             json={"text": "too late"},
         )
         assert late.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_inbound_traceparent_propagates_to_the_adapter(app_and_adapter, rsa_key):
+    """docs/05 §6.3 / docs/06 §6.3 "trace correlation -- the gap to close
+    first": a client-supplied `traceparent` header must reach
+    adapter.submit() as `trace_id`, not get dropped somewhere between the
+    inbound HTTP request and the executor."""
+    fastapi_app, adapter, _pushed = app_and_adapter
+    headers = _headers(_bearer_token(rsa_key))
+    headers["traceparent"] = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    adapter._release.set()  # this test only cares about submit(), not the follow() loop
+
+    async with AsyncClient(transport=ASGITransport(app=fastapi_app), base_url="http://test") as client:
+        await _rpc(
+            client,
+            "SendMessage",
+            {
+                "message": {"messageId": f"m-{uuid4().hex[:8]}", "role": "ROLE_USER", "parts": [{"text": "hi"}]},
+                "configuration": {"returnImmediately": True},
+            },
+            headers=headers,
+        )
+
+    assert adapter.received_trace_ids == ["4bf92f3577b34da6a3ce929d0e0e4736"]
+
+
+@pytest.mark.asyncio
+async def test_missing_traceparent_mints_a_fresh_trace_id(app_and_adapter, rsa_key):
+    fastapi_app, adapter, _pushed = app_and_adapter
+    headers = _headers(_bearer_token(rsa_key))
+    assert "traceparent" not in headers
+    adapter._release.set()
+
+    async with AsyncClient(transport=ASGITransport(app=fastapi_app), base_url="http://test") as client:
+        await _rpc(
+            client,
+            "SendMessage",
+            {
+                "message": {"messageId": f"m-{uuid4().hex[:8]}", "role": "ROLE_USER", "parts": [{"text": "hi"}]},
+                "configuration": {"returnImmediately": True},
+            },
+            headers=headers,
+        )
+
+    assert len(adapter.received_trace_ids) == 1
+    trace_id = adapter.received_trace_ids[0]
+    assert len(trace_id) == 32
+    int(trace_id, 16)  # must be valid hex, not a placeholder string

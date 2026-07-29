@@ -140,6 +140,7 @@ class UpstreamAdapter(Protocol):
         files: list[InboundFile],
         blocking: bool,
         budget_ms: int,
+        trace_id: str,
     ) -> Submission: ...
 
     def follow(
@@ -148,6 +149,7 @@ class UpstreamAdapter(Protocol):
         *,
         task_id: str,
         principal: Principal,
+        trace_id: str,
         from_sequence: int = 0,
     ) -> AsyncIterator[StatusEvent | ArtifactEvent]:
         """Async iterator regardless of implementation.
@@ -160,11 +162,20 @@ class UpstreamAdapter(Protocol):
         different value. Every yielded event must be stamped with
         `task_id`, because gw_event.task_id and gw_artifact.task_id are
         foreign keys against gw_task, not against the upstream.
+
+        `trace_id` (docs/05 §6.3, docs/06 §6.3): the W3C trace-id this
+        turn's whole call chain shares. A T2 implementation attaches a
+        fresh `traceparent` header (same trace-id, new span-id) to every
+        outbound poll it makes here. T3 has no outbound call in `follow()`
+        at all — it only relays already-persisted `gw_event` rows — so
+        `trace_id` is accepted for Protocol uniformity but unused; T3's
+        propagation happens entirely at `submit()`/`resume()` time, on the
+        HTTP call to the T3 app's own A2A server.
         """
         ...
 
     async def resume(
-        self, ref: UpstreamRef, *, principal: Principal, text: str, files: list[InboundFile]
+        self, ref: UpstreamRef, *, principal: Principal, text: str, files: list[InboundFile], trace_id: str
     ) -> Submission:
         """Reply to an input-required pause."""
         ...

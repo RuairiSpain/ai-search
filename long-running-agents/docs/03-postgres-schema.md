@@ -37,6 +37,8 @@ CREATE TABLE gw_task (
     run_id            TEXT,
     current_message_id TEXT,        -- points into gw_message; NULL when the
                                      -- current status has no associated message
+    trace_id          TEXT,         -- W3C traceparent trace-id, most recent
+                                     -- turn (docs/05 §6.3, docs/06 §6.3)
     last_sequence     INT  NOT NULL DEFAULT 0,
     -- wedged-task detection: a reaper fails tasks whose lease has lapsed
     lease_expires_at  TIMESTAMPTZ,

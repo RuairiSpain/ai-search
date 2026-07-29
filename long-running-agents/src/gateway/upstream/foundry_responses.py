@@ -23,6 +23,7 @@ from uuid import uuid4
 import httpx
 
 from gateway.auth.principal import Principal
+from gateway.tracing import outbound_header
 from gateway.upstream.base import (
     TERMINAL_STATES,
     ArtifactEvent,
@@ -296,6 +297,7 @@ class FoundryResponsesAdapter:
         files: list[InboundFile],
         blocking: bool,
         budget_ms: int,
+        trace_id: str,
     ) -> Submission:
         conv_id = ref.conversation_id
         if conv_id is None:
@@ -312,7 +314,7 @@ class FoundryResponsesAdapter:
             extra_body={
                 "agent_reference": {"name": self._agent_name, "type": "agent_reference"}
             },
-            extra_headers=self._headers(principal),
+            extra_headers=self._headers(principal, trace_id),
             prompt_cache_key=principal.subject,
             safety_identifier=principal.subject,
         )
@@ -326,18 +328,40 @@ class FoundryResponsesAdapter:
             ref=UpstreamRef(conversation_id=conv_id, run_id=resp.id),
         )
 
-    def _headers(self, principal: Principal) -> dict[str, str]:
+    def _headers(self, principal: Principal, trace_id: str) -> dict[str, str]:
         # D1: x-ms-user-identity is documented as applying beyond hosted
         # agents. Send it here too, pending ISO-1 verification
         # (docs/02-decisions.md D1, docs/08 item A.1).
-        return {"x-ms-user-identity": principal.user_identity_header()}
+        #
+        # traceparent (docs/05 §6.3, "the gap to close first"): a fresh
+        # header per outbound call, same trace-id as the inbound request,
+        # new span-id -- gateway.tracing.outbound_header()'s own contract.
+        # Whether Foundry's container actually picks this up into its own
+        # span is the part that's still unverified against a live endpoint
+        # (this repo has no way to check that) -- what's verified here is
+        # that the gateway sends a correctly-formed header on every single
+        # call, which is the half actually in this codebase's control.
+        return {
+            "x-ms-user-identity": principal.user_identity_header(),
+            "traceparent": outbound_header(trace_id),
+        }
 
     async def follow(
-        self, ref: UpstreamRef, *, task_id: str, principal: Principal, from_sequence: int = 0
+        self,
+        ref: UpstreamRef,
+        *,
+        task_id: str,
+        principal: Principal,
+        trace_id: str,
+        from_sequence: int = 0,
     ) -> AsyncIterator[StatusEvent | ArtifactEvent]:
         seq = from_sequence
         while True:
-            resp = await self._openai.responses.retrieve(ref.run_id)
+            # A fresh traceparent per poll -- each poll is its own outbound
+            # call/span, same trace-id throughout (docs/05 §6.3).
+            resp = await self._openai.responses.retrieve(
+                ref.run_id, extra_headers={"traceparent": outbound_header(trace_id)}
+            )
             state = _map_state(resp.status)
             detail = _detail_for(resp, state)
             # D4 (docs/02-decisions.md): a paused-for-clarification turn
@@ -354,8 +378,9 @@ class FoundryResponsesAdapter:
                     log.warning(
                         "app configured with output_schema but completed "
                         "response did not conform to the D4 status/message "
-                        "shape; showing raw output_text (run_id=%s)",
+                        "shape; showing raw output_text (run_id=%s, trace_id=%s)",
                         ref.run_id,
+                        trace_id,
                     )
             # Artifacts detected in THIS poll's response are yielded before
             # its StatusEvent, not after -- a real race, not a style choice.
@@ -446,7 +471,13 @@ class FoundryResponsesAdapter:
             return resp.content, mime
 
     async def resume(
-        self, ref: UpstreamRef, *, principal: Principal, text: str, files: list[InboundFile]
+        self,
+        ref: UpstreamRef,
+        *,
+        principal: Principal,
+        text: str,
+        files: list[InboundFile],
+        trace_id: str,
     ) -> Submission:
         """Continues the same conversation with the caller's reply to a
         `needs_input` pause — a second `responses.create()` call against
@@ -471,7 +502,7 @@ class FoundryResponsesAdapter:
             extra_body={
                 "agent_reference": {"name": self._agent_name, "type": "agent_reference"}
             },
-            extra_headers=self._headers(principal),
+            extra_headers=self._headers(principal, trace_id),
             prompt_cache_key=principal.subject,
             safety_identifier=principal.subject,
         )
