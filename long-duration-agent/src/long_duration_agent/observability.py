@@ -200,9 +200,17 @@ def reset_metrics_cache() -> None:
 
 
 def metrics_endpoint_response():
-    """Returns (content_bytes, content_type) for a GET /metrics handler."""
-    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+    """Returns (content_bytes, content_type) for a GET /metrics handler.
 
+    Degrades to an empty text/plain body if prometheus_client isn't installed - mirroring
+    _make_metrics()'s no-op fallback - rather than letting a bare ModuleNotFoundError surface
+    as an unhandled 500 the first time something scrapes /metrics on a base [dev] install
+    (LDA_METRICS_ENABLED defaults to true, but the observability extra doesn't).
+    """
+    try:
+        from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+    except ModuleNotFoundError:
+        return b"", "text/plain; charset=utf-8"
     return generate_latest(), CONTENT_TYPE_LATEST
 
 

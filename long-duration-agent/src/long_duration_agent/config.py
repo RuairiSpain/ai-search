@@ -1,8 +1,7 @@
 """Runtime configuration, loaded from environment variables (.env supported).
 
-Every knob that differs between the local demo and a real private-network
-Azure deployment lives here, so the rest of the codebase never reads
-``os.environ`` directly.
+Every knob that differs between the local demo and a real Azure deployment
+lives here, so the rest of the codebase never reads ``os.environ`` directly.
 """
 
 from __future__ import annotations

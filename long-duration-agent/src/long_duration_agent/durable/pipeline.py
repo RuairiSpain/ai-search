@@ -180,7 +180,7 @@ class SteeringGateExecutor(Executor):
 
 
 class UploadExecutor(Executor):
-    """Waits 2 seconds, then uploads the artifact to durable, private Blob Storage."""
+    """Waits 2 seconds, then uploads the artifact to durable Blob Storage."""
 
     @handler
     async def process(self, state: PipelineState, ctx: WorkflowContext[PipelineState]) -> None:

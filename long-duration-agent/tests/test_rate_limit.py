@@ -1,9 +1,11 @@
+import time
+
 import pytest
 from fastapi import HTTPException
 
 from long_duration_agent.config import get_settings
 from long_duration_agent.models import CallerIdentity
-from long_duration_agent.rate_limit import enforce_invocation_rate_limit, reset_rate_limiter_cache
+from long_duration_agent.rate_limit import _SlidingWindowLimiter, enforce_invocation_rate_limit, reset_rate_limiter_cache
 
 CALLER = CallerIdentity(tenant_id="tenant-a", user_object_id="user-1")
 OTHER_CALLER = CallerIdentity(tenant_id="tenant-b", user_object_id="user-2")
@@ -51,6 +53,23 @@ def test_rate_limit_enabled_false_disables_the_limiter(monkeypatch):
 
     for _ in range(10):
         enforce_invocation_rate_limit(CALLER)
+
+
+def test_sweep_evicts_keys_with_nothing_left_in_the_window():
+    """Regression test: a caller checked once and never seen again must not occupy a dict
+    entry forever - otherwise a long-running process accumulates one entry per distinct
+    caller ever seen, unbounded."""
+    limiter = _SlidingWindowLimiter(max_requests=5, window_seconds=0.05)
+    limiter._SWEEP_INTERVAL_SECONDS = 0  # force every check() to attempt a sweep
+
+    limiter.check("one-time-caller")
+    assert "one-time-caller" in limiter._hits
+
+    time.sleep(0.1)  # past the window, so "one-time-caller"'s hit is now stale
+    limiter.check("a-different-caller")  # triggers the sweep as a side effect
+
+    assert "one-time-caller" not in limiter._hits
+    assert "a-different-caller" in limiter._hits
 
 
 def test_reset_rate_limiter_cache_clears_accumulated_state(monkeypatch):

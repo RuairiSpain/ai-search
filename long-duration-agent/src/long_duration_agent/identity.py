@@ -2,13 +2,12 @@
 
 Ownership of an artifact is always derived from the *validated* token, never
 from a tenant/user id supplied in a request body. This module is what makes
-that guarantee possible for both the hosted-agent invocation endpoint and the
-Artifact Broker download endpoint, whether the caller reaches us directly, or
-via a Bot Framework / Copilot Studio channel that already performed an
-on-behalf-of (OBO) exchange upstream. In every case what lands here is a
-bearer token for the signed-in user; we validate it and pull ``tid``/``oid``
-from its claims. See docs/chat-integrations.md for how each channel
-(Teams, Copilot Studio, M365 Copilot) gets a user token to this point.
+that guarantee possible for the hosted-agent's endpoints, whether the caller
+reaches us directly, or via a Bot Framework / Copilot Studio channel that
+already performed an on-behalf-of (OBO) exchange upstream. In every case what
+lands here is a bearer token for the signed-in user; we validate it and pull
+``tid``/``oid`` from its claims. See docs/chat-integrations.md for how each
+channel (Teams, Copilot Studio, M365 Copilot) gets a user token to this point.
 """
 
 from __future__ import annotations

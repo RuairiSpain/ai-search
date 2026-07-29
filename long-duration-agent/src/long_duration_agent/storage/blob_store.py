@@ -54,7 +54,7 @@ class BlobStore(Protocol):
 
 
 class LocalDiskBlobStore:
-    """Demo/test stand-in for a private Azure Storage account."""
+    """Demo/test stand-in for a real Azure Storage account."""
 
     def __init__(self, root: Path) -> None:
         self._root = root
@@ -212,8 +212,7 @@ class AzureBlobStore:
                 start=now,
             )
 
-        blob_path = "/".join(quote(part) for part in blob_name.split("/"))
-        return f"{self._container.url}/{blob_path}?{sas_token}", expiry
+        return f"{self._container.url}/{quote(blob_name, safe='/')}?{sas_token}", expiry
 
     async def _get_user_delegation_key(self, sas_expiry: datetime) -> Any:
         # A user delegation key is itself valid for a time range and can sign any number of

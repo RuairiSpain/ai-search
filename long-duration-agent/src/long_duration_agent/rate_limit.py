@@ -35,17 +35,28 @@ class RateLimitExceededError(Exception):
 
 
 class _SlidingWindowLimiter:
-    """One deque of hit timestamps per key, pruned lazily on each check."""
+    """One deque of hit timestamps per key, pruned lazily on each check.
+
+    A key whose deque drains empty is never removed just from that lazy prune - nothing
+    revisits a caller that never comes back, so without help ``_hits`` would grow by one
+    entry per distinct caller ever seen, for the lifetime of the process. An occasional full
+    sweep (at most every ``_SWEEP_INTERVAL_SECONDS``, not on every call) drops keys with
+    nothing left in the window, bounding memory to recently-active callers instead.
+    """
+
+    _SWEEP_INTERVAL_SECONDS = 300.0
 
     def __init__(self, max_requests: int, window_seconds: float) -> None:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self._hits: dict[str, deque[float]] = defaultdict(deque)
+        self._last_swept = time.monotonic()
 
     def check(self, key: str) -> None:
         if self.max_requests <= 0:
             return  # 0 (or negative) disables this limiter entirely
         now = time.monotonic()
+        self._sweep_if_due(now)
         hits = self._hits[key]
         cutoff = now - self.window_seconds
         while hits and hits[0] <= cutoff:
@@ -53,6 +64,15 @@ class _SlidingWindowLimiter:
         if len(hits) >= self.max_requests:
             raise RateLimitExceededError(retry_after_seconds=hits[0] + self.window_seconds - now)
         hits.append(now)
+
+    def _sweep_if_due(self, now: float) -> None:
+        if now - self._last_swept < self._SWEEP_INTERVAL_SECONDS:
+            return
+        cutoff = now - self.window_seconds
+        stale_keys = [key for key, hits in self._hits.items() if not hits or hits[-1] <= cutoff]
+        for key in stale_keys:
+            del self._hits[key]
+        self._last_swept = now
 
 
 def _caller_key(caller: CallerIdentity) -> str:
