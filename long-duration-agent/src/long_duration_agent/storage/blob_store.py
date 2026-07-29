@@ -96,14 +96,17 @@ class AzureBlobStore:
         connection_string: str | None = None,
         create_container_if_missing: bool = False,
     ) -> None:
-        from azure.storage.blob import ContainerClient
+        # The async client (not azure.storage.blob.ContainerClient) is required here:
+        # this class's methods are awaited from request-handling code, and the sync
+        # client's network calls would block the whole event loop for their duration.
+        from azure.storage.blob.aio import ContainerClient
 
         if connection_string:
             self._container = ContainerClient.from_connection_string(
                 connection_string, container_name=container
             )
         else:
-            from azure.identity import DefaultAzureCredential
+            from azure.identity.aio import DefaultAzureCredential
 
             if not account_url:
                 raise ValueError("AzureBlobStore requires either account_url or connection_string.")
@@ -113,28 +116,46 @@ class AzureBlobStore:
                 credential=DefaultAzureCredential(),
             )
 
-        if create_container_if_missing:
-            from azure.core.exceptions import ResourceExistsError
+        self._create_container_if_missing = create_container_if_missing
+        self._container_ready = False
 
-            try:
-                self._container.create_container()
-            except ResourceExistsError:
-                pass
+    async def _ensure_container(self) -> None:
+        if self._container_ready or not self._create_container_if_missing:
+            return
+        from azure.core.exceptions import ResourceExistsError
+
+        try:
+            await self._container.create_container()
+        except ResourceExistsError:
+            pass
+        self._container_ready = True
 
     async def upload_file(self, *, local_path: Path, blob_name: str) -> int:
+        await self._ensure_container()
         size = local_path.stat().st_size
         with open(local_path, "rb") as fh:
-            self._container.upload_blob(name=blob_name, data=fh, overwrite=True)
+            await self._container.upload_blob(name=blob_name, data=fh, overwrite=True)
         return size
 
     async def open_read_stream(self, blob_name: str) -> BinaryIO:
         import io
 
-        downloader = self._container.download_blob(blob_name)
-        return io.BytesIO(downloader.readall())
+        from azure.core.exceptions import ResourceNotFoundError
+
+        try:
+            downloader = await self._container.download_blob(blob_name)
+            data = await downloader.readall()
+        except ResourceNotFoundError as exc:
+            raise FileNotFoundError(blob_name) from exc
+        return io.BytesIO(data)
 
     async def delete(self, blob_name: str) -> None:
-        self._container.delete_blob(blob_name)
+        from azure.core.exceptions import ResourceNotFoundError
+
+        try:
+            await self._container.delete_blob(blob_name)
+        except ResourceNotFoundError as exc:
+            raise FileNotFoundError(blob_name) from exc
 
 
 _STORE: BlobStore | None = None

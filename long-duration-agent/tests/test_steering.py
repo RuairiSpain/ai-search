@@ -124,6 +124,24 @@ async def test_hitl_stop_cancels_and_cleans_up_local_file(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_a_hitl_response_cannot_be_replayed_against_the_same_pending_request(monkeypatch):
+    """respond_to_hitl clears waiting_hitl before resuming, not after - so a second /respond
+    call racing the first one (double-click, client retry) can't resume the same checkpoint
+    twice. We can't force true concurrency in a single-threaded test, but we can assert the
+    status transition it depends on: once the first response has been accepted, the operation
+    is no longer in waiting_hitl, so a second attempt is rejected rather than silently re-run."""
+    operation_id = str(uuid.uuid4())
+    await _run_to_hitl(operation_id, "Original text", "steering text", monkeypatch)
+
+    first = await _drain(respond_to_hitl(operation_id, CALLER, HitlDecisionRequest(decision="yes")))
+    assert first[-1].event == "completed"
+
+    with pytest.raises(OperationNotSteerableError):
+        async for _ in respond_to_hitl(operation_id, CALLER, HitlDecisionRequest(decision="yes")):
+            pass
+
+
+@pytest.mark.asyncio
 async def test_steer_rejected_for_operation_owned_by_someone_else(monkeypatch):
     operation_id = str(uuid.uuid4())
     await _run_to_hitl(operation_id, "Original text", "steering text", monkeypatch)

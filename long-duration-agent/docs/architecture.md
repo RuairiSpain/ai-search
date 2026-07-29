@@ -62,6 +62,15 @@ User's browser ── GET {download_url} ──▶ Artifact Broker API ──▶
 Azurite's connection string uses its own published, well-known development account key -
 not a secret, and not usable against any real Azure account.
 
+`AzureBlobStore` uses `azure.storage.blob.aio.ContainerClient` / `azure.identity.aio.
+DefaultAzureCredential` deliberately - not the sync clients. Its methods are `await`ed from
+request-handling code (executors, the broker), so a sync client would block the whole asyncio
+event loop for every upload/download/delete's full network round-trip, stalling every other
+concurrent request on the process. It also normalizes `azure.core.exceptions
+.ResourceNotFoundError` (what the SDK actually raises for a missing blob) into `FileNotFoundError`,
+so callers (`broker/api.py`, `cleanup.py`, `StopExecutor`) can stay backend-agnostic instead of
+special-casing the Azure SDK's own exception hierarchy.
+
 ## Why a durable MAF Workflow instead of a hand-rolled step runner
 
 `agent_framework.WorkflowBuilder` lets each step be an `Executor` connected by edges; when

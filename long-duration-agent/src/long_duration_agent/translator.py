@@ -43,30 +43,48 @@ def _stub_translate(text: str) -> str:
 
 
 async def _model_translate(text: str, settings) -> str:
-    try:
-        from agent_framework.openai import OpenAIChatCompletionClient
-    except ModuleNotFoundError as exc:  # pragma: no cover - exercised only without deps installed
-        raise TranslationError(
-            "agent-framework-openai is required for live translation. Install it, or set "
-            "LDA_USE_STUB_TRANSLATOR=1 to use the offline stub."
-        ) from exc
+    from agent_framework import Message
 
-    if settings.azure_openai_endpoint:
-        client = OpenAIChatCompletionClient(
-            azure_endpoint=settings.azure_openai_endpoint,
-            api_key=settings.azure_openai_api_key or None,
-            ai_model_id=settings.azure_openai_model or settings.foundry_model,
+    messages = [
+        Message(role="system", contents=[SYSTEM_PROMPT]),
+        Message(role="user", contents=[text]),
+    ]
+
+    if settings.foundry_project_endpoint:
+        try:
+            from agent_framework.foundry import FoundryChatClient
+        except ModuleNotFoundError as exc:  # pragma: no cover - exercised only without deps installed
+            raise TranslationError(
+                "agent-framework-foundry is required for Foundry translation. Install it, or set "
+                "LDA_USE_STUB_TRANSLATOR=1 to use the offline stub."
+            ) from exc
+        from azure.identity.aio import DefaultAzureCredential
+
+        client = FoundryChatClient(
+            project_endpoint=settings.foundry_project_endpoint,
+            model=settings.foundry_model,
+            credential=DefaultAzureCredential(),
         )
     else:
-        client = OpenAIChatCompletionClient(ai_model_id=settings.foundry_model)
+        try:
+            from agent_framework.openai import OpenAIChatCompletionClient
+        except ModuleNotFoundError as exc:  # pragma: no cover - exercised only without deps installed
+            raise TranslationError(
+                "agent-framework-openai is required for live translation. Install it, or set "
+                "LDA_USE_STUB_TRANSLATOR=1 to use the offline stub."
+            ) from exc
+
+        if settings.azure_openai_endpoint:
+            client = OpenAIChatCompletionClient(
+                azure_endpoint=settings.azure_openai_endpoint,
+                api_key=settings.azure_openai_api_key or None,
+                model=settings.azure_openai_model or settings.foundry_model,
+            )
+        else:
+            client = OpenAIChatCompletionClient(model=settings.foundry_model)
 
     try:
-        response = await client.get_response(
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": text},
-            ],
-        )
+        response = await client.get_response(messages=messages)
     except Exception as exc:  # noqa: BLE001 - surface as a domain error
         raise TranslationError(f"Translation model call failed: {exc}") from exc
 

@@ -94,7 +94,10 @@ The final `event: artifact` line contains a `download_url` pointing at the broke
 See `.env.example` for the full list. The defaults run the whole pipeline offline:
 
 - `LDA_USE_STUB_TRANSLATOR=1` - skips the model call (set to `0` and configure
-  `FOUNDRY_*`/`AZURE_OPENAI_*` for real es-ES translations).
+  `FOUNDRY_*`/`AZURE_OPENAI_*` for real es-ES translations - if `FOUNDRY_PROJECT_ENDPOINT` is
+  set, Foundry is used; otherwise Azure OpenAI/OpenAI. Also run
+  `pip install -e ".[translate]"` first - `agent-framework-openai`/`agent-framework-foundry`
+  aren't needed for the offline stub, so they're an optional extra, not a base dependency).
 - `LDA_STORAGE_BACKEND=local` - writes artifacts under `.data/blob-store`, no dependencies.
   Set to `azurite` to exercise the real `azure-storage-blob` SDK against a local
   [Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite) emulator

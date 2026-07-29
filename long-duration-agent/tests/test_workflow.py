@@ -104,3 +104,17 @@ async def test_oversized_prompt_is_rejected_before_any_translation():
     assert "exceeds the limit" in events[-1].data["message"]
     # no artifact should have been produced
     assert not any(e.event == "artifact" for e in events)
+
+
+@pytest.mark.asyncio
+async def test_replaying_after_the_artifact_has_expired_reports_an_error_not_a_stale_link():
+    operation_id = str(uuid.uuid4())
+    events = await _run(operation_id)
+    artifact_id = next(e for e in events if e.event == "artifact").data["artifact_id"]
+
+    store = get_metadata_store()
+    store.mark_deleted(artifact_id)  # simulates the TTL sweeper (cleanup.py) having run
+
+    replay_events = await _run(operation_id)
+    assert replay_events[-1].event == "error"
+    assert not any(e.event == "artifact" for e in replay_events)

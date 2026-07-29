@@ -244,9 +244,6 @@ class MetadataStore:
             status=row["status"],
         )
 
-    def is_owner(self, artifact_id: str, *, tenant_id: str, user_object_id: str) -> bool:
-        record = self.get_artifact(artifact_id)
-        return record is not None and record.tenant_id == tenant_id and record.user_object_id == user_object_id
 
     def list_expired(self, *, now: Optional[datetime] = None) -> list[ArtifactRecord]:
         cutoff = _to_iso(now or _now())
@@ -254,7 +251,8 @@ class MetadataStore:
             rows = conn.execute(
                 "SELECT artifact_id FROM artifacts WHERE status = 'active' AND expires_at <= ?", (cutoff,)
             ).fetchall()
-        return [self.get_artifact(row["artifact_id"]) for row in rows if self.get_artifact(row["artifact_id"])]  # type: ignore[misc]
+        records = (self.get_artifact(row["artifact_id"]) for row in rows)
+        return [record for record in records if record is not None]
 
     def mark_deleted(self, artifact_id: str) -> None:
         with self._connect() as conn:

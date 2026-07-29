@@ -25,10 +25,6 @@ class CallerIdentity(BaseModel):
     user_object_id: str
     display_name: Optional[str] = None
 
-    @property
-    def owner_key(self) -> str:
-        return f"{self.tenant_id}/{self.user_object_id}"
-
 
 class InvocationRequest(BaseModel):
     """Body of ``POST /invocations``."""
@@ -112,9 +108,3 @@ class ArtifactRecord(BaseModel):
     created_at: datetime
     expires_at: datetime
     status: Literal["active", "expired", "deleted"] = "active"
-
-
-class ArtifactLink(BaseModel):
-    artifact_id: str
-    download_url: str
-    expires_at: datetime

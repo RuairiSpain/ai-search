@@ -182,6 +182,10 @@ async def respond_to_hitl(
 
     workflow_name = operation["workflow_name"]
     request_id = operation["pending_request_id"]
+    # Clear waiting_hitl before resuming (not after): a concurrent /respond call for the same
+    # operation_id - a double-click, a client retry - would otherwise still see require_status=
+    # "waiting_hitl" satisfied and resume the same checkpoint a second time.
+    store.mark_in_progress(operation_id)
     latest = await checkpoint_storage.get_latest(workflow_name=workflow_name)
     if latest is None:
         raise OperationFailedError(f"No checkpoint found to resume operation {operation_id}.")
@@ -214,6 +218,15 @@ async def _idempotent_replay(store: MetadataStore, existing, next_event) -> Asyn
     artifact = store.get_artifact(existing["artifact_id"])
     if artifact is None:
         yield next_event("error", OrchestrationStage.FAILED, {"message": "Artifact record is missing."})
+        return
+    if artifact.status != "active":
+        # Already swept by the TTL sweeper (cleanup.py) - reporting "completed" with a link
+        # here would be a lie: the blob is gone and the broker would just 404 it.
+        yield next_event(
+            "error",
+            OrchestrationStage.FAILED,
+            {"message": "This artifact has expired and is no longer available for download."},
+        )
         return
 
     from ..broker.tokens import build_download_link

@@ -10,12 +10,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-WORKSPACE_ROOT = Path(".data/workspace")
+from .config import get_settings
 
 
 def workspace_path(operation_id: str) -> Path:
-    WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
-    return WORKSPACE_ROOT / f"{operation_id}.md"
+    return get_settings().workspace_root / f"{operation_id}.md"
 
 
 def write_workspace_file(operation_id: str, content: str) -> Path:

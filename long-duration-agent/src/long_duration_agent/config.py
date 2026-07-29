@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     azure_openai_model: str = ""
     lda_use_stub_translator: bool = True
 
+    # Hosted-agent local scratch workspace ($HOME/artifacts equivalent) - temporary only,
+    # deleted once the durable copy is uploaded. See workspace.py.
+    lda_workspace_root: str = ".data/workspace"
+
     # Storage backend
     lda_storage_backend: str = "local"  # "local" | "azurite" | "azure"
     lda_local_storage_root: str = ".data/blob-store"
@@ -72,6 +76,12 @@ class Settings(BaseSettings):
     @property
     def local_storage_root(self) -> Path:
         path = Path(self.lda_local_storage_root)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def workspace_root(self) -> Path:
+        path = Path(self.lda_workspace_root)
         path.mkdir(parents=True, exist_ok=True)
         return path
 

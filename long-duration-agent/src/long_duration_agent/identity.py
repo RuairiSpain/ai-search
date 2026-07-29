@@ -23,7 +23,7 @@ from fastapi import HTTPException, Request
 from .config import get_settings
 from .models import CallerIdentity
 
-_JWKS_CACHE: dict[str, Any] = {"keys": None, "fetched_at": 0.0}
+_JWKS_CACHE: dict[str, dict[str, Any]] = {}  # tenant_id -> {"keys": [...], "fetched_at": float}
 _JWKS_TTL_SECONDS = 3600
 
 
@@ -32,13 +32,19 @@ def _jwks_uri(tenant_id: str) -> str:
 
 
 def _get_signing_key(tenant_id: str, kid: str) -> Any:
+    # Keyed per-tenant, not a single global slot - otherwise a second tenant's request
+    # within the TTL window would be checked against the first tenant's cached keys.
     now = time.monotonic()
-    if _JWKS_CACHE["keys"] is None or now - _JWKS_CACHE["fetched_at"] > _JWKS_TTL_SECONDS:
-        resp = httpx.get(_jwks_uri(tenant_id), timeout=10.0)
-        resp.raise_for_status()
-        _JWKS_CACHE["keys"] = resp.json()["keys"]
-        _JWKS_CACHE["fetched_at"] = now
-    for key in _JWKS_CACHE["keys"]:
+    cached = _JWKS_CACHE.get(tenant_id)
+    if cached is None or now - cached["fetched_at"] > _JWKS_TTL_SECONDS:
+        try:
+            resp = httpx.get(_jwks_uri(tenant_id), timeout=10.0)
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=503, detail=f"Could not fetch signing keys for tenant: {exc}") from exc
+        cached = {"keys": resp.json()["keys"], "fetched_at": now}
+        _JWKS_CACHE[tenant_id] = cached
+    for key in cached["keys"]:
         if key.get("kid") == kid:
             return jwt.PyJWK.from_dict(key).key
     raise HTTPException(status_code=401, detail="Unknown signing key (kid) for caller token.")
