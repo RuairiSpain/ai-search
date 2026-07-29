@@ -30,16 +30,13 @@ resource searchToFoundry 'Microsoft.Network/virtualNetworks/virtualNetworkPeerin
   }
 }
 
-resource foundryToSearch 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2024-05-01' = {
-  name: 'peer-to-${searchVnetName}'
-  parent: foundryVnet
-  properties: {
-    allowVirtualNetworkAccess: true
+module foundryToSearch './foundry-vnet-peering-remote.bicep' = {
+  name: 'foundry-to-search-peering'
+  scope: resourceGroup(foundryVnetSubscriptionId, foundryVnetResourceGroupName)
+  params: {
+    foundryVnetName: foundryVnetName
+    searchVnetName: searchVnetName
+    searchVnetId: searchVnetId
     allowForwardedTraffic: allowForwardedTraffic
-    allowGatewayTransit: false
-    useRemoteGateways: false
-    remoteVirtualNetwork: {
-      id: searchVnetId
-    }
   }
 }
