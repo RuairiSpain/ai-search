@@ -26,6 +26,12 @@ steps, resubmitting the same `operation_id` resumes from the last completed step
 starting over. See `docs/architecture.md` for the full design and the production upgrade path
 (Azure Functions + `agent-framework-durabletask`).
 
+If the chat UI's connection drops mid-run (or the tab is closed and reopened), reconnecting
+with the same `operation_id` - or calling `/respond` after a HITL pause - replays every event
+already logged for that operation before continuing with new ones, so the client sees the
+whole story instead of just what happens after it reconnects. See "Reconnecting mid-run" in
+`docs/architecture.md`.
+
 ## Project layout
 
 ```text
@@ -47,11 +53,11 @@ long-duration-agent/
 │   ├── durable/
 │   │   ├── state.py               # PipelineState - the checkpointed message
 │   │   ├── pipeline.py             # the 7-step MAF Workflow (one Executor per user-visible step)
-│   │   ├── engine.py               # runs/resumes the workflow, converts events to SSE, idempotency
+│   │   ├── engine.py               # runs/resumes the workflow, converts events to SSE, idempotency, reconnect replay
 │   │   └── table_checkpoint_storage.py  # Table Storage CheckpointStorage (multi-instance)
 │   ├── storage/
 │   │   ├── blob_store.py           # LocalDiskBlobStore (demo) / AzureBlobStore (public+SAS, managed identity) - generate_download_url mints the SAS link directly, no broker
-│   │   ├── metadata_store.py        # SQLite: operation + artifact bookkeeping (no SAS stored, ever)
+│   │   ├── metadata_store.py        # SQLite: operation + artifact bookkeeping + the durable per-operation event log (no SAS stored, ever)
 │   │   └── table_metadata_store.py   # Table Storage equivalent (multi-instance)
 │   └── hosted_agent/
 │       └── app.py                     # POST /invocations (SSE), /steer, /respond, /metrics - the Hosted Agent entrypoint (the only app - no separate broker service)
@@ -154,14 +160,30 @@ instance:
 
 - `LDA_CHECKPOINT_BACKEND=azurite|azure`, `LDA_CHECKPOINT_TABLE_NAME=workflowcheckpoints`
 - `LDA_METADATA_BACKEND=azurite|azure`, `LDA_OPERATIONS_TABLE_NAME=operations`,
-  `LDA_ARTIFACTS_TABLE_NAME=artifacts`, `LDA_STEERING_TABLE_NAME=steeringmessages`
+  `LDA_ARTIFACTS_TABLE_NAME=artifacts`, `LDA_STEERING_TABLE_NAME=steeringmessages`,
+  `LDA_EVENTS_TABLE_NAME=operationevents`
 - `AZURE_TABLE_ACCOUNT_URL` - required when either backend is `azure` (uses
   `DefaultAzureCredential`, same as blob storage); with `azurite` both reuse
   `AZURITE_CONNECTION_STRING`.
 
 Requires the `production` extra (`pip install -e ".[production]"`, adds `azure-data-tables`).
 `tests/test_table_storage_backends.py` exercises both backends end-to-end (including a full
-steering/HITL resume) but skips cleanly if the extra isn't installed or Azurite isn't reachable.
+steering/HITL resume and a reconnect replay) but skips cleanly if the extra isn't installed or
+Azurite isn't reachable.
+
+### Reconnecting mid-run
+
+Every SSE event is durably logged per `operation_id` as it's emitted (`storage/metadata_store.py`'s
+`append_event`/`list_events`, backed by the same SQLite/Table Storage split as everything else
+here). If the connection drops while an operation is still running - a closed tab, a flaky
+network - reconnecting is just resubmitting the same `operation_id` to `POST /invocations`
+(exactly how the existing durable-resume story already worked): the client now gets every
+already-logged event replayed first, in order, before new live events continue on the same
+sequence number rather than restarting at 1. The same replay happens on `POST .../respond`
+after a HITL pause, since that's always a fresh connection (the original stream ends the
+moment it pauses) - useful if the response comes from a different tab or device than the one
+that saw the `hitl_request`. No configuration needed; this is always on, the same as
+checkpointing.
 
 ### Observability
 
@@ -265,6 +287,10 @@ what's left is largely deployment/ops, not code:
 - [x] Public-network storage account with SAS-gated (not anonymous) blob access, plus
   Log Analytics diagnostic logging of every blob read/write/delete (`infra/storage-public.bicep`)
   - since there's no broker to log downloads at the app layer, this is the audit trail.
+- [x] Durable, replayable per-operation event log (`storage/metadata_store.py`'s
+  `append_event`/`list_events`) - a client reconnecting mid-run, or calling `/respond` after a
+  HITL pause, gets the full history replayed before live events continue, instead of silently
+  missing everything that happened before it reconnected.
 - [ ] Deploy `infra/storage-public.bicep` and set `LDA_STORAGE_BACKEND=azure` +
   `AZURE_STORAGE_ACCOUNT_URL`.
 - [ ] Schedule `python -m long_duration_agent.cleanup` and

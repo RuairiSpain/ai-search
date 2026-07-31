@@ -43,6 +43,7 @@ def table_backend_env(monkeypatch):
     monkeypatch.setenv("LDA_OPERATIONS_TABLE_NAME", f"testops{suffix}")
     monkeypatch.setenv("LDA_ARTIFACTS_TABLE_NAME", f"testartifacts{suffix}")
     monkeypatch.setenv("LDA_STEERING_TABLE_NAME", f"teststeering{suffix}")
+    monkeypatch.setenv("LDA_EVENTS_TABLE_NAME", f"testevents{suffix}")
     monkeypatch.setenv("LDA_CHECKPOINT_TABLE_NAME", f"testcheckpoints{suffix}")
     monkeypatch.setenv("AZURE_STORAGE_CONTAINER", f"testartifacts{suffix}")
     get_settings.cache_clear()
@@ -126,6 +127,43 @@ async def test_steering_hitl_loop_resumes_from_a_table_storage_checkpoint(monkey
 
     resume_events = await _drain(respond_to_hitl(operation_id, caller, HitlDecisionRequest(decision="yes")))
     assert resume_events[-1].event == "completed"
+
+
+@pytest.mark.asyncio
+async def test_reconnect_replays_the_event_log_from_table_storage(monkeypatch):
+    """The durable event log (durable/engine.py's _drive_and_persist) against the Table
+    Storage backend: abandon a real run partway through, reconnect with the same
+    operation_id, and confirm the first call's events are replayed verbatim before the
+    run continues on a sequence that doesn't restart at 1."""
+    from long_duration_agent.durable.engine import run_translation_operation
+    from long_duration_agent.identity import CallerIdentity
+    from long_duration_agent.models import InvocationRequest
+    from long_duration_agent.storage.metadata_store import get_metadata_store
+
+    monkeypatch.setenv("LDA_WAIT_AFTER_SAVE_SECONDS", "0.3")
+    get_settings.cache_clear()
+
+    caller = CallerIdentity(tenant_id="table-tenant", user_object_id="table-user")
+    operation_id = f"table-reconnect-{uuid.uuid4().hex[:8]}"
+    request = InvocationRequest(prompt="Table Storage reconnect test", operation_id=operation_id)
+
+    gen = run_translation_operation(request, caller)
+    first_call_events = []
+    async for event in gen:
+        first_call_events.append(event)
+        if len(first_call_events) == 2:
+            break
+    await gen.aclose()
+
+    store = get_metadata_store()
+    operation = await store.get_operation(operation_id)
+    assert operation["status"] == "in_progress"
+
+    reconnect_events = await _drain(run_translation_operation(request, caller))
+
+    assert [e.sequence for e in reconnect_events[:2]] == [e.sequence for e in first_call_events]
+    assert reconnect_events[2].sequence == first_call_events[-1].sequence + 1
+    assert reconnect_events[-1].event == "completed"
 
 
 async def _drain(gen):

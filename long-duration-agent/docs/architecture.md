@@ -170,6 +170,66 @@ via `typing.get_type_hints`, so PEP 563 postponed evaluation makes that check se
 string `"WorkflowContext[PipelineState]"` and reject it. `@handler` doesn't have this issue - only
 `@response_handler`, used by `SteeringGateExecutor.on_steering_decision`.
 
+## Reconnecting mid-run
+
+Checkpointing already meant a crashed *process* could resume an operation without redoing
+work. What it didn't cover: a *client* that reconnects mid-run - a dropped Wi-Fi connection, a
+closed tab reopened, a chat UI that retries after a timeout - previously only ever saw events
+generated from the point of reconnection onward. Everything the workflow had already reported
+before the drop (the "agent is working" status, the translation completing, an earlier steering
+round) was gone for good, because SSE events were never anything but a live stream: produced
+once, forwarded once, then lost.
+
+`storage/metadata_store.py`'s `append_event`/`list_events` (SQLite table `operation_events`;
+Table Storage table `operationevents`, `PartitionKey` = operation_id so replay is a single
+partition query in RowKey/sequence order) fix that by durably logging every `StreamEvent` as
+it's produced. `durable/engine.py`'s `_drive_and_persist` wraps `_drive_stream` for exactly this:
+
+```python
+async def _drive_and_persist(stream, store, operation_id, next_event):
+    async for event in _drive_stream(stream, store, operation_id, next_event):
+        await store.append_event(operation_id, event)
+        yield event
+```
+
+`append_event` runs *before* the `yield` - so the event is captured even if there's nothing
+left to actually deliver it to (the client is already gone; the generator won't be driven
+further until something re-invokes it). This is the same "durability doesn't depend on anyone
+being there to receive it" property checkpointing already has, applied to the event stream
+instead of the workflow state.
+
+Both entry points that can find an operation already under way now replay before they resume:
+
+- `run_translation_operation`, when `existing["status"] == "in_progress"` (the same condition
+  that already triggered a checkpoint resume) - this is the literal reconnect case: same
+  `operation_id`, a fresh HTTP request, possibly a different tab or device.
+- `respond_to_hitl` - always, unconditionally. A HITL pause is a hard stream boundary: the
+  original SSE connection already ended cleanly the moment `set_waiting_on_hitl` ran, so
+  *every* `/respond` call is a "reconnect" in the sense that matters here, even if it's the same
+  browser tab that's been sitting on the `hitl_request` the whole time.
+
+Both replay the same way: fetch `list_events(operation_id)`, yield each one back to the caller
+verbatim (same `sequence`, same `stage`, same `data` - not re-derived, not summarized), then
+drive the resumed/fresh workflow stream with `_sequencer(start=past_events[-1].sequence + 1)`
+so the live events that follow continue the same numbering instead of restarting at 1. A
+client that only ever looks at "did `sequence` go up" gets a single, gap-free, duplicate-free
+timeline across however many reconnects happen - it never needs special-case logic for "was
+this a fresh run or a resume".
+
+What's deliberately *not* replayed: `_idempotent_replay` (the `existing["status"] == "completed"`
+path) synthesizes a fresh status/artifact/completed trio on every call rather than reading from
+the log - replaying the *original* run's full history for an operation that's long since
+finished and might be replayed many times would grow the response for no benefit; a completed
+operation only ever needs "here's your (possibly re-signed) download link", not a history
+lesson. The event log's job is specifically the in-flight case.
+
+**Retention**: event log rows are never deleted - same as the `operations` table itself, whose
+rows are also never deleted, only status-flipped. Growth is bounded by the number of operations
+ever created (each operation's own row count is bounded by its step count, a small constant),
+not by the number of times it's reconnected to. If that ever becomes a real capacity concern,
+the natural place to add cleanup is alongside `stale_operations.py`'s sweep, which already knows
+which operations are being permanently retired.
+
 ## Observability
 
 `observability.py` is a single module both apps call at import time

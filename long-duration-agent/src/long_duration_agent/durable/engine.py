@@ -14,6 +14,13 @@
   (``submit_steering_message``). The workflow's single steering checkpoint -
   always before the artifact reaches Blob Storage - asks for HITL
   confirmation (``respond_to_hitl``) before acting on it.
+- Reconnectable: every emitted event is durably logged per operation_id (see
+  ``_drive_and_persist`` and ``storage/metadata_store.py``'s ``append_event``/``list_events``).
+  Reconnecting to a still-running operation - via the same ``POST /invocations`` call that
+  drives idempotent replay, or via ``POST .../respond`` after a HITL pause - replays that full
+  history first, then continues with newly generated events on a continuing sequence number,
+  so a client that dropped mid-run sees the whole story instead of just what happens after
+  resume.
 """
 
 from __future__ import annotations
@@ -156,17 +163,28 @@ async def run_translation_operation(
                 "use POST /invocations/{operation_id}/respond instead."
             )
 
-        await store.start_operation(
-            operation_id=operation_id,
-            workflow_name=workflow_name,
-            tenant_id=caller.tenant_id,
-            user_object_id=caller.user_object_id,
-        )
+        # Reconnecting to a still-running operation: replay everything already logged before
+        # driving the resumed stream, so a client that dropped mid-run (and is now on a fresh
+        # connection - possibly a different tab/device) sees the whole history, not just
+        # whatever happens from here on.
+        is_reconnect = existing is not None and existing["status"] == "in_progress"
+        past_events: list[StreamEvent] = []
+        if is_reconnect:
+            past_events = await store.list_events(operation_id)
+            for event in past_events:
+                yield event
+        else:
+            await store.start_operation(
+                operation_id=operation_id,
+                workflow_name=workflow_name,
+                tenant_id=caller.tenant_id,
+                user_object_id=caller.user_object_id,
+            )
 
         workflow = build_workflow(workflow_name=workflow_name, checkpoint_storage=checkpoint_storage)
 
         resume_checkpoint_id = None
-        if existing is not None and existing["status"] == "in_progress":
+        if is_reconnect:
             latest = await checkpoint_storage.get_latest(workflow_name=workflow_name)
             if latest is not None:
                 resume_checkpoint_id = latest.checkpoint_id
@@ -185,7 +203,8 @@ async def run_translation_operation(
             )
             stream = workflow.run(initial_state, stream=True, checkpoint_storage=checkpoint_storage)
 
-        async for event in _drive_stream(stream, store, operation_id, _sequencer()):
+        next_sequence = past_events[-1].sequence + 1 if past_events else 1
+        async for event in _drive_and_persist(stream, store, operation_id, _sequencer(start=next_sequence)):
             yield event
 
 
@@ -206,6 +225,15 @@ async def respond_to_hitl(
         # "waiting_hitl" satisfied and resume the same checkpoint a second time.
         await store.mark_in_progress(operation_id)
         metrics()["waiting_hitl_gauge"].dec()
+
+        # /respond is always a fresh connection (the original stream ended the moment it
+        # paused for HITL) - possibly from a different tab/device than the one that saw the
+        # hitl_request - so replay the full history logged so far before driving the resume,
+        # same as a POST /invocations reconnect does.
+        past_events = await store.list_events(operation_id)
+        for event in past_events:
+            yield event
+
         latest = await checkpoint_storage.get_latest(workflow_name=workflow_name)
         if latest is None:
             raise OperationFailedError(f"No checkpoint found to resume operation {operation_id}.")
@@ -219,12 +247,16 @@ async def respond_to_hitl(
             stream=True,
         )
 
-        async for event in _drive_stream(stream, store, operation_id, _sequencer()):
+        next_sequence = past_events[-1].sequence + 1 if past_events else 1
+        async for event in _drive_and_persist(stream, store, operation_id, _sequencer(start=next_sequence)):
             yield event
 
 
-def _sequencer():
-    sequence = 0
+def _sequencer(start: int = 1):
+    """Issues StreamEvents with a monotonically increasing sequence number, starting at
+    ``start``. Reconnect handling passes a ``start`` past the end of the replayed log so live
+    events continue the same numbering the client already saw, rather than restarting at 1."""
+    sequence = start - 1
 
     def next_event(event: str, stage: OrchestrationStage, data: dict) -> StreamEvent:
         nonlocal sequence
@@ -268,6 +300,18 @@ async def _idempotent_replay(store: MetadataStoreProtocol, existing, next_event)
         },
     )
     yield next_event("completed", OrchestrationStage.COMPLETED, {"success": True})
+
+
+async def _drive_and_persist(
+    stream, store: MetadataStoreProtocol, operation_id: str, next_event
+) -> AsyncIterator[StreamEvent]:
+    """Wraps _drive_stream, durably logging each event as it's produced - before it's yielded
+    to the (possibly already-gone) caller - so a later reconnect can replay it. append_event()
+    runs first specifically so the event is captured even if nothing is left to actually
+    deliver it to (the client dropped, the generator won't be driven further)."""
+    async for event in _drive_stream(stream, store, operation_id, next_event):
+        await store.append_event(operation_id, event)
+        yield event
 
 
 async def _drive_stream(stream, store: MetadataStoreProtocol, operation_id: str, next_event) -> AsyncIterator[StreamEvent]:

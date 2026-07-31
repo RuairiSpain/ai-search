@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     lda_operations_table_name: str = "operations"
     lda_artifacts_table_name: str = "artifacts"
     lda_steering_table_name: str = "steeringmessages"
+    # Durable, replayable per-operation event log (see durable/engine.py's reconnect handling):
+    # every SSE event is persisted here as it's emitted, so a client that reconnects to a
+    # still-running operation gets the full history replayed before live events resume.
+    lda_events_table_name: str = "operationevents"
     azure_table_account_url: str = ""  # e.g. https://<account>.table.core.windows.net
 
     # Orchestration + metadata state (sqlite backend only)

@@ -13,6 +13,10 @@ Entity schema:
         since drain_steering_messages always reads/clears one operation's queue at a time),
         RowKey = a zero-padded millisecond timestamp + short random suffix, so entities within
         a partition - which Table Storage returns in RowKey order - come back in arrival order.
+    operation events table (the durable reconnect log - see durable/engine.py): PartitionKey =
+        operation_id (same reasoning as steering messages - always read/appended one
+        operation at a time), RowKey = the event's zero-padded sequence number, so entities
+        come back in emission order for replay.
 
 Table Storage entities can't store a literal null; absent optional fields (artifact_id,
 pending_request_id, error) are stored as "" and translated back to None on read, matching
@@ -21,12 +25,13 @@ sqlite3.Row's semantics for the same columns.
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from ..models import ArtifactRecord
+from ..models import ArtifactRecord, OrchestrationStage, StreamEvent
 
 OPERATION_PARTITION = "operation"
 ARTIFACT_PARTITION = "artifact"
@@ -66,6 +71,7 @@ class TableMetadataStore:
         operations_table: str = "operations",
         artifacts_table: str = "artifacts",
         steering_table: str = "steeringmessages",
+        events_table: str = "operationevents",
     ) -> None:
         from azure.data.tables.aio import TableServiceClient
 
@@ -81,9 +87,11 @@ class TableMetadataStore:
         self._operations_table_name = operations_table
         self._artifacts_table_name = artifacts_table
         self._steering_table_name = steering_table
+        self._events_table_name = events_table
         self._operations_table = None
         self._artifacts_table = None
         self._steering_table = None
+        self._events_table = None
 
     async def _get_operations_table(self):
         if self._operations_table is None:
@@ -99,6 +107,11 @@ class TableMetadataStore:
         if self._steering_table is None:
             self._steering_table = await self._service.create_table_if_not_exists(self._steering_table_name)
         return self._steering_table
+
+    async def _get_events_table(self):
+        if self._events_table is None:
+            self._events_table = await self._service.create_table_if_not_exists(self._events_table_name)
+        return self._events_table
 
     # ---- operations -----------------------------------------------------
 
@@ -202,6 +215,45 @@ class TableMetadataStore:
             parameters={"pk": OPERATION_PARTITION, "cutoff": cutoff},
         )
         return [self._operation_entity_to_dict(entity) async for entity in results]
+
+    # ---- durable event log (for reconnects) --------------------------------
+
+    async def append_event(self, operation_id: str, event: StreamEvent) -> None:
+        """Persists one emitted StreamEvent. Idempotent by (PartitionKey, RowKey) - a
+        duplicate append (there shouldn't be one in normal operation) is silently ignored
+        rather than raising, matching this codebase's general idempotent-replay posture."""
+        from azure.core.exceptions import ResourceExistsError
+
+        table = await self._get_events_table()
+        entity = {
+            "PartitionKey": operation_id,
+            "RowKey": f"{event.sequence:020d}",
+            "event": event.event,
+            "stage": event.stage.value,
+            "data": json.dumps(event.data),
+            "emitted_at": _to_iso(event.emitted_at),
+        }
+        try:
+            await table.create_entity(entity)
+        except ResourceExistsError:
+            pass
+
+    async def list_events(self, operation_id: str) -> list[StreamEvent]:
+        """Returns every event persisted for this operation, in emission order - what a
+        reconnecting client replays before live events resume."""
+        table = await self._get_events_table()
+        results = table.query_entities(query_filter="PartitionKey eq @pk", parameters={"pk": operation_id})
+        entities = [entity async for entity in results]  # RowKey order == sequence order
+        return [
+            StreamEvent(
+                event=entity["event"],
+                stage=OrchestrationStage(entity["stage"]),
+                data=json.loads(entity["data"]),
+                sequence=int(entity["RowKey"]),
+                emitted_at=_from_iso(entity["emitted_at"]),
+            )
+            for entity in entities
+        ]
 
     # ---- steering messages -------------------------------------------------
 

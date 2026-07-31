@@ -21,13 +21,14 @@ event loop, can implement the exact same interface. See docs/architecture.md.
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator, Mapping, Optional, Protocol
 
-from ..models import ArtifactRecord
+from ..models import ArtifactRecord, OrchestrationStage, StreamEvent
 
 
 def _now() -> datetime:
@@ -62,6 +63,10 @@ class MetadataStoreProtocol(Protocol):
     async def mark_in_progress(self, operation_id: str) -> None: ...
 
     async def list_stale_operations(self, *, older_than: datetime) -> list[Mapping]: ...
+
+    async def append_event(self, operation_id: str, event: StreamEvent) -> None: ...
+
+    async def list_events(self, operation_id: str) -> list[StreamEvent]: ...
 
     async def queue_steering_message(
         self, *, operation_id: str, tenant_id: str, user_object_id: str, text: str
@@ -102,6 +107,16 @@ CREATE TABLE IF NOT EXISTS steering_messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_steering_operation ON steering_messages (operation_id);
+
+CREATE TABLE IF NOT EXISTS operation_events (
+    operation_id TEXT NOT NULL,
+    sequence     INTEGER NOT NULL,
+    event        TEXT NOT NULL,
+    stage        TEXT NOT NULL,
+    data         TEXT NOT NULL,
+    emitted_at   TEXT NOT NULL,
+    PRIMARY KEY (operation_id, sequence)
+);
 
 CREATE TABLE IF NOT EXISTS artifacts (
     artifact_id     TEXT PRIMARY KEY,
@@ -249,6 +264,54 @@ class MetadataStore:
 
         return await asyncio.to_thread(_run)
 
+    # ---- durable event log (for reconnects) --------------------------------
+
+    async def append_event(self, operation_id: str, event: StreamEvent) -> None:
+        """Persists one emitted StreamEvent. Idempotent by (operation_id, sequence) - a
+        duplicate append (there shouldn't be one in normal operation) is silently ignored
+        rather than raising, matching this codebase's general idempotent-replay posture."""
+
+        def _run() -> None:
+            with self._connect() as conn:
+                conn.execute(
+                    """INSERT OR IGNORE INTO operation_events
+                       (operation_id, sequence, event, stage, data, emitted_at)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (
+                        operation_id,
+                        event.sequence,
+                        event.event,
+                        event.stage.value,
+                        json.dumps(event.data),
+                        _to_iso(event.emitted_at),
+                    ),
+                )
+
+        await asyncio.to_thread(_run)
+
+    async def list_events(self, operation_id: str) -> list[StreamEvent]:
+        """Returns every event persisted for this operation, in emission order - what a
+        reconnecting client replays before live events resume."""
+
+        def _run() -> list[sqlite3.Row]:
+            with self._connect() as conn:
+                return conn.execute(
+                    "SELECT * FROM operation_events WHERE operation_id = ? ORDER BY sequence ASC",
+                    (operation_id,),
+                ).fetchall()
+
+        rows = await asyncio.to_thread(_run)
+        return [
+            StreamEvent(
+                event=row["event"],
+                stage=OrchestrationStage(row["stage"]),
+                data=json.loads(row["data"]),
+                sequence=row["sequence"],
+                emitted_at=_from_iso(row["emitted_at"]),
+            )
+            for row in rows
+        ]
+
     # ---- steering messages -------------------------------------------------
 
     async def queue_steering_message(
@@ -378,6 +441,7 @@ def get_metadata_store() -> MetadataStoreProtocol:
                 operations_table=settings.lda_operations_table_name,
                 artifacts_table=settings.lda_artifacts_table_name,
                 steering_table=settings.lda_steering_table_name,
+                events_table=settings.lda_events_table_name,
             )
         else:
             _STORE = MetadataStore(settings.state_db_path)
