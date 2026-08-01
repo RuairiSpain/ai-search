@@ -135,8 +135,10 @@ def parse(text: str, cat: Catalogue, name: str = "harness") -> IR:
     if re.search(r"\b(telemetry|trace|previous runs?|each close|run over run)\b", text, re.I):
         ir.source_origins.add("Trace")
 
-    if injections:
-        ir.objective["_injection_flags"] = Field_.sourced(injections, injections[0][:80])
+    # Kept off the IR's objective dict — it isn't a requirement field, and
+    # `all_fields`/`unknown_ratio` would otherwise count it as one, silently
+    # diluting the "N of M requirement fields assumed" figure shown to users.
+    ir.injection_flags = injections
     return ir
 
 
@@ -156,7 +158,7 @@ def evaluate_ir(ir: IR) -> list[str]:
     sourced = [f for f in ir.objective.values() if f.provenance.kind == "source"]
     if not sourced:
         problems.append("nothing could be extracted from the document")
-    if "_injection_flags" in ir.objective:
+    if ir.injection_flags:
         problems.append(
             "document contains instruction-like text; kept in a data role and ignored")
     return problems

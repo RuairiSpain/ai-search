@@ -64,9 +64,6 @@ def build(ir: IR, cat: Catalogue, reasons: list[str]) -> Scaffold:
         prims.append("constrain")
     if not prims:
         prims = ["generate_alternatives"]
-    if ir.needs_approval or ir.human_in_reasoning:
-        if "verify" not in prims:
-            prims.append("verify")
 
     loops = [f"{p}: {PRIMITIVE_LOOPS[p]}" for p in prims if p in PRIMITIVE_LOOPS]
     evals = [f"{p}: {PRIMITIVE_EVALUATORS[p]}" for p in prims if p in PRIMITIVE_EVALUATORS]

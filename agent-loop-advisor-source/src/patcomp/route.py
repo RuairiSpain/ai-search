@@ -158,7 +158,7 @@ def select_three(survivors: list[Candidate], cat: Catalogue,
     out = sorted(out, key=lambda c: (c.cost_per_task or 0, c.tree.depth()))[:3]
     recommended = picks.get(generate.BALANCED)
     if recommended is None or not any(c is recommended for c in out):
-        recommended = out[len(out) // 2] if out else None
+        recommended = _best_fit(out, ir)
 
     # The axis is a learnable MACHINERY ladder ordered by cost/depth: Minimal
     # (least) → Balanced → Ambitious (most). The recommendation is flagged
@@ -170,3 +170,17 @@ def select_three(survivors: list[Candidate], cat: Catalogue,
         c.axis = labels[i] if i < len(labels) else generate.AMBITIOUS
         c.recommended = c is recommended
     return out
+
+
+def _best_fit(cands: list[Candidate], ir) -> Candidate | None:
+    """The fallback used when no BALANCED-intent pick survived into the final
+    three: the candidate covering the most diagnosed reasoning patterns,
+    tie-broken by lower cost — same definition of "best-fit" the docstring
+    above promises, never the middle-by-price card (that's decoration)."""
+    if not cands:
+        return None
+    wanted = {s.pattern for s in ir.reasoning_signatures if s.pattern} if ir else set()
+    if not wanted:
+        return min(cands, key=lambda c: (c.cost_per_task or 0, c.tree.depth()))
+    return max(cands, key=lambda c: (
+        len(set(c.tree.patterns()) & wanted), -(c.cost_per_task or 0)))
