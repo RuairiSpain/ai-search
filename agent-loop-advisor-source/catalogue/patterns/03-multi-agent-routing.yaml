@@ -1,0 +1,27 @@
+id: "03"
+name: multi-agent-routing
+title: Multi-agent orchestration and model selection
+paper_section: 12
+folder: patterns/03-multi-agent-routing
+implemented: true
+emits: full
+role: orchestration
+summary: Planner decomposes, workers fan out on small models, a different-family reviewer checks, a merger writes the answer.
+problem_signatures: [workflow_too_large, cost_latency_pressure]
+primitives: [coordinate_roles]
+inputs: {accepts: [Question, Case, GraphContext]}
+outputs: {produces: Decision}
+evaluator: {type: model_judge, target: trajectory, cost_class: medium}
+state_mechanism: blob_checkpoint
+budget_profile: {llm_calls: 14, tokens: 90000, wall_clock_s: 180, max_review_rounds: 2}
+latency_class: slow
+cost_class: high
+azure_services: [foundry_agent_service, blob_storage, model_router, app_insights]
+capabilities: {guard: false, human_gate: false, decision_nodes: true, evaluator_slot: true, deterministic_core: false, loop: true}
+beats_baseline_when: "The task decomposes into 2 to 4 narrow subtasks whose worker calls can run on small models."
+failure_modes: [agent_sprawl, circular_debate, correlated_review_blind_spots, free_text_handoffs]
+composes_with: ["04", "13", "10", "08"]
+conflicts_with: []
+variants: [baseline, all-frontier, maf, router, same-family-review, steerable]
+agents: [planner, worker, reviewer, merger]
+skills: []

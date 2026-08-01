@@ -1,0 +1,28 @@
+id: "02"
+name: react-tool-loop
+title: Reasoning and acting, the ReAct loop
+paper_section: 6
+folder: patterns/02-react-tool-loop
+implemented: true
+emits: full
+role: action
+summary: Thought, action, observation, repeated under a budget, with tools and a knowledge base.
+problem_signatures: [needs_tools_midreasoning]
+primitives: [act_and_observe]
+inputs: {accepts: [Question, Case, MemoryContext, GraphContext]}
+outputs: {produces: Decision}
+evaluator: {type: hybrid, target: trajectory, cost_class: medium}
+state_mechanism: thread_state
+budget_profile: {llm_calls: 15, tokens: 80000, wall_clock_s: 150}
+latency_class: medium
+cost_class: medium
+azure_services: [foundry_agent_service, mcp_container_app, ai_search, app_insights]
+capabilities: {guard: false, human_gate: false, decision_nodes: false, evaluator_slot: true, deterministic_core: false, loop: true}
+beats_baseline_when: "The answer requires live lookups or actions that cannot be pre-retrieved."
+failure_modes: [hallucinated_tool_arguments, prompt_injection_via_observations, unbounded_loop]
+composes_with: ["04", "13", "06", "08", "10"]
+conflicts_with: []
+binds_write_tools: true
+variants: [baseline, frontier, no-knowledge, steerable]
+agents: [renewals-copilot]
+skills: [tool-hygiene, retention-offers]

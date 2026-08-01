@@ -1,0 +1,27 @@
+id: "06"
+name: memory-augmented
+title: Memory-augmented reasoning
+paper_section: 9
+folder: patterns/06-memory-augmented
+implemented: true
+emits: full
+role: context
+summary: Semantic, episodic and procedural memory, scoped and security-trimmed, with an explicit TTL.
+problem_signatures: [cross_session_recall]
+primitives: [remember]
+inputs: {accepts: [Question, Case]}
+outputs: {produces: MemoryContext}
+evaluator: {type: hybrid, target: final, cost_class: low}
+state_mechanism: vector_store_and_tables
+budget_profile: {llm_calls: 6, tokens: 30000, wall_clock_s: 90}
+latency_class: fast
+cost_class: low
+azure_services: [foundry_agent_service, ai_search, table_storage]
+capabilities: {guard: false, human_gate: false, decision_nodes: false, evaluator_slot: false, deterministic_core: false, loop: false}
+beats_baseline_when: "Quality depends on what happened in earlier sessions, not just this one."
+failure_modes: [stale_memory_recalled_as_fact, missing_security_trim, unbounded_growth]
+composes_with: ["01", "02", "03", "08"]
+conflicts_with: []
+variants: [baseline, managed, no-memory, no-security-trim]
+agents: [support-copilot]
+skills: [memory-hygiene]

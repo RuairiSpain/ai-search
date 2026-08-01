@@ -1,0 +1,27 @@
+id: "10"
+name: graph-reasoning
+title: Graph reasoning
+paper_section: 15
+folder: patterns/10-graph-reasoning
+implemented: true
+emits: full
+role: context
+summary: The model plans traversals over an entity graph and cites the chain of evidence it walked.
+problem_signatures: [relationship_discovery]
+primitives: [act_and_observe]
+inputs: {accepts: [Question, Case]}
+outputs: {produces: GraphContext}
+evaluator: {type: hybrid, target: trajectory, cost_class: medium}
+state_mechanism: in_process
+budget_profile: {llm_calls: 10, tokens: 50000, wall_clock_s: 120, max_traversal_hops: 12}
+latency_class: medium
+cost_class: medium
+azure_services: [foundry_agent_service, mcp_container_app, fabric]
+capabilities: {guard: false, human_gate: false, decision_nodes: false, evaluator_slot: false, deterministic_core: false, loop: true}
+beats_baseline_when: "The answer lives in relationships between records, so no single document contains it."
+failure_modes: [entity_resolution_errors, uncited_chains, hop_explosion]
+composes_with: ["01", "03", "05", "08", "09"]
+conflicts_with: []
+variants: [baseline, docs-only, frontier]
+agents: [traversal-planner, synthesist]
+skills: [entity-resolution, tool-hygiene]

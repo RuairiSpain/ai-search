@@ -1,0 +1,114 @@
+# The §2 Pattern Selection Guide, as data.
+#
+# A signature is a diagnosis, not a pattern. Diagnosis is multi-label: real
+# projects usually match three or four of these. `pattern` names the folder
+# that answers the signature; `advisory` signatures have no folder and produce
+# guidance rather than emitted agents.
+#
+# `evidence` terms feed a cheap deterministic prior that runs BEFORE the model
+# sees the document. The prior is a hint, never a verdict: it is compared with
+# the model's diagnosis and disagreement is surfaced in the build record.
+
+version: 1
+
+signatures:
+  - id: stale_facts
+    problem: Missing or stale facts
+    pattern: "00"
+    paper_section: 4
+    evidence: [rag, retrieval, out of date, knowledge base, cannot find, already exists somewhere, no actions are taken, answer and cite]
+
+  - id: weak_judgement
+    problem: Correct facts, weak judgement
+    pattern: "01"
+    paper_section: 5
+    evidence: [wrong recommendation, first answer, weak judgement, decide whether, root cause, propose an assessment]
+
+  - id: needs_tools_midreasoning
+    problem: Needs tools, data lookups or actions mid-reasoning
+    pattern: "02"
+    paper_section: 6
+    evidence: [look up, call the api, crm, system of record, take action, update the record, tool]
+
+  - id: planning_under_constraints
+    problem: Planning under constraints with many valid options
+    pattern: "09"
+    paper_section: 7
+    evidence: [ordering constraints, dependency order, many valid, migration order, feasible, must be migrated in, sensible one]
+
+  - id: multiple_interpretations
+    problem: Multiple plausible interpretations, first answer often wrong
+    pattern: "05"
+    paper_section: 8
+    evidence: [ambiguous, hypothesis, competing, first explanation, might be, usually wrong, alternatives considered, plausible]
+
+  - id: cross_session_recall
+    problem: Needs recall across sessions, personalised or accumulating context
+    pattern: "06"
+    paper_section: 9
+    evidence: [remember, previous conversation, history, personalis, returning customer, context across]
+
+  - id: should_improve_over_runs
+    problem: Repeated task that should improve run over run
+    pattern: "07"
+    paper_section: 10
+    evidence: [learn from, improve over time, same task each, recurring, run over run, gets better]
+
+  - id: long_running_process
+    problem: Long-running business process with defined stages
+    pattern: "08"
+    paper_section: 11
+    evidence: [sla, case management, several days, over several, escalates, second approval, then either, sits in]
+
+  - id: workflow_too_large
+    problem: Workflow too large or heterogeneous for one agent
+    pattern: "03"
+    paper_section: 12
+    evidence: [multiple teams, several steps, decompose, heterogeneous, many sources, breadth]
+
+  - id: human_judgement_in_output
+    problem: Human judgement is part of output quality, not just a gate
+    pattern: "13"
+    paper_section: 13
+    evidence: [analyst decides, expert judgement, sign off, human review, senior handler, cannot be automated, for review before]
+
+  - id: deterministic_policy_compliance
+    problem: Deterministic policy compliance required
+    pattern: "04"
+    paper_section: 14
+    evidence: [regulation, must not, mandatory, cannot vary, set by compliance, which rule was, audit trail, threshold]
+
+  - id: relationship_discovery
+    problem: Relationship discovery, no single document has the answer
+    pattern: "10"
+    paper_section: 15
+    evidence: [lineage, graph, ownership, who owns, records connect, no single record, share a director, relationships]
+
+  - id: validated_artefacts
+    problem: Validated artefacts required, not advice
+    pattern: "11"
+    paper_section: 16
+    evidence: [generate code, migration script, artefact, must compile, the deliverable is, tests pass, fails the tests]
+
+  # Advisory signatures. No folder, no emitted agents. These change the shape of
+  # the recommendation rather than adding a pattern to the composition.
+  - id: quality_undefined
+    problem: Nobody can say whether the output is good
+    pattern: null
+    advisory: evaluation_first
+    paper_section: 17
+    evidence: [not sure how to measure, no benchmark, subjective, quality varies]
+
+  - id: cost_latency_pressure
+    problem: Cost or latency pressure at scale
+    pattern: null
+    advisory: routing_and_budgets
+    paper_section: 18
+    evidence: [per day, high volume, cost per, latency, real time, seconds, throughput, scale]
+
+  - id: stable_high_volume
+    problem: Stable high-volume workload, orchestration cost dominates
+    pattern: null
+    advisory: learning_and_optimisation
+    paper_section: 19
+    evidence: [millions, stable, unchanged for, fine-tune, distil, same shape every time]

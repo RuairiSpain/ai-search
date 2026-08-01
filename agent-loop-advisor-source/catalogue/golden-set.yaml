@@ -1,0 +1,396 @@
+# The meta-evaluation golden set — v0.1 SEED.
+#
+# The compiler needs the same treatment every pattern in the workshop gets, or
+# the project is unfalsifiable (pattern-compiler-plan.md §12). This file is the
+# seed: a labelled set of requirements cases, each with an expert-agreed target
+# architecture, used to score the reasoning-only slice (Phase 1) BEFORE any
+# emitter is built.
+#
+# Provenance of the seed:
+#   - positive_single / positive_composition cases are derived from the paper's
+#     own "Customer scenario" blocks. The paper is illustrating a pattern with
+#     each scenario, so the target architecture is known: it is that pattern
+#     (or the composition the scenario describes). The `requirements_brief` is a
+#     paraphrase in requirements-doc shape, not a verbatim excerpt.
+#   - negative_baseline cases are AUTHORED ON PURPOSE. A reasoning paper contains
+#     no cases where grounding alone suffices, yet those are exactly what measure
+#     the headline metric (false-positive orchestration rate). They must be
+#     written deliberately. The correct answer to each is the baseline (00).
+#   - insufficient_input cases are AUTHORED to exercise the four-questions
+#     terminal (including the No-evaluator-no-build gate).
+#
+# Decision #3 (settled): the false-positive-orchestration threshold is defined
+# against the negative_baseline cases below, before the number is known. Any
+# candidate run that recommends orchestration (anything but baseline_recommended)
+# on a negative_baseline case is a false positive.
+
+version: 0.1
+labels_against: {signatures: signatures.yaml, operators: operators.yaml, patterns: "00..13"}
+
+scoring:                       # the four things to measure (plan §12)
+  - id: recommendation_match
+    statement: Does the Balanced (B) candidate match expected_target, or does expected_target appear among the three presented?
+  - id: false_positive_rate
+    statement: On negative_baseline cases, how often is anything other than baseline_recommended recommended? HEADLINE METRIC. Weight heavily.
+  - id: emission_validity
+    statement: (Phase 2+) Does the emitted artefact pass verify_structure.py unmodified?
+  - id: time_to_first_harness
+    statement: Wall-clock to a sensible harness vs a CSA doing it by hand.
+
+# ==========================================================================
+# DECISION #3 (settled): the false-positive recommendation rate IS the success
+# metric. Defined here in full, because a metric that is not defined before the
+# run is a metric that gets defined to fit the result.
+#
+# THE QUESTION IT ANSWERS: how often does the compiler sell orchestration to a
+# problem that grounding already solves? This is the dominant failure mode
+# (plan §11, "pattern astrology"). A model asked which patterns fit will always
+# find patterns, and prompting does not fix it. If senior engineers see this
+# behaviour once, they do not come back.
+# ==========================================================================
+false_positive_metric:
+
+  primary_definition:
+    name: FPR-orchestration
+    numerator: negative_baseline cases where recommended_outcome != baseline_recommended
+    denominator: all negative_baseline cases
+    interpretation: the share of "you don't need this" problems the tool tried to sell machinery to
+
+  # A single ratio hides two very different errors, so record the full matrix.
+  confusion_matrix:
+    axes: {truth: expected_outcome, prediction: recommended_outcome}
+    cells:
+      - id: true_negative
+        meaning: baseline expected, baseline recommended
+        verdict: correct — the tool said "you don't need this"
+      - id: false_positive
+        meaning: baseline expected, orchestration recommended
+        verdict: THE headline error. Over-selling. Weighted heaviest.
+      - id: true_positive
+        meaning: orchestration expected, orchestration recommended
+        verdict: correct
+      - id: false_negative
+        meaning: orchestration expected, baseline recommended
+        verdict: under-selling. Cheaper than a false positive, but it makes the tool useless, so do not optimise FPR to zero by refusing to ever recommend.
+
+  # ------------------------------------------------------------------------
+  # REASON-AWARE SCORING [added when tier 3 was dropped, 2026-08-01].
+  #
+  # THE HAZARD THIS CLOSES. Removing the bespoke simple-agent tier made the
+  # grounded baseline the fallback for undiagnosable documents. That is the
+  # right product decision, but it introduces a scoring hole: on a
+  # negative_baseline case, a compiler that simply FAILS TO DIAGNOSE now emits
+  # the baseline — the expected answer — and scores as correct. A diagnosis
+  # stage that gave up on every document would post a perfect false-positive
+  # rate while being completely useless.
+  #
+  # So the metric must score the REASON, not only the artefact.
+  # ------------------------------------------------------------------------
+  reason_aware_scoring:
+    principle: >
+      On negative_baseline cases the emitted artefact is identical in both the
+      correct and the degenerate path (pattern 00). Only descent_reason and
+      recommendation_confidence distinguish them, so both are mandatory inputs
+      to scoring.
+    outcomes:
+      - id: true_negative_diagnosed
+        condition: "outcome=baseline_recommended AND confidence=high AND descent_reason=null"
+        verdict: PASS — correct answer, correct reason. The only full pass.
+      - id: true_negative_fallback
+        condition: "outcome=baseline_fallback AND confidence=low"
+        verdict: >
+          NOT A PASS. Right artefact, wrong reason: the tool did not identify
+          this as a retrieval problem, it failed to identify it as anything.
+          Scored separately as a diagnosis failure, never counted as a win.
+      - id: false_positive
+        condition: "outcome in [three_cards, primitive_scaffold]"
+        verdict: FAIL — over-selling. The headline error.
+    derived_metric:
+      name: diagnosis-give-up-rate
+      statement: >
+        Share of ALL cases resolving to baseline_fallback. Tracks the degenerate
+        path directly. A rising give-up rate with a falling false-positive rate
+        is not an improving tool; it is a tool learning to abstain. Report the
+        two together, always.
+
+  # Tiered emission (Decision #1 revised) creates a NEW way to over-sell that a
+  # simple baseline-vs-orchestration ratio would miss entirely.
+  tier_aware_extension:
+    rationale: >
+      A tier-2 scaffold emitted for a problem that only needed a grounded agent
+      is still over-selling — the user receives machinery they did not need,
+      merely labelled unverified. Counting only tier-1 recommendations as false
+      positives would let the tool hide over-selling behind the UNVERIFIED
+      banner.
+    rule: >
+      On a negative_baseline case, ANY emission other than baseline_recommended
+      counts as a false positive, including a tier-2 scaffold. A
+      baseline_fallback is not a false positive, but nor is it a pass — see
+      reason_aware_scoring.
+    secondary_metric:
+      name: tier-inflation-rate
+      statement: >
+        Share of ALL cases where the emitted outcome carries more machinery than
+        the expert-agreed outcome. Tracks over-selling across the whole set, not
+        just the negatives.
+
+  thresholds:
+    status: PROVISIONAL — set before the first run, per Decision #3 discipline
+    target: "<= 0.10"        # at most 1 in 10 baseline-sufficient problems over-sold
+    investigate: "> 0.15"    # root-cause the diagnosis stage
+    pull_the_tool: "> 0.25"  # do not ship; the tool is a pattern-selling machine
+    note: >
+      With only 4 negative cases in the v0.1 seed, one error = 0.25. The seed
+      CANNOT measure this metric credibly. Expanding negative_baseline to 12-15
+      cases is the highest-priority golden-set work, and no threshold verdict
+      should be published until it is done. Stated plainly so the number is not
+      quoted before it means anything.
+
+  measurement_protocol:
+    - run each case through intake -> diagnose -> generate -> kill -> critique -> present
+    - record: recommended_outcome, emitted_tier, recommendation_confidence, diagnosis labels, descent_reason
+    - descent_reason and recommendation_confidence are MANDATORY fields; a run that omits them cannot be scored
+    - a case counts once; no re-runs, no best-of-n, no prompt tweaking between cases
+    - freeze catalogue, template and model versions for a run; record them in the result
+    - report the confusion matrix, never the bare ratio
+
+  ablations:                 # the evidence the design decisions were earned
+    - id: no_constraint_kill
+      remove: the deterministic legality stage
+      expect: FPR rises; illegal compositions survive to critique
+    - id: no_cross_family_critic
+      remove: the different-family reviewer
+      expect: FPR rises most — this is the stage that should catch over-selling
+    - id: no_baseline_candidate
+      remove: candidate zero
+      expect: recommendation distribution shifts toward orchestration across the board
+    - id: no_beats_baseline_rule
+      remove: beats_baseline_stated
+      expect: FPR rises; cards appear that cannot justify themselves
+    - id: reason_blind_scoring
+      remove: reason_aware_scoring (score artefact only, ignore descent_reason)
+      expect: >
+        FPR appears to IMPROVE while diagnosis quality is unchanged or worse.
+        This ablation exists to demonstrate the hazard, not to be adopted.
+
+# --------------------------------------------------------------------------
+# Cases. expected_target uses operator names from operators.yaml:
+# sequence, nest, guard, fan, substitute. Pattern ids are 00..13.
+# --------------------------------------------------------------------------
+cases:
+
+  # ================= POSITIVE — single pattern =================
+  - id: manufacturer-diagnostics
+    title: Manufacturing diagnostics assistant
+    source: "paper §5"
+    case_type: positive_single
+    requirements_brief: "A diagnostics assistant retrieves incidents and procedures correctly but commits to the first plausible fault. We need it to weigh competing fault hypotheses against sensor evidence, ask for missing data, and propose the safest next diagnostic step, logging the hypotheses it rejected."
+    expected_diagnosis: [weak_judgement]
+    expected_target: "01"
+    expected_outcome: three_cards
+    tests: "Retrieval is fine; the failure is judgement. Must pick 01, not a retrieval fix."
+
+  - id: renewals-copilot
+    title: Account renewals copilot
+    source: "paper §6"
+    case_type: positive_single
+    requirements_brief: "A copilot reasons over a customer account, looking up ticket severity and contract terms mid-reasoning, then drafts a retention offer that an account manager must approve before it is sent."
+    expected_diagnosis: [needs_tools_midreasoning, human_judgement_in_output]
+    expected_target: "guard(02, 13)"
+    expected_outcome: three_cards
+    tests: "Binds write-capable tools (send offer) -> write_is_governed forces a 13 gate or 04 guard. A bare 02 must fail legality."
+
+  - id: legacy-modernisation-planning
+    title: Legacy modernisation wave planning
+    source: "paper §7"
+    case_type: positive_single
+    requirements_brief: "Planning which systems to migrate first, comparing waves against dependencies, downtime windows, criticality, data gravity, security and capacity; ruling out constraint-violating plans early and recommending an ordered sequence with rejected alternatives attached."
+    expected_diagnosis: [planning_under_constraints]
+    expected_target: "09"
+    expected_outcome: three_cards
+    tests: "Planning, not retrieval. Ordering matters and hard constraints kill most plans cheaply -> 09."
+
+  - id: auth-anomaly-investigation
+    title: Suspicious authentication investigation
+    source: "paper §8"
+    case_type: positive_single
+    requirements_brief: "Investigating unusual sign-ins by holding several hypotheses at once (benign travel, compromised identity, risky OAuth app, service-account misuse, config-change false positive), testing each against identity logs, discarding unsupported branches, and returning the leading hypothesis with evidence and confidence."
+    expected_diagnosis: [multiple_interpretations]
+    expected_target: "05"
+    expected_outcome: three_cards
+    tests: "First explanation often wrong and expensive -> 05 branching, not 01 deliberate."
+
+  - id: support-copilot-memory
+    title: Support copilot with cross-session recall
+    source: "paper §9"
+    case_type: positive_single
+    requirements_brief: "A support copilot re-asks every customer for environment details each session and repeats failed suggestions. We need it to remember the verified environment, what was already tried and its outcome, and the runbooks that resolved similar cases, so the next session starts where the last ended."
+    expected_diagnosis: [cross_session_recall]
+    expected_target: "06"
+    expected_outcome: three_cards
+    tests: "Quality depends on earlier sessions -> 06. If customer data is sensitive, conflicts.yaml requires scope+TTL declared."
+
+  - id: credit-decisioning-hitl
+    title: Credit-decisioning assistant
+    source: "paper §13"
+    case_type: positive_single
+    requirements_brief: "An assistant drafts credit recommendations with evidence and rejected alternatives; analysts critique them in a structured form; the agent revises within two bounded iterations; approval releases the action, and critiques flow into the evaluation dataset."
+    expected_diagnosis: [human_judgement_in_output, weak_judgement]
+    expected_target: "sequence(01, 13)"
+    expected_outcome: three_cards
+    tests: "Human judgement is part of output quality, not just a gate. Bounded revision loop -> 01 draft into a 13 gate."
+
+  - id: bank-onboarding-rules
+    title: Bank onboarding assistant
+    source: "paper §14"
+    case_type: positive_single
+    requirements_brief: "An onboarding assistant evaluates multiple compliant paths for a customer while mandatory regulatory controls must be enforced every time; every recommendation must carry the rule that triggered it for audit."
+    expected_diagnosis: [deterministic_policy_compliance]
+    expected_target: "04"
+    expected_outcome: three_cards
+    tests: "A policy that must hold every time, not usually -> 04 rules engine decides; the model only proposes."
+
+  - id: fraud-graph-context
+    title: Fraud ring detection by relationships
+    source: "paper §15"
+    case_type: positive_single
+    requirements_brief: "Individual transaction documents look clean; the signal is shared devices, addresses and payment methods across accounts. We need to surface the ring and present the relationship map as the evidence."
+    expected_diagnosis: [relationship_discovery]
+    expected_target: "10"
+    expected_outcome: three_cards
+    tests: "Answer lives in relationships, no single record has it -> 10. conflicts.yaml requires an entity-resolution skill emitted."
+
+  # ================= POSITIVE — composition =================
+  - id: claims-processing-workflow
+    title: Multi-day claims processing
+    source: "paper §11"
+    case_type: positive_composition
+    requirements_brief: "A claim moves across days: an intake step extracts data from submitted documents; an assessment step reasons over policy and history; exceptions route to a human-reviewed investigation; the payment step must be deterministic with no model involved. Every state transition, rationale and human decision must be on an audit trail."
+    expected_diagnosis: [long_running_process, human_judgement_in_output, deterministic_policy_compliance, weak_judgement]
+    expected_target: "08 spine; nest(08.assessment, 01); nest(08.exception, 05); guard(08.exception, 13); 08.payment deterministic (no LLM)"
+    expected_outcome: three_cards
+    tests: "The canonical 3-4 label case. Tests durable state, determinism_boundary on the payment state, and contract joins into nested decision nodes."
+
+  - id: month-end-close-reflection
+    title: Month-end close agent that learns
+    source: "paper §10"
+    case_type: positive_composition
+    requirements_brief: "A close agent fails on a subsidiary with a non-standard ledger format. It should reflect, author a reusable parse-alternate-ledger skill validated against sample files, and submit both for review; next close the skill loads automatically. Over quarters the skill library becomes an audited finance asset."
+    expected_diagnosis: [should_improve_over_runs, human_judgement_in_output]
+    expected_target: "guard(07, 13)"
+    expected_outcome: three_cards
+    tests: "07 authors its own skills -> conflicts.yaml fatal unless a review gate covers skill promotion. The gate is mandatory, not optional."
+
+  - id: dotnet-migration-synthesis
+    title: .NET Framework mass migration
+    source: "paper §16"
+    case_type: positive_composition
+    requirements_brief: "Migrating thousands of applications. The deliverable is a passing CI/CD pipeline, not guidance: generate migration changes, run validation tests, analyse failures, generate repairs and re-validate, with human approval on high-risk changes."
+    expected_diagnosis: [validated_artefacts, human_judgement_in_output]
+    expected_target: "guard(11, 13)"
+    expected_outcome: three_cards
+    tests: "Deliverable is a test-judged artefact -> 11, evaluator is free. High-risk changes gated by 13. conflicts.yaml warns if tests are weak."
+
+  - id: fraud-investigation-copilot
+    title: Fraud investigation copilot (full)
+    source: "paper §2 (composition example)"
+    case_type: positive_composition
+    requirements_brief: "A fraud copilot needs relationship context across accounts, holds competing hypotheses about a ring, gathers evidence from live systems mid-investigation, and must enforce mandatory controls before any recommendation leaves the system."
+    expected_diagnosis: [relationship_discovery, multiple_interpretations, needs_tools_midreasoning, deterministic_policy_compliance]
+    expected_target: "sequence(10, 05); nest(05, 02); guard(*, 04)"
+    expected_outcome: three_cards
+    tests: "Four-label composition the paper names explicitly. Tests 05 conflicts with 09 (must not co-nest), shared budget on the branching+ReAct nest, and a guard over the recommendation boundary."
+
+  - id: insurer-underwriting-reasoning
+    title: Insurer underwriting assistant (grounding is not enough)
+    source: "paper §4"
+    case_type: positive_composition
+    requirements_brief: "A policy assistant retrieves the correct clauses but produces inconsistent accept/reject/escalate recommendations for underwriters. We need it to compare interpretations, test exceptions, validate against policy evidence, keep specified steps deterministic, and escalate the hard cases."
+    expected_diagnosis: [weak_judgement, deterministic_policy_compliance, human_judgement_in_output]
+    expected_target: "sequence(01, guard(04)); escalate via 13"
+    expected_outcome: three_cards
+    tests: "TRAP CASE. The team built retrieval, so the surface signature reads as stale_facts. The real diagnosis is judgement. A diagnostician that stops at stale_facts and recommends baseline fails this case."
+
+  # ================= NEGATIVE — baseline suffices =================
+  - id: travel-policy-qa
+    title: Travel policy Q&A bot
+    source: authored
+    case_type: negative_baseline
+    requirements_brief: "Employees cannot find the current travel-expense policy; answers are scattered across SharePoint and outdated PDFs. We want a bot that answers policy questions with citations to the current document. No decisions, approvals or actions are taken."
+    expected_diagnosis: [stale_facts]
+    expected_target: "00"
+    expected_outcome: baseline_recommended
+    expected_confidence: high
+    tests: >
+      Pure retrieval. Recommending any orchestration here is a FALSE POSITIVE.
+      Reaching the baseline by FALLBACK rather than by diagnosis is NOT a pass —
+      see false_positive_metric.reason_aware_scoring.
+
+  - id: product-spec-assistant
+    title: Product specification assistant
+    source: authored
+    case_type: negative_baseline
+    requirements_brief: "Sales reps repeatedly ask the same product-spec questions. We want an assistant that answers from the product catalogue and datasheets with citations. It does not compare options, plan, or take actions."
+    expected_diagnosis: [stale_facts]
+    expected_target: "00"
+    expected_outcome: baseline_recommended
+    expected_confidence: high
+    tests: "Information access, not reasoning. Baseline is correct, and must be reached by diagnosis." 
+
+  - id: it-helpdesk-faq
+    title: IT helpdesk FAQ bot
+    source: authored
+    case_type: negative_baseline
+    requirements_brief: "A bot that answers 'how do I reset my VPN', 'how do I request a laptop' and similar questions from the IT knowledge base, with a link to the source article. No ticket actions are performed."
+    expected_diagnosis: [stale_facts]
+    expected_target: "00"
+    expected_outcome: baseline_recommended
+    expected_confidence: high
+    tests: "Retrieval FAQ. Baseline is correct, and must be reached by diagnosis." 
+
+  - id: exec-report-summariser
+    title: Executive report summariser
+    source: authored
+    case_type: negative_baseline
+    requirements_brief: "Summarise each quarter's regional reports into a one-page brief for executives, grounded in the source reports. No comparison across options, no recommendation, no verification against external criteria."
+    expected_diagnosis: [stale_facts]
+    expected_target: "00"
+    expected_outcome: baseline_recommended
+    expected_confidence: high
+    tests: >
+      BORDERLINE. Summarisation reads as sophisticated but is grounding. If the
+      diagnostician sees 'reasoning' here, the false-positive rate is understated.
+
+  # ================= INSUFFICIENT INPUT — four questions =================
+  - id: vague-ops-assistant
+    title: Vague 'make ops more efficient' ask
+    source: authored
+    case_type: insufficient_input
+    requirements_brief: "We want an AI assistant to help our operations team be more efficient and reduce manual work."
+    expected_diagnosis: []
+    expected_target: "00"
+    expected_outcome: baseline_fallback
+    expected_confidence: low
+    expected_descent_reason: insufficient_input
+    tests: >
+      No task class, no success criteria, no consumer. Must NOT invent an
+      architecture. Falls back to the grounded baseline with LOW confidence,
+      the low-confidence banner, and QUESTIONS.md attached. Emitting the same
+      artefact at HIGH confidence (as baseline_recommended) fails this case:
+      the artefact is right, the claim would be wrong.
+
+  - id: unmeasurable-quality-case
+    title: Plausible reasoning task, no measurable 'good'
+    source: authored
+    case_type: insufficient_input
+    requirements_brief: "We want an agent to review contracts and tell us which ones are risky, but we do not have labelled examples, a rubric, or agreement on what 'risky' means, and legal cannot currently articulate the standard."
+    expected_diagnosis: [weak_judgement, quality_undefined]
+    expected_target: "00"
+    expected_outcome: baseline_fallback
+    expected_confidence: low
+    expected_descent_reason: evaluator_missing
+    tests: >
+      Exercises No-evaluator-no-VERIFIED-build. The task looks like 01, but with
+      no nameable evaluator the compiler must not present a confident
+      composition. It falls back to the grounded baseline with EVALUATOR-TODO.md
+      and QUESTIONS.md, and says the first project here is the evaluator.

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.19/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.19",
+  "version": "1.0.0",
+  "id": "REPLACE-WITH-GUID",
+  "developer": {
+    "name": "Your Org",
+    "websiteUrl": "https://www.example.com",
+    "privacyUrl": "https://www.example.com/privacy",
+    "termsOfUseUrl": "https://www.example.com/terms"
+  },
+  "name": {
+    "short": "Agent Architect",
+    "full": "Agent Architect — reasoning-pattern recommender"
+  },
+  "description": {
+    "short": "Recommends the right agentic reasoning pattern for your scenario.",
+    "full": "Agent Architect turns a business problem into a recommended agentic reasoning architecture, backed by the deterministic Pattern Compiler MCP server. It diagnoses the scenario, asks a few clarifying questions, and recommends a verified pattern composition, an unverified primitive scaffold, or the grounded baseline — telling you honestly when you do not need orchestration."
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "accentColor": "#2A2A6A",
+  "copilotAgents": {
+    "declarativeAgents": [
+      {
+        "id": "agentArchitect",
+        "file": "declarative-agent.json"
+      }
+    ]
+  },
+  "permissions": ["identity", "messageTeamMembers"],
+  "validDomains": ["REPLACE-WITH-YOUR-HOST.azurecontainerapps.io"]
+}

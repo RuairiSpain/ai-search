@@ -1,0 +1,218 @@
+# The contract type lattice — v0.1 DRAFT for expert review.
+#
+# Purpose: turn `contract_join` from string-equality into a real type check.
+# Today operators.yaml joins two patterns when the producer's output NAME
+# appears verbatim in the consumer's accepted-inputs NAMES. That both
+# false-rejects legal joins (a context type a consumer could accept via a
+# trivial coercion) and false-accepts unsafe ones (two patterns share the
+# name `Decision` while meaning structurally different records — §12's
+# "free-text handoffs are where multi-agent systems silently fail").
+#
+# This file declares (a) every contract type with its role and required
+# fields, (b) a subsumption relation (which types satisfy which inputs
+# directly), and (c) a small, enumerable set of ADAPTERS — named coercions
+# the compiler emits and tests when a desired join is not direct. Nothing
+# else may glue two patterns together. That keeps the "glue" the plan warns
+# about to a checkable, printable set instead of model free-text.
+#
+# STATUS: every `fields:` list below is inferred from how the 14 manifests
+# produce and consume the type; it MUST be reconciled against the repo's
+# existing contracts.py before this file is trusted. Types are truth once
+# they match the Python dataclasses. Flagged items are marked TODO(review).
+
+version: 0.1
+reconcile_with: contracts.py   # fields here are proposed; contracts.py wins
+
+# --------------------------------------------------------------------------
+# Type roles. Every type sits in exactly one role, which determines where it
+# is legal in a composition:
+#   source     — enters from outside the pattern graph; nothing produces it
+#                inside the catalogue. Legal only at a composition's edge.
+#   context    — enrichment carried alongside a case; produced by a context
+#                pattern, consumed by reasoners. Never a terminal output.
+#   decision   — the hub currency; a judgement that guards/gates operate on.
+#   artefact   — a validated deliverable (code, migration, emitted harness).
+#   terminal   — leaves the system (to the user, or to a governed library);
+#                nothing inside the catalogue consumes it.
+# --------------------------------------------------------------------------
+
+types:
+
+  # ---- source types (produced outside the graph) ----
+  - name: Question
+    role: source
+    summary: A natural-language ask with no structured case attached.
+    fields: [text, asked_by]                       # TODO(review)
+    produced_by: [external]
+    consumed_by: ["00","01","02","03","05","06","09","10"]
+
+  - name: Case
+    role: source
+    summary: A structured record the system reasons over (a claim, a ticket, an application).
+    fields: [id, payload, opened_at]               # TODO(review)
+    produced_by: [external]
+    consumed_by: ["00","01","02","03","04","05","06","08","09","10","11","12"]
+
+  - name: Spec
+    role: source
+    summary: A specification with acceptance criteria; the artefact patterns judge against it.
+    fields: [goal, acceptance_criteria]            # TODO(review) — criteria are load-bearing for 11/12
+    produced_by: [external]
+    consumed_by: ["11","12"]
+
+  - name: Evidence
+    role: source
+    summary: Retrieved facts a reasoner weighs. Produced by grounding/retrieval, not by a catalogue pattern.
+    fields: [items, source_spans]                  # TODO(review)
+    produced_by: [external, retrieval]
+    consumed_by: ["01","05"]
+
+  - name: Trace
+    role: source
+    summary: Execution telemetry from a completed run; the raw material reflection learns from.
+    fields: [run_id, steps, outcome]               # TODO(review)
+    produced_by: [runtime_telemetry]               # ambient — any pattern's run emits it
+    consumed_by: ["07"]
+
+  # ---- context types ----
+  - name: GraphContext
+    role: context
+    summary: Entity-relationship context with a cited traversal chain.
+    fields: [entities, edges, evidence_chain]      # evidence_chain is mandatory — §15 "cite the chain"
+    produced_by: ["10"]
+    consumed_by: ["01","02","03","05","08","09"]
+
+  - name: MemoryContext
+    role: context
+    summary: Scoped, security-trimmed recall across sessions with a TTL stamp.
+    fields: [items, scope, ttl]                    # scope + ttl mandatory — conflicts.yaml 06 rule
+    produced_by: ["06"]
+    consumed_by: ["01","02","08"]
+
+  - name: Sequence
+    role: context
+    summary: An ordered, constraint-satisfying plan (e.g. a migration order).
+    fields: [steps, constraints_satisfied]         # TODO(review)
+    produced_by: ["09"]
+    consumed_by: ["13"]
+
+  # ---- decision hub ----
+  - name: Decision
+    role: decision
+    summary: A judgement plus its justification and the alternatives it beat.
+    fields: [verdict, rationale, rejected_alternatives, confidence]  # rejected_alternatives reused by ADR
+    produced_by: ["01","02","03","04","05","08","13"]
+    consumed_by: ["04","07","13"]
+    notes: >
+      The hub currency. It is why guard (04) and gate (13) compose so widely:
+      both consume a Decision and re-emit a Decision, wrapping an action
+      boundary without changing the type that flows.
+
+  # ---- artefact ----
+  - name: Artefact
+    role: artefact
+    summary: A validated deliverable — code, a migration script, an emitted harness folder.
+    fields: [files, passed_checks, provenance]     # passed_checks mandatory — 11's evaluator is the point
+    produced_by: ["11","12"]
+    consumed_by: ["13"]
+
+  # ---- terminal types (leave the system) ----
+  - name: Answer
+    role: terminal
+    summary: The grounded baseline's direct response to the user. No downstream consumer.
+    fields: [text, citations]
+    produced_by: ["00"]
+    consumed_by: []
+
+  - name: SkillUpdate
+    role: terminal
+    summary: A candidate skill authored by reflection; exits to the governed skill library via a review gate.
+    fields: [skill_md, diff, review_required]      # review_required is always true — 07 requires_review_gate
+    produced_by: ["07"]
+    consumed_by: []
+    notes: Terminal INSIDE the graph, but its real consumer is the human review gate (13 over the skill boundary).
+
+# --------------------------------------------------------------------------
+# Subsumption. A producer output P satisfies a consumer input C directly when
+# P == C, OR when P is listed as subsuming C below. Keep this list tiny and
+# explicit; every entry is a claim that two types are interchangeable at a
+# join, and every entry needs an expert to sign it.
+# --------------------------------------------------------------------------
+
+subsumes: []
+  # Deliberately empty in v0.1. The instinct will be to add
+  # "GraphContext subsumes Evidence" so graph output can feed 01/05's Evidence
+  # slot. Do NOT add it silently: a cited traversal chain is not the same
+  # shape as retrieved Evidence, and collapsing them is exactly the false
+  # accept this file exists to prevent. If the join is wanted, name an ADAPTER.
+
+# --------------------------------------------------------------------------
+# Adapters. A named, emitted, TESTED coercion that makes a non-direct join
+# legal. `contract_join` passes when the join is direct OR an adapter exists.
+# No adapter, no join. Each adapter is a small deterministic transform the
+# emitter renders and the smoke test exercises — never model free-text.
+# --------------------------------------------------------------------------
+
+adapters:
+  - id: decision-as-case
+    from: Decision
+    to: Case
+    why: >
+      A 05 (branching) verdict feeding an 08 (workflow-state) sequence: 05
+      produces Decision, but 08 accepts [Case, GraphContext, MemoryContext],
+      NOT Decision. The workflow advances on the case the verdict resolves,
+      so wrap the Decision as the Case the next state owns.
+    transform: attach the Decision as `case.resolution`, carry `case.id` forward
+    unblocks_join: "05 -> 08 (sequence)"
+    severity_if_missing: fatal
+
+
+# --------------------------------------------------------------------------
+# Findings this lattice surfaces (the reason it was worth authoring before any
+# pipeline). These are expert decisions, not code:
+# --------------------------------------------------------------------------
+
+open_questions:
+  - id: plan_has_no_producer
+    status: RESOLVED 2026-08-01
+    finding: >
+      13 accepted `Plan`, but NO pattern produced it. A dangling accepted-type
+      is a latent illegal join. Caught automatically by catalogue.validate().
+    resolution: >
+      Plan folded into Sequence. 13 now accepts Sequence; the sequence-as-plan
+      adapter is retired. The catalogue integrity check enforces this going
+      forward — no accepted type may be absent from the type table.
+
+  - id: evidence_and_trace_have_no_catalogue_producer
+    finding: >
+      Evidence and Trace enter only from outside the graph (retrieval,
+      telemetry). Correct, but it means any composition consuming them must
+      declare an EXTERNAL source in the IR, or the join has no origin. The
+      legality checker must treat "source type with no bound origin" as fatal.
+    recommendation: add legality rule `source_origin_bound`.
+
+  - id: terminal_types_must_not_be_mid_graph
+    finding: >
+      Answer (00) and SkillUpdate (07) are terminal — nothing consumes them.
+      A composition that places either mid-pipeline (feeding another pattern)
+      is malformed and today would pass name-matching against nothing, i.e.
+      silently dead-end.
+    recommendation: add legality rule `terminal_is_last` (a terminal output may
+      only appear at a composition leaf).
+
+  - id: decision_shape_drift
+    finding: >
+      Seven patterns produce `Decision` but may populate different fields
+      (03's merged Decision vs 04's rule-stamped Decision vs 13's human
+      Decision). Name-equality hides this. Require `rejected_alternatives`
+      and `confidence` on every Decision so the ADR and the cost-confidence
+      band (Gap 3) always have their inputs.
+    recommendation: make the Decision field set mandatory, not advisory.
+
+# --------------------------------------------------------------------------
+# Checks this file feeds (to be added to operators.yaml legality_rules):
+#   contract_join            — upgrade from name-match to: direct | subsumes | adapter
+#   source_origin_bound      — every consumed source type has a declared origin
+#   terminal_is_last         — terminal outputs only at composition leaves
+#   decision_fields_present  — every Decision carries the mandatory field set
+# --------------------------------------------------------------------------

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/copilot/declarative-agent/v1.0/schema.json",
+  "version": "v1.0",
+  "name": "Agent Architect",
+  "description": "Turns a business problem into a recommended agentic reasoning architecture, backed by the deterministic Pattern Compiler. Recommends a verified pattern composition, an unverified primitive scaffold, or the grounded baseline — and tells you honestly when you don't need orchestration at all.",
+  "instructions": "$[file('instructions.md')]",
+  "conversation_starters": [
+    {
+      "title": "Diagnose a scenario",
+      "text": "My retrieval works but the assistant gives inconsistent recommendations. What reasoning pattern do I need?"
+    },
+    {
+      "title": "Do I even need orchestration?",
+      "text": "We want a bot that answers policy questions from our documents. What should we build?"
+    },
+    {
+      "title": "Validate my design",
+      "text": "Is graph reasoning into branching, guarded by a rules engine, a legal composition?"
+    },
+    {
+      "title": "Explain a pattern",
+      "text": "What is branching / tree-of-thoughts reasoning and when does it beat a single call?"
+    }
+  ],
+  "actions": [
+    {
+      "id": "patternCompilerMcp",
+      "file": "mcp-connector.swagger.yaml"
+    }
+  ],
+  "capabilities": []
+}
