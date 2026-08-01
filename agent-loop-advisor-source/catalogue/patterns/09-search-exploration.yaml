@@ -1,0 +1,27 @@
+id: "09"
+name: search-exploration
+title: Search-based reasoning and controlled exploration
+paper_section: 7
+folder: patterns/09-search-exploration
+implemented: true
+emits: full
+role: planning
+summary: Breadth on a cheap model, a free deterministic constraint kill, then depth on the survivors.
+problem_signatures: [planning_under_constraints]
+primitives: [search_a_space]
+inputs: {accepts: [Question, Case, GraphContext]}
+outputs: {produces: Sequence}
+evaluator: {type: hybrid, target: trajectory, cost_class: medium}
+state_mechanism: in_process
+budget_profile: {llm_calls: 18, tokens: 90000, wall_clock_s: 150}
+latency_class: slow
+cost_class: high
+azure_services: [foundry_agent_service, mcp_container_app, content_safety]
+capabilities: {guard: false, human_gate: false, decision_nodes: true, evaluator_slot: true, deterministic_core: false, loop: true}
+beats_baseline_when: "Many candidate plans are valid, hard constraints can kill most of them cheaply, and the ordering matters."
+failure_modes: [over_branching, hidden_cost_explosion, injection_via_observations]
+composes_with: ["04", "13", "08", "10"]
+conflicts_with: ["05"]
+variants: [baseline, no-precheck, single-frontier, wide]
+agents: [sequence-generator, deep-analyst, baseline-planner]
+skills: [migration-constraints, tool-hygiene]

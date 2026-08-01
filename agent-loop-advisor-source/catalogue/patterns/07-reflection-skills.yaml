@@ -1,0 +1,28 @@
+id: "07"
+name: reflection-skills
+title: Reflection and dynamic skill acquisition
+paper_section: 10
+folder: patterns/07-reflection-skills
+implemented: true
+emits: full
+role: improvement
+summary: Reflect on a completed run, author a candidate skill, put it through a review gate, improve the next run.
+problem_signatures: [should_improve_over_runs]
+primitives: [reflect_and_learn]
+inputs: {accepts: [Decision, Trace]}
+outputs: {produces: SkillUpdate}
+evaluator: {type: hybrid, target: trajectory, cost_class: medium}
+state_mechanism: git_skill_library
+budget_profile: {llm_calls: 12, tokens: 60000, wall_clock_s: 180}
+latency_class: slow
+cost_class: medium
+azure_services: [foundry_agent_service, blob_storage]
+capabilities: {guard: false, human_gate: false, decision_nodes: false, evaluator_slot: true, deterministic_core: false, loop: true}
+requires_review_gate: true
+beats_baseline_when: "The same task recurs often enough that a captured lesson pays back the reflection cost."
+failure_modes: [ungrounded_self_critique, self_justification, unreviewed_self_modification]
+composes_with: ["13", "01", "02"]
+conflicts_with: []
+variants: [baseline, frontier, no-reflection, ungoverned]
+agents: [reflector, skill-author, close-agent]
+skills: [grounded-reflection]

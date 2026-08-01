@@ -1,0 +1,31 @@
+id: "13"
+name: human-gate
+title: Human-in-the-loop reasoning
+paper_section: 13
+folder: null
+implemented_by: "08"
+implemented: true
+emits: guard_only
+role: guard
+summary: >
+  A human occupies a named point in the reasoning, with an SLA, an escalation
+  path and a recorded reason. Not a pattern folder of its own: §13 folds into
+  §11, because Durable's human-interaction pattern IS the HITL implementation.
+problem_signatures: [human_judgement_in_output]
+primitives: []
+inputs: {accepts: [Decision, Artefact, Sequence]}  # Plan folded into Sequence (contracts.yaml open_question: plan_has_no_producer)
+outputs: {produces: Decision}
+evaluator: {type: human, target: final, cost_class: high}
+state_mechanism: durable_functions
+budget_profile: {llm_calls: 0, tokens: 0, wall_clock_s: 0, sla_hours: 24}
+latency_class: process
+cost_class: low
+azure_services: [durable_functions, table_storage]
+capabilities: {guard: true, human_gate: true, decision_nodes: false, evaluator_slot: false, deterministic_core: true, loop: false}
+beats_baseline_when: "Failure is expensive enough to be worth a person's attention budget."
+failure_modes: [approval_theatre, attention_budget_exhaustion, unbounded_wait]
+composes_with: ["01", "02", "03", "05", "07", "08", "09", "10", "11"]
+conflicts_with: []
+variants: [baseline]
+agents: [exception-reviewer]
+skills: []

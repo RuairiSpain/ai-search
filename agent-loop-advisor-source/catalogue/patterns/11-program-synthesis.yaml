@@ -1,0 +1,27 @@
+id: "11"
+name: program-synthesis
+title: Program synthesis and test-repair
+paper_section: 16
+folder: patterns/11-program-synthesis
+implemented: true
+emits: full
+role: artefact
+summary: Generate an artefact, run the tests, analyse the failure, repair, repeat under a cap.
+problem_signatures: [validated_artefacts]
+primitives: [verify]
+inputs: {accepts: [Case, Spec]}
+outputs: {produces: Artefact}
+evaluator: {type: test_based, target: final, cost_class: free}
+state_mechanism: filesystem_sandbox
+budget_profile: {llm_calls: 10, tokens: 60000, wall_clock_s: 240, max_repair_rounds: 3}
+latency_class: slow
+cost_class: medium
+azure_services: [foundry_agent_service, container_apps]
+capabilities: {guard: false, human_gate: false, decision_nodes: false, evaluator_slot: false, deterministic_core: true, loop: true, is_evaluator: true}
+beats_baseline_when: "The deliverable is an artefact that a test suite can judge, so the evaluator is free and cannot be flattered."
+failure_modes: [weak_tests_reward_hacking, sandbox_escape, overfitting_to_tests]
+composes_with: ["08", "13", "01"]
+conflicts_with: []
+variants: [baseline, frontier, no-repair, weak-tests]
+agents: [patch-generator, failure-analyst]
+skills: [minimal-diffs]

@@ -1,0 +1,28 @@
+id: "08"
+name: workflow-state-hitl
+title: Workflow-state reasoning with human in the loop
+paper_section: 11
+also_covers: [13]
+folder: patterns/08-workflow-state-hitl
+implemented: true
+emits: full
+role: process
+summary: A durable state machine owns the business process, agents own judgement inside named decision points, humans occupy specific states.
+problem_signatures: [long_running_process, human_judgement_in_output]
+primitives: [coordinate_roles, constrain]
+inputs: {accepts: [Case, GraphContext, MemoryContext]}
+outputs: {produces: Decision}
+evaluator: {type: hybrid, target: trajectory, cost_class: medium}
+state_mechanism: durable_functions
+budget_profile: {llm_calls: 10, tokens: 50000, wall_clock_s: 200, sla_hours: 24}
+latency_class: process
+cost_class: medium
+azure_services: [foundry_agent_service, durable_functions, table_storage, app_insights]
+capabilities: {guard: true, human_gate: true, decision_nodes: true, evaluator_slot: true, deterministic_core: true, loop: false}
+beats_baseline_when: "The process spans hours or days, survives restarts, and has states that must not involve a model at all."
+failure_modes: [approval_theatre, non_determinism_in_regulated_path, missing_compensation]
+composes_with: ["01", "02", "04", "05", "06", "09", "10", "11", "13"]
+conflicts_with: []
+variants: [baseline, frontier, no-state-machine, steerable]
+agents: [intake-extractor, assessor, exception-reviewer]
+skills: [claims-policy]

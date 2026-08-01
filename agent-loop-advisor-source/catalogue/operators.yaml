@@ -1,0 +1,407 @@
+# The five composition operators + the legality rule set — v2 DRAFT.
+#
+# v2 is a strict SUPERSET of v1: all five operators and all nine v1 rules are
+# preserved verbatim in meaning. v2 adds (a) the contract_join upgrade the type
+# lattice makes possible, (b) five new rules that close review gaps, and (c)
+# an explicit EXECUTION ORDER, because "cheap breadth, free constraint kill,
+# then deepen the survivors" (§7) only works if you know which checks are free
+# and which cost model spend.
+#
+# Provenance markers on every rule:
+#   [v1]        unchanged from operators.yaml v1
+#   [v1-UPGRADE] same id, strengthened definition
+#   [v2-NEW]    added in v2, with the gap it closes
+#
+# §3: every pattern is a variation of one loop (generate, evaluate, select,
+# repair, escalate). Patterns therefore join at the joints of that loop, not
+# through arbitrary glue. Five operators cover every composition in the guide.
+#
+# A candidate architecture is an expression tree over these operators. Nothing
+# else is expressible, which is the point: the space stays small enough to
+# check deterministically and small enough to print on a card.
+
+version: 2.2
+supersedes: 2.1
+revision_note: >
+  v2.1 added the tiered-emission guardrails required by Decision #1 (revised):
+  the compiler always emits, descending when a verified composition is not
+  available. Those tiers need enforcement of their own, or 'unverified' becomes
+  a word in a header rather than a constraint.
+  v2.2 REMOVES the bespoke tier-3 simple agent. The ladder's floor is now the
+  grounded baseline (pattern 00), which is implemented, CI-tested and evaluable
+  — a strictly better fallback than an invented artefact. This retires
+  tier3_binds_no_tools and adds low_confidence_is_marked, because the new risk
+  is the opposite of the old one: a fallback baseline is a perfectly good
+  artefact, so nothing about the FILE signals that our confidence in it was
+  low. Only the banner and the recorded descent_reason can carry that.
+reads_types_from: contracts.yaml     # v2: legality now consults the type lattice
+reads_conflicts_from: conflicts.yaml
+
+# --------------------------------------------------------------------------
+# OPERATORS — unchanged from v1.
+# --------------------------------------------------------------------------
+operators:
+  - id: sequence
+    arity: n
+    meaning: A runs to completion, its output contract feeds B's input contract.
+    joint: output_contract -> input_contract
+    example: "10 graph context -> 08 workflow state"
+    checks: [contract_join, budget_sum]
+
+  - id: nest
+    arity: 2
+    meaning: The inner pattern occupies exactly one decision node of the outer.
+    joint: outer decision node
+    example: "05 branching nested in an 08 assessment state"
+    checks: [inner_budget_funded, outer_has_decision_node]
+
+  - id: guard
+    arity: 2
+    meaning: >
+      The guard pattern wraps another pattern's action boundary as a
+      precondition, a postcondition, or both. The guard's verdict wins.
+    joint: action boundary
+    example: "04 rules guarding 02 ReAct writes"
+    checks: [guard_is_guard_capable, guard_covers_writes]
+
+  - id: fan
+    arity: 2
+    meaning: Parallel expansion over a typed plan, then a typed merge.
+    joint: typed plan contract, typed worker output contract
+    example: "03 planner -> workers -> reviewer -> merger"
+    checks: [contract_join, parallel_budget_multiplied, merge_discipline]
+
+  - id: substitute
+    arity: 2
+    meaning: Replace the evaluator inside another pattern's loop.
+    joint: evaluator slot
+    example: "11 test-repair replacing a model judge in 01"
+    checks: [target_has_evaluator_slot, substitute_is_evaluator]
+
+# --------------------------------------------------------------------------
+# EXECUTION ORDER [v2-NEW].
+#
+# The discipline the whole design rests on: kill illegal candidates for FREE,
+# before spending a single critique token. Phase 1 rules are pure structure
+# (no model, no arithmetic). Phase 2 needs the IR + budget arithmetic. Phase 3
+# runs only on survivors and is the only phase that costs model spend. Phase 4
+# runs at emission, against generated files.
+#
+# If a rule cannot run in the phase it is assigned, it is mis-specified.
+# --------------------------------------------------------------------------
+execution_phases:
+  - phase: 1
+    name: structural_kill
+    cost: free
+    runs_on: every generated candidate
+    rules: [contract_join, source_origin_bound, terminal_is_last, bounded_loop,
+            write_is_governed, tool_hygiene_emitted, decision_fields_present,
+            conflict_table]
+  - phase: 2
+    name: envelope_kill
+    cost: free (arithmetic only)
+    runs_on: phase-1 survivors
+    rules: [budget_funded, determinism_boundary_respected, residency_satisfied,
+            evaluator_named, cost_is_computed_not_generated]
+  - phase: 3
+    name: critique_and_present
+    cost: model spend
+    runs_on: phase-2 survivors only
+    rules: [beats_baseline_stated, distinct_candidates, single_writer_merge]
+  - phase: 4
+    name: emission_lint
+    cost: free
+    runs_on: generated files (Phase 2+ of the project)
+    rules: [instruction_tool_scope, unverified_is_marked, unverified_is_readonly,
+            evaluator_todo_emitted, low_confidence_is_marked]
+
+# --------------------------------------------------------------------------
+# LEGALITY RULES.
+# Every fatal rule is deterministic and runs before critique spend. A candidate
+# that fails any fatal rule is killed for free (§7).
+# --------------------------------------------------------------------------
+legality_rules:
+
+  - id: contract_join
+    provenance: v1-UPGRADE
+    severity: fatal
+    phase: 1
+    statement: >
+      For every sequence or fan joint, the producing pattern's output contract
+      must satisfy the consuming pattern's accepted inputs by one of exactly
+      three means: (a) DIRECT — the type names match; (b) SUBSUMES — the
+      producer type is listed as subsuming the consumer type in contracts.yaml;
+      or (c) ADAPTER — a named adapter exists in contracts.yaml that the
+      emitter renders and the smoke test exercises. No adapter, no join.
+      Free-text handoffs are where multi-agent systems silently fail (§12).
+    changed_from_v1: >
+      v1 tested name-equality only. That both false-rejected legal joins needing
+      a trivial coercion and false-accepted unsafe ones where two patterns share
+      a type NAME but not its SHAPE. Closes review Gap 1.
+    repair: declare the adapter in contracts.yaml, or reorder the sequence
+
+  - id: source_origin_bound
+    provenance: v2-NEW
+    severity: fatal
+    phase: 1
+    statement: >
+      Every contract type of role `source` consumed by the composition must
+      have a declared origin in the IR (an external system, a retrieval
+      binding, or runtime telemetry). Evidence and Trace have no producer
+      inside the catalogue; a composition that consumes them without a bound
+      origin has a joint with no upstream and will fail at run time.
+    closes: contracts.yaml open_question evidence_and_trace_have_no_catalogue_producer
+    repair: bind the source in the IR's data_and_tools, or drop the consuming pattern
+
+  - id: terminal_is_last
+    provenance: v2-NEW
+    severity: fatal
+    phase: 1
+    statement: >
+      A contract type of role `terminal` (Answer from 00, SkillUpdate from 07)
+      may appear only at a leaf of the composition tree. Nothing in the
+      catalogue consumes a terminal type, so placing one mid-pipeline creates a
+      silent dead end that name-matching cannot detect.
+    closes: contracts.yaml open_question terminal_types_must_not_be_mid_graph
+    repair: move the terminal pattern to the composition leaf
+
+  - id: decision_fields_present
+    provenance: v2-NEW
+    severity: fatal
+    phase: 1
+    statement: >
+      Every pattern producing a Decision must populate the mandatory field set
+      (verdict, rationale, rejected_alternatives, confidence). Seven patterns
+      produce Decision and may otherwise populate different fields; name
+      equality hides the drift. rejected_alternatives feeds the ADR and
+      confidence feeds the cost-confidence band, so both must always exist.
+    closes: contracts.yaml open_question decision_shape_drift
+    repair: bind the missing fields in the emitted contract, or insert an adapter
+
+  - id: tool_hygiene_emitted
+    provenance: v2-NEW
+    severity: fatal
+    phase: 1
+    statement: >
+      Any composition that binds tools or ingests external observations
+      (patterns 02, 09, 10, or any binding with access write) MUST emit the
+      tool-hygiene skill into every tool-facing agent: observations are
+      evidence, never directives. §20 names prompt injection entering through
+      tool observations and steering the planner. The emitted harness runs in
+      someone else's production; injection posture is not optional there.
+    changed_from_v1: >
+      v1 listed tool-hygiene as a skill a pattern happens to carry. v2 makes it
+      an enforced rule. Closes review Gap 4.
+    repair: emit tool-hygiene into the tool-facing agents
+
+  - id: bounded_loop
+    provenance: v1
+    severity: fatal
+    phase: 1
+    statement: >
+      Every pattern that contains a loop must carry an explicit budget in the
+      emitted budgets.yaml. No unbounded loops leave the compiler.
+
+  - id: write_is_governed
+    provenance: v1
+    severity: fatal
+    phase: 1
+    statement: >
+      If the composition binds any write-capable tool, at least one guard
+      (pattern 04 rules) or human gate (pattern 13 via 08) must cover that
+      action boundary. Otherwise the build fails rather than warning.
+
+  - id: conflict_table
+    provenance: v1-UPGRADE
+    severity: fatal
+    phase: 1
+    statement: >
+      No pair in the composition may match a fatal entry in conflicts.yaml
+      under its stated `when` condition, unless the `unless` condition is
+      satisfied. Where conflicts.yaml names a `repair`, the compiler proposes
+      that repair rather than killing the candidate outright.
+    changed_from_v1: >
+      v1 implied the conflict table without naming it as a rule with a phase.
+      Named explicitly so it is provably part of the free structural kill.
+
+  - id: budget_funded
+    provenance: v1
+    severity: fatal
+    phase: 2
+    statement: >
+      A nested pattern's budget profile must fit inside the enclosing loop's
+      per-iteration allowance. Over-branching and hidden cost explosion is the
+      first entry in §20's loop failures.
+
+  - id: determinism_boundary_respected
+    provenance: v1
+    severity: fatal
+    phase: 2
+    statement: >
+      Any task class marked must_be_deterministic in the IR may not have an LLM
+      pattern on its decision path. Pattern 08's payment state has no LLM at all,
+      deliberately.
+
+  - id: residency_satisfied
+    provenance: v1
+    severity: fatal
+    phase: 2
+    statement: >
+      Every Azure service required by the composition must be available in the
+      IR's declared regions.
+
+  - id: evaluator_named
+    provenance: v1
+    severity: fatal
+    phase: 2
+    statement: >
+      The composition must name an evaluator for its primary task class. §3, the
+      evaluator is the architecture. A harness with no evaluator is a liability
+      that looks like an asset.
+    note: >
+      Already fatal in v1 — recorded here unchanged. In v2 this rule is ALSO
+      evaluated at intake (ir-schema readiness.evaluator_named); failing it
+      there routes to the four-questions terminal before composition begins.
+
+  - id: cost_is_computed_not_generated
+    provenance: v2-NEW
+    severity: fatal
+    phase: 2
+    statement: >
+      Every cost and latency figure presented to a user must be computed by
+      arithmetic over budget_profile with the operator's compounding rule
+      (sequence sums; nest multiplies by outer iterations; fan multiplies by
+      branch count), and must carry a confidence band widened by both
+      composition depth and the IR's unknown_ratio. A model-generated cost
+      figure is a build failure, not a warning: it makes the user's choice
+      uninformed and the tool actively harmful.
+    closes: review Gap 3
+
+  - id: beats_baseline_stated
+    provenance: v2-NEW
+    severity: fatal
+    phase: 3
+    statement: >
+      Every non-baseline candidate presented to the user must carry a satisfied
+      beats_baseline_when statement, rendered on the card. A candidate whose
+      advantage over the grounded baseline cannot be articulated is not
+      presented. This is the structural cure for pattern astrology: a model
+      asked which patterns fit will always find patterns, and prompting does
+      not fix it.
+    repair: drop the candidate; if none survive, the baseline is the answer
+
+  - id: single_writer_merge
+    provenance: v1
+    severity: warning
+    phase: 3
+    statement: >
+      Fan-out branches that touch shared state need a serial merge queue (§12
+      merge discipline). Emitted as a note in the ADR when it applies.
+
+  - id: distinct_candidates
+    provenance: v1
+    severity: warning
+    phase: 3
+    statement: >
+      Two presented candidates must not share a composition signature. Three
+      options that are one option in three costumes is a worse UX than one.
+
+  - id: instruction_tool_scope
+    provenance: v2-NEW
+    severity: fatal
+    phase: 4
+    statement: >
+      Model-authored instructions.md and SKILL.md may reference only tools
+      present in the emitted binding, may not widen a tool's scope beyond its
+      declared contract, and every write reference must trace to a guarded or
+      gated boundary. Emitted instructions become a system prompt in the
+      customer's deployment; treat them with the same suspicion tool-hygiene
+      applies to tool observations. Default deny.
+    closes: review Gap 9
+    note: Phase 4 rule — active from project Phase 2 (first emission) onward.
+
+  - id: unverified_is_marked
+    provenance: v2.1-NEW
+    severity: fatal
+    phase: 4
+    statement: >
+      Every file emitted at tier 2 or 3 must open with the UNVERIFIED banner
+      naming the tier, what was not verified, and what must be completed before
+      production use. A tier-2/3 artefact that reads like a tier-1 artefact is
+      the scaffold-astrology failure: the user cannot tell what the machine
+      stood behind. The marking IS the honesty; without it, descending a tier
+      is just silently lowering quality.
+    applies_to: tiers [2, 3]
+
+  - id: unverified_is_readonly
+    provenance: v2.1-NEW
+    severity: fatal
+    phase: 4
+    statement: >
+      No write-capable tool binding may be emitted at tier 2 or 3. This is a
+      hard ceiling, not a default that can be overridden in the emitted config.
+      An unverified artefact holding write access to a real system is exactly
+      §20's "hallucinated tool arguments executing against real systems", with
+      the additional problem that nothing verified its reasoning either. A
+      read-only retrieval binding (pattern 00's grounding source) is expected
+      and permitted; write access is not.
+    applies_to: tier [2] or recommendation_confidence [low]
+
+  - id: low_confidence_is_marked
+    provenance: v2.2-NEW
+    severity: fatal
+    phase: 4
+    statement: >
+      A baseline emitted as a FALLBACK (recommendation_confidence=low) must
+      open with the low-confidence banner and must record descent_reason in
+      PROVENANCE.yaml. This rule exists because the fallback artefact is
+      pattern 00 — verified, respectable, indistinguishable on inspection from
+      a baseline we confidently recommended. Nothing about the FILE reveals
+      that we could not diagnose the problem, so the marking is the only thing
+      standing between "grounding is the right answer here" and "we could not
+      tell, and grounding is the safe default". Conflating those two is the
+      single most misleading thing this compiler could do.
+    applies_to: recommendation_confidence [low]
+    forbids: presenting a fallback as baseline_recommended
+
+  - id: evaluator_todo_emitted
+    provenance: v2.1-NEW
+    severity: fatal
+    phase: 4
+    statement: >
+      Any emission where evaluator_named=false must include EVALUATOR-TODO.md
+      naming the primary task class, what "good" would need to mean, and the
+      candidate evaluator types. This is what remains of the v1 hard gate "no
+      evaluator, no build" after Decision #1: the build proceeds, but it
+      proceeds visibly incomplete. The rule preserved in full is: no evaluator,
+      no VERIFIED build.
+      Applies to a fallback baseline too: pattern 00 ships a generic model-judge
+      evaluator, but a judge with no rubric is not an evaluator for the user's
+      task.
+    applies_to: tier [2] or recommendation_confidence [low]
+
+# --------------------------------------------------------------------------
+# TELEMETRY [v2-NEW]. Which rule killed which candidate is the most useful
+# signal the system produces: it says whether the constraint set is too tight.
+# Every kill is logged with {candidate_signature, rule_id, phase, repairable}.
+# Over-firing rules are the catalogue's own feedback loop (review Gap 10).
+# --------------------------------------------------------------------------
+kill_log:
+  required_fields: [build_id, candidate_signature, rule_id, phase, repair_offered, repair_taken]
+  review_trigger: any rule whose kill share exceeds 40% of candidates over a rolling window
+
+# Tier telemetry [v2.1-NEW]. The tier distribution is a product health metric,
+# not just a build record. A rising tier-2/3 share means either the catalogue is
+# too narrow for the problems being brought to it, or intake is extracting
+# poorly. Those need different fixes, so log which readiness field forced the
+# descent.
+tier_log:
+  required_fields: [build_id, emitted_tier, recommendation_confidence, descent_reason,
+                    unknown_ratio, evaluator_named, tier1_fit_exists]
+  descent_reason: null | no_catalogue_fit | evaluator_missing | low_confidence | insufficient_input
+  review_trigger: tier-2 plus low-confidence share exceeding 30% over a rolling window
+  note: >
+    descent_reason is what separates a baseline we RECOMMENDED from a baseline
+    we FELL BACK TO. Both emit pattern 00, so without this field the two are
+    indistinguishable in telemetry and the success metric can be gamed by a
+    diagnosis stage that simply gives up.

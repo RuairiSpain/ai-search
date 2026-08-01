@@ -1,0 +1,37 @@
+# Copilot Studio custom connector for the Pattern Compiler MCP server.
+#
+# Import this in Copilot Studio: Tools -> Add a tool -> New tool -> Custom
+# connector -> Import an OpenAPI file. Then add the connector to your agent.
+# The x-ms-agentic-protocol extension tells Copilot Studio to speak MCP
+# Streamable HTTP to the single /mcp endpoint; Copilot Studio discovers the
+# five tools automatically via tools/list.
+#
+# Replace `host` with your deployed server hostname (Foundry, Container Apps,
+# App Service, wherever you host it). Keep schemes: https in production.
+swagger: '2.0'
+info:
+  title: Pattern Compiler MCP
+  description: >
+    Deterministic reasoning-pattern recommender. Diagnoses a requirements
+    scenario, recommends a verified pattern composition or an unverified
+    primitive scaffold, explains patterns, and validates hand-proposed
+    compositions.
+  version: '1.0.0'
+host: REPLACE-WITH-YOUR-HOST.azurecontainerapps.io
+basePath: /
+schemes:
+  - https
+consumes:
+  - application/json
+produces:
+  - application/json
+paths:
+  /mcp:
+    post:
+      summary: Pattern Compiler MCP
+      description: MCP Streamable HTTP endpoint for the pattern recommender.
+      operationId: InvokePatternCompilerMCP
+      x-ms-agentic-protocol: mcp-streamable-1.0
+      responses:
+        '200':
+          description: Success

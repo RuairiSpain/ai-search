@@ -1,0 +1,94 @@
+# Compositions that are actively wrong.
+#
+# Every entry cites the §20 failure mode it prevents. `unless` states the
+# condition that makes the composition legal again; if the condition can be
+# satisfied by adding something to the composition, the compiler proposes that
+# repair rather than killing the candidate outright.
+
+version: 1
+
+conflicts:
+  - a: "07"
+    b: "*"
+    relation: nest
+    when: outer_is_autonomous_loop
+    reason: >
+      Reflection that authors its own skills, running inside an ungoverned
+      autonomous loop, is §20's "self-modifying instructions deployed without
+      review or rollback".
+    unless: composition includes a review gate over the skill library
+    repair: add guard 13 over the skill-promotion boundary
+    severity: fatal
+
+  - a: "09"
+    b: "05"
+    relation: nest
+    reason: >
+      Search nested inside branching multiplies two exploration budgets.
+      §20 loop failures: over-branching and hidden cost explosion.
+    unless: a shared budget ceiling covers both loops
+    repair: declare a joint budget and reduce keep_top_k
+    severity: fatal
+
+  - a: "05"
+    b: "09"
+    relation: nest
+    reason: Same multiplication, other nesting order.
+    unless: a shared budget ceiling covers both loops
+    repair: declare a joint budget and reduce branch width
+    severity: fatal
+
+  - a: "03"
+    b: "03"
+    relation: nest
+    reason: >
+      Fan-out inside fan-out is agent sprawl. §12 says keep the plan minimal
+      and resist sprawl; a second tier of workers is almost never the answer.
+    unless: never
+    severity: fatal
+
+  - a: "06"
+    b: "*"
+    relation: any
+    when: sensitive_data_present
+    reason: >
+      Memory without security trimming recalls one user's data into another
+      user's context. §20 action and data failures: stale or poisoned memory
+      recalled as fact.
+    unless: memory scope and TTL policy declared in the IR
+    repair: enable security trim and declare retention
+    severity: warning
+
+  - a: "02"
+    b: "*"
+    relation: any
+    when: writes_bound
+    reason: >
+      A ReAct loop with write tools and no constraint is §20's "hallucinated
+      tool arguments executing against real systems".
+    unless: a guard covers the write boundary
+    repair: add guard 04 or 13 over the write boundary
+    severity: fatal
+
+  - a: "11"
+    b: "*"
+    relation: substitute
+    when: weak_tests
+    reason: >
+      Test-repair with a weak test suite optimises against the wrong target.
+      §20 evaluator failures: reward hacking. The workshop's own weak-tests
+      ablation exists to show this.
+    unless: test coverage criteria declared
+    repair: declare acceptance tests in the IR before generation
+    severity: warning
+
+  - a: "10"
+    b: "*"
+    relation: sequence
+    when: no_entity_resolution_policy
+    reason: >
+      §20: graph entity-resolution errors corrupt relationship reasoning
+      undetected, and everything downstream inherits the corruption.
+    unless: an entity-resolution skill is emitted with the composition
+    repair: emit the entity-resolution skill and cite chains in evidence
+    severity: warning
