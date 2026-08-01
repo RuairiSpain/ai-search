@@ -411,7 +411,7 @@ resource searchServiceContributorRole 'Microsoft.Authorization/roleDefinitions@2
 }
 
 resource indexDataRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (createSampleIndex && disableLocalAuth) {
-  name: guid(search.outputs.searchServiceId, indexSetupIdentity.id, searchIndexDataContributorRole.id)
+  name: guid(deployedSearchService.id, indexSetupIdentity.id, searchIndexDataContributorRole.id)
   scope: deployedSearchService
   properties: {
     roleDefinitionId: searchIndexDataContributorRole.id
@@ -424,7 +424,7 @@ resource indexDataRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-0
 }
 
 resource serviceContributorRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (createSampleIndex) {
-  name: guid(search.outputs.searchServiceId, indexSetupIdentity.id, searchServiceContributorRole.id)
+  name: guid(deployedSearchService.id, indexSetupIdentity.id, searchServiceContributorRole.id)
   scope: deployedSearchService
   properties: {
     roleDefinitionId: searchServiceContributorRole.id
