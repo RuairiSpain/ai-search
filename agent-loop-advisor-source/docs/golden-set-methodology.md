@@ -390,14 +390,63 @@ round 2's 0.894, despite the much larger and more varied cohort — the
 bug fixes bought recall without spending precision). 0 false positives,
 unchanged.
 
-**This round has NOT been checked against a fresh blind holdout.** Every
-number above is a tuning-cohort number; no validation-cohort case exists
-right now (all four batches to date have been relabelled tuning at some
-point). The two bug fixes (forward-scoped negation, self-negating-term
-exemption from round 2) are structural and should generalise — they
-aren't phrased around any specific case's wording — but that is a
-prediction, not a measurement, until a fresh batch is authored and
-checkpointed the same way as rounds 1 and 2.
+Round 3 was not checked against a fresh blind holdout when it shipped —
+every batch authored to date had ended up relabelled tuning. Round 4
+closes that gap.
+
+### Phase 3 checkpoint — round 4, 2026-08-01
+
+A fresh 40-case blind batch was authored (new isolated subagent, zero
+tool calls, deliberately different industries again — legal services,
+agriculture tech, telecom, government/public sector, aerospace, pharma
+manufacturing, real estate, sports/media, gaming — explicitly excluding
+every concrete scenario used in rounds 1 and 2 so the checkpoint isn't
+quietly re-testing the same phrasing a third time). Checkpoint run once,
+reported as measured:
+
+| Metric | Tuning (111) | Fresh validation (40, never tuned against) |
+|---|---|---|
+| positive outcome match | 84/90 | 20/32 |
+| positive target match | 71/90 | 13/32 |
+| diagnosis recall (positives) | 0.864 | **0.438** |
+| diagnosis precision (all cases) | 0.914 | 0.762 |
+| give-up rate | 0.171 | 0.425 |
+| negatives over-sold | 0 | **0** |
+
+This is a genuinely harder, more varied cohort than any prior one, and
+the numbers say so plainly: recall and precision both sit below every
+tuning-cohort number and below round 2's holdout numbers too. The
+structural bug fixes from rounds 2 and 3 (self-negating-term exemption,
+forward-scoped negation) are real and verified against every case they
+were designed for, but they don't substitute for evidence-list coverage
+on genuinely new industries and phrasing — this checkpoint measures that
+gap directly rather than assuming the fixes closed it. The hard
+invariant still holds exactly: **zero cases over-sold orchestration** on
+4 negative cases in this batch.
+
+Per-signature recall on this holdout: `multiple_interpretations` 3/3,
+`cross_session_recall` 2/2, `should_improve_over_runs` 2/2,
+`cost_latency_pressure` 2/2, `stable_high_volume` 1/1,
+`relationship_discovery` 2/3, `deterministic_policy_compliance` 1/3,
+`workflow_too_large` 1/3, `validated_artefacts` 1/3, `weak_judgement`
+1/3, `stale_facts` 1/4, and five signatures at 0:
+`needs_tools_midreasoning`, `planning_under_constraints`,
+`long_running_process`, `human_judgement_in_output`, `quality_undefined`.
+Over-firing is broader than any prior round too: `stale_facts` ×3, `weak_judgement` ×3,
+`cost_latency_pressure` ×2, `needs_tools_midreasoning` ×2, plus four
+signatures at ×1 each.
+
+No validation-cohort case text was read while producing this report —
+only the table and per-signature counts above, per the same discipline
+as every prior checkpoint. Per the Phase 3 rule, this round stops here:
+no follow-up tuning against this result in the same round. The honest
+reading: the evidence-list approach generalises well to industries and
+phrasing similar to what's already been seen (tuning cohort, 0.914
+precision) but has real, measured limits on genuinely fresh territory
+(0.762 precision, 0.438 recall here) — the gap Phase 4's stopping-rule
+alternatives (a real thesaurus pass, or a separate embedding/model
+second opinion) exist to eventually address, not more manual term
+chasing against an ever-larger tuning cohort.
 
 **Phase 2 — expand evidence lists (tuning cohort only).**
 Per signature, source candidate terms from its `problem` text and the

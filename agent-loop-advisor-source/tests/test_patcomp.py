@@ -571,7 +571,7 @@ class TestGoldenSet(unittest.TestCase):
         cls.m = metrics(cls.rows, cohort="tuning")
 
     def test_all_cases_run(self):
-        self.assertEqual(len(self.rows), 111)
+        self.assertEqual(len(self.rows), 151)
 
     def test_no_over_selling(self):
         """Recommending orchestration for a grounding problem is a BUG, not a
@@ -818,18 +818,20 @@ class TestGoldenSet(unittest.TestCase):
         tuning_only = metrics(self.rows, cohort="tuning")
         validation_only = metrics(self.rows, cohort="validation")
         self.assertEqual(tuning_only["n"], 111)
-        self.assertEqual(validation_only["n"], 0)
+        self.assertEqual(validation_only["n"], 40)
 
 
 # ------------------------------------------------- validation cohort report
 class TestGoldenSetValidationCohort(unittest.TestCase):
-    """As of Phase 2 round 3 (2026-08-01) there is NO current holdout: the
-    round 2 batch was relabeled tuning to investigate its 0-recall
-    signatures, and no fresh batch has been authored yet. This class stays
-    in place (running over an empty validation cohort) so the next round
-    only has to add a fresh batch and this reporting comes back for free —
-    see docs/golden-set-methodology.md for the checkpoint history and what
-    the next blind batch needs to cover."""
+    """The Phase 2 round 4 holdout (2026-08-01): 40 cases, blind-authored
+    per docs/phase1-validation-authoring-brief.md by a fresh, isolated
+    subagent (zero tool uses confirmed) after the round 2 batch was
+    relabelled tuning in round 3 to investigate its 0-recall signatures —
+    see docs/golden-set-methodology.md for the full checkpoint history.
+    Numbers are reported, not gated against a pre-chosen threshold — this
+    is the first time THIS cohort has ever been run. The invariants that DO
+    get asserted are cross-cohort ones that must never depend on which
+    cases happen to be in the holdout."""
 
     @classmethod
     def setUpClass(cls):
@@ -837,11 +839,9 @@ class TestGoldenSetValidationCohort(unittest.TestCase):
         cls.rows = [r for r in rows if r.cohort == "validation"]
         cls.m = metrics(rows, cohort="validation")
 
-    def test_no_current_holdout(self):
-        self.assertEqual(len(self.rows), 0)
-
-    # Populated only if a future checkpoint's run finds a genuine
-    # over-selling case. Per the Phase 3 rule, a finding here gets reported
+    # Populated only if this checkpoint's run finds a genuine over-selling
+    # case — see docs/golden-set-methodology.md for the Phase 2 round 4
+    # checkpoint result. Per the Phase 3 rule, a finding here gets reported
     # and tracked, not tuned against in the same round.
     _KNOWN_OVER_SOLD: set[str] = set()
 

@@ -1445,3 +1445,452 @@ cases:
     expected_outcome: three_cards
     cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [2, 9, 14]."
+
+  # ================= PHASE 2 ROUND 4 VALIDATION COHORT 2026-08-01 =================
+  # Blind-authored via docs/phase1-validation-authoring-brief.md by a fresh subagent
+  # with zero tool uses (confirmed no repository access) -- the round 2 batch above
+  # was relabelled tuning in round 3 to investigate its 0-recall signatures, so this
+  # is the genuine holdout for the Phase 2 round 4 checkpoint. expected_diagnosis and
+  # expected_target are MY translation of the author's own stated "which problem
+  # types apply" answer into signature/pattern ids -- set before running this cohort
+  # even once, never adjusted after seeing a result.
+
+  - id: contract-clause-judgement-calls
+    title: "Contract clause selection judgement"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Our commercial lawyers already have every past NDA and clause library at their fingertips \u2014 the problem isn't finding the right clause, it's that three associates will each pick a different limitation-of-liability wording for the same deal type and nobody can say afterward why one was better than another. We want something that lines up the plausible options against what actually matters for the deal (deal size, counterparty leverage, industry norm) and tells us which one wins and why the others were rejected."
+    expected_diagnosis: [weak_judgement]
+    expected_target: "01"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [1]."
+
+  - id: irrigation-decision-live-lookups
+    title: "Irrigation decision live lookups"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Field techs need help to decide when to irrigate a given block. Is not simple lookup \u2014 system must to pull current soil moisture reading, check the forecast, cross reference the crop growth stage in our farm management system, and sometime even ask the pump controller if is already running, before can recommend anything. Each step can change what next step must check."
+    expected_diagnosis: [needs_tools_midreasoning]
+    expected_target: "02"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [2]."
+
+  - id: fiber-rollout-sequencing
+    title: "Fiber build phase sequencing"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We have roughly 200 candidate street segments for the next fiber build phase \u2014 easement approvals, trenching permits, and crew availability knock most of them out immediately \u2014 and among what's left, the order we tackle them in changes total cost by a lot. Need help sequencing the build."
+    expected_diagnosis: [planning_under_constraints]
+    expected_target: "09"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [3]."
+
+  - id: water-damage-claim-conflicting-story
+    title: "Water damage claim conflicting evidence"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Ticket #4471. Water damage claim, $180k. First read from the adjuster was a burst pipe, but the plumber's report doesn't fully support that, and there's a prior claim on the same address for a slow leak that was denied. Can't just go with the first story someone tells us here \u2014 getting it wrong either pays out a fraud or wrongly denies a legitimate claim. Need a way to weigh the different explanations against the evidence as it comes in."
+    expected_diagnosis: [multiple_interpretations]
+    expected_target: "05"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [4]."
+
+  - id: buyer-preferences-across-viewings
+    title: "Buyer preference continuity across viewings"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Our agents talk to the same buyer over many visits, texts, and calls over a few months before an offer happens. Right now every conversation starts from scratch because nothing they said last time carries forward \u2014 the buyer mentioned wanting a fenced yard and no busy road three weeks ago, and last week's showing recommendations ignored both. We want the assistant to actually remember client-specific context between sessions, but only for that client, and only for as long as they're actively looking."
+    expected_diagnosis: [cross_session_recall]
+    expected_target: "06"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [5]."
+
+  - id: weekly-recap-editing-feedback-loop
+    title: "Weekly game recap editing improvement"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We cut a weekly game recap for each match, every week, all season. Same job, over and over. Editors keep re-learning the same things about pacing and which shots the audience actually watches, but nothing from week 4 carries over to week 5 unless a human happens to remember and mention it in a meeting. Want the process itself to get sharper as the season goes on."
+    expected_diagnosis: [should_improve_over_runs]
+    expected_target: "07"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [6]."
+
+  - id: building-permit-multi-department-flow
+    title: "Multi-department building permit flow"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "A building permit application here touches five separate departments (zoning, fire, environmental, utilities, final sign-off) and can sit open for six to ten weeks with waits, holds, and re-submissions along the way. The system needs to survive our nightly IT maintenance windows without losing track of where an application is, and some of the steps \u2014 like verifying a fee was actually paid \u2014 must be handled by plain rule-based logic, not by anything that 'decides.'"
+    expected_diagnosis: [long_running_process]
+    expected_target: "08"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [7]."
+
+  - id: release-candidate-qa-split
+    title: "Release candidate QA area split"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Priority: Medium. Component: Build Pipeline. Before each release candidate we need a pass over four fairly separate areas \u2014 UI text, audio sync, physics regressions, and network latency under load \u2014 and one person or one model trying to hold all of that in their head at once is how things get missed. Want the check split by area and then reconciled into one release decision."
+    expected_diagnosis: [workflow_too_large]
+    expected_target: "03"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [8]."
+
+  - id: parts-deviation-airworthiness-signoff
+    title: "Parts deviation airworthiness sign-off"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "When a manufactured part comes in slightly out of spec, someone with real engineering judgment has to decide whether it's still airworthy for its intended use \u2014 that call carries liability and can't just be waved through. We need the case to land in front of the right engineer within a set window, escalate if nobody picks it up, and keep a record of why they approved or rejected it."
+    expected_diagnosis: [human_judgement_in_output]
+    expected_target: "13"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [9]."
+
+  - id: batch-release-go-no-go
+    title: "Pharma batch release go/no-go"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "A batch cannot ship unless every one of a fixed list of release criteria is met \u2014 potency, sterility, documentation completeness, and so on. We're fine with an assistant drafting the release summary and flagging concerns, but the actual go/no-go has to come from a system that checks the criteria the same way every single time, with no room for 'probably fine.' Regulators will ask us to show that."
+    expected_diagnosis: [deterministic_policy_compliance]
+    expected_target: "04"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [10]."
+
+  - id: connected-claims-across-policies
+    title: "Connected claims across policies"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We suspect a small group of claims across different policyholders, different adjusters, and different years are actually connected \u2014 same repair shop shows up, same phone number reused under two names, a shared address that changed hands twice. No single claim file shows this on its own; it only shows up once you start pulling the thread between records."
+    expected_diagnosis: [relationship_discovery]
+    expected_target: "10"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [11]."
+
+  - id: network-migration-config-generation
+    title: "Network migration config generation"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We want help generating the router configuration changes for a network migration, but nobody should have to just trust that the output is correct \u2014 every proposed config has to actually run against our lab simulator, and if it fails, look at why and try again, up to some reasonable number of attempts, before a human even sees it."
+    expected_diagnosis: [validated_artefacts]
+    expected_target: "11"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [12]."
+
+  - id: checkin-experience-no-measure
+    title: "Hotel check-in experience, no measure of good"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Leadership wants us to 'use AI to improve the guest experience' at check-in, but when pressed nobody in the room could actually describe what a good check-in interaction looks like in measurable terms, or how anyone would know if it got better. Worth flagging before we design anything."
+    expected_diagnosis: [quality_undefined]
+    expected_target: "none"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [13]."
+
+  - id: instant-valuation-at-scale
+    title: "Instant property valuation latency budget"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "This valuation tool is going to be hit on every single listing page load across the whole site, potentially millions of times a day, and it needs to come back in under a second or the page just feels broken. Whatever we build, the cost per call and the response time are real constraints, not something to worry about later."
+    expected_diagnosis: [cost_latency_pressure]
+    expected_target: "none"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [14]."
+
+  - id: fnol-intake-massive-volume
+    title: "FNOL intake stable high volume"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "First-notice-of-loss intake has been the same five fields, same format, for years, and we run it a hundred thousand times a month. Nothing about this task changes week to week. At that volume, whatever machinery sits around the actual decision starts costing more than the decision itself."
+    expected_diagnosis: [stable_high_volume]
+    expected_target: "none"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [15]."
+
+  - id: governing-law-clause-lookup
+    title: "Governing-law clause lookup"
+    source: authored
+    case_type: negative_baseline
+    requirements_brief: "Need a quick way for paralegals to pull up the governing-law clause from a specific signed contract when a client calls asking what it says. Just find it and quote it back with the section number."
+    expected_diagnosis: [stale_facts]
+    expected_target: "00"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): neg."
+
+  - id: part-spec-sheet-lookup
+    title: "Part spec sheet lookup"
+    source: authored
+    case_type: negative_baseline
+    requirements_brief: "Need the material cert and current spec revision for part 84-2210, with the source document cited."
+    expected_diagnosis: [stale_facts]
+    expected_target: "00"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): neg."
+
+  - id: fence-setback-ordinance-lookup
+    title: "Fence setback ordinance lookup"
+    source: authored
+    case_type: negative_baseline
+    requirements_brief: "Citizens call asking what the setback requirement is for a residential fence in a given zoning district. Staff just need the exact ordinance text and section number pulled and read back to them."
+    expected_diagnosis: [stale_facts]
+    expected_target: "00"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): neg."
+
+  - id: current-cleaning-sop-lookup
+    title: "Current cleaning SOP lookup"
+    source: authored
+    case_type: negative_baseline
+    requirements_brief: "Line operators need to be able to ask 'what's the current cleaning procedure for line 3' and get the actual current SOP document back, with version number, so they're not working off a printed copy that's three revisions old."
+    expected_diagnosis: [stale_facts]
+    expected_target: "00"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): neg."
+
+  - id: front-desk-faster-vague
+    title: "Vague front-desk efficiency ask"
+    source: authored
+    case_type: insufficient_input
+    requirements_brief: "Ops wants 'AI to help the front desk team work faster.' No further detail given."
+    expected_diagnosis: []
+    expected_target: "00"
+    expected_outcome: baseline_fallback
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): None."
+
+  - id: farm-operation-ai-vague
+    title: "Vague farm-operation AI ask"
+    source: authored
+    case_type: insufficient_input
+    requirements_brief: "Someone from leadership ask us to look how AI can be use 'across the farm operation' to help things go better. Not sure yet which part of operation, what is a win, or who will use it."
+    expected_diagnosis: []
+    expected_target: "00"
+    expected_outcome: baseline_fallback
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): None."
+
+  - id: network-ops-smarter-memo
+    title: "Vague network-ops smarter memo"
+    source: authored
+    case_type: insufficient_input
+    requirements_brief: "Internal note, no ticket number assigned yet. Subject: AI for network ops. Body: 'Let's explore how AI can make our operations team smarter and more proactive.' Forwarded to me for scoping. Priority: high (per sender, no explanation given)."
+    expected_diagnosis: []
+    expected_target: "00"
+    expected_outcome: baseline_fallback
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): None."
+
+  - id: coach-wants-ai-vague
+    title: "Vague coach AI request"
+    source: authored
+    case_type: insufficient_input
+    requirements_brief: "Coach wants AI to help the team. Didn't say with what."
+    expected_diagnosis: []
+    expected_target: "00"
+    expected_outcome: baseline_fallback
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): None."
+
+  - id: disability-benefits-application-flow
+    title: "Disability benefits application flow"
+    source: authored
+    case_type: positive_composition
+    requirements_brief: "A disability benefits application moves through intake, medical review, eligibility scoring, and a final award decision, and the whole thing can run six weeks with waits for outside medical records. Eligibility itself is governed by a fixed set of legal rules that must be applied exactly the same way for every applicant; no discretion there. But when a case is borderline, a caseworker has to actually look at it and make a call, and that decision needs a paper trail and can't just sit in someone's inbox indefinitely. And whatever we build has to still know where each application is if the system goes down overnight."
+    expected_diagnosis: [long_running_process, human_judgement_in_output, deterministic_policy_compliance]
+    expected_target: "sequence(04, 08, 13)"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [7, 9, 10]."
+
+  - id: property-claim-triage-judgement
+    title: "Property claim triage judgement"
+    source: authored
+    case_type: positive_composition
+    requirements_brief: "For mid-size property claims, all the facts (damage photos, repair estimates, prior claim history) are already sitting in the file by the time it reaches a senior adjuster \u2014 nothing's missing. The trouble is twofold: junior adjusters often jump to the first plausible cause of loss and don't revisit it even when later evidence points elsewhere, and even senior staff reviewing the same complete file will land on different settlement recommendations without a clear account of why one is better than the others."
+    expected_diagnosis: [weak_judgement, multiple_interpretations]
+    expected_target: "sequence(01, 05)"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [1, 4]."
+
+  - id: regional-outage-root-cause
+    title: "Regional network outage root cause"
+    source: authored
+    case_type: positive_composition
+    requirements_brief: "When a regional outage hits, diagnosing root cause means pulling live status from multiple network elements, checking recent change tickets, and querying the topology database to see what's actually connected to what upstream \u2014 and the real cause is often two or three hops away from where the alarms are firing, only visible once you trace the equipment and circuits between the affected site and the actual fault."
+    expected_diagnosis: [needs_tools_midreasoning, relationship_discovery]
+    expected_target: "sequence(02, 10)"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [2, 11]."
+
+  - id: nightly-build-qa-and-save-compat
+    title: "Nightly build QA and save compatibility"
+    source: authored
+    case_type: positive_composition
+    requirements_brief: "Release automation request: for each nightly build we need three largely independent pieces handled \u2014 asset bundle validation, save-file backward compatibility, and platform certification checklist prep \u2014 each different enough that having one process try to do all three is clunky. And backward compatibility specifically isn't a matter of opinion: we have old save files sitting in a test harness, and whatever gets generated either loads them correctly or it doesn't, so it needs to actually be run against that harness, and fixed and retried if it fails, before anyone signs off."
+    expected_diagnosis: [workflow_too_large, validated_artefacts]
+    expected_target: "sequence(03, 11)"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [8, 12]."
+
+  - id: peak-season-showing-routes
+    title: "Peak season showing route generation"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Peak season we're generating same-day showing routes for hundreds of agents simultaneously \u2014 each route has to respect seller availability windows, agent driving time, and property access restrictions; there are way more valid orderings than we could ever fully evaluate one by one. This runs constantly during the spring rush, so both what it costs us per route generated and how quickly an agent gets their route back matter \u2014 nobody's going to wait two minutes for a route while standing in a driveway."
+    expected_diagnosis: [planning_under_constraints, cost_latency_pressure]
+    expected_target: "09"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [3, 14]."
+
+  - id: listing-price-recommendation-variance
+    title: "Listing price recommendation variance"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Every listing agent already sees the same comps and the same market data pulled from MLS. What varies wildly is the recommended list price two agents give the same seller for the same house \u2014 one says list at X, another says list 8% higher, and when the seller asks why, nobody can articulate what was actually weighed to get there or why the other number was worse."
+    expected_diagnosis: [weak_judgement]
+    expected_target: "01"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [1]."
+
+  - id: avionics-fault-live-diagnostics
+    title: "Avionics fault live diagnostics"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "A technician working an avionics fault can't just read a manual page and be done \u2014 they need to pull live fault codes off the aircraft's diagnostic bus, check current maintenance bulletins for that tail number, and sometimes re-run a self-test after a first fix attempt to see if the code cleared, before knowing what to try next."
+    expected_diagnosis: [needs_tools_midreasoning]
+    expected_target: "02"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [2]."
+
+  - id: broadcast-crew-weekend-scheduling
+    title: "Broadcast crew weekend scheduling"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Priority: High. We're staffing camera and production crews across a busy weekend with 40+ events. Union rest-period rules and travel time between venues eliminate most combinations immediately, and among the schedules that are still legal, the order we assign crews in has a big effect on overtime cost."
+    expected_diagnosis: [planning_under_constraints]
+    expected_target: "09"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [3]."
+
+  - id: coating-batch-root-cause
+    title: "Tablet coating batch root cause"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "A tablet coating batch came in outside spec. Quality's first theory was a spray rate issue, but the trend data doesn't fully line up with that, and there's an unlogged maintenance event on the coating pan around the same window that nobody flagged initially. Jumping to the first explanation here is exactly how you end up fixing the wrong problem, and a deviation investigation that gets the cause wrong is expensive both in product loss and in what we have to tell the regulator."
+    expected_diagnosis: [multiple_interpretations]
+    expected_target: "05"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [4]."
+
+  - id: player-support-history-recall
+    title: "Player support ticket history recall"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Support agent has no idea the player already reported this exact bug twice. Should remember."
+    expected_diagnosis: [cross_session_recall]
+    expected_target: "06"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [5]."
+
+  - id: due-diligence-memo-recurring-gaps
+    title: "Due diligence memo recurring gaps"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We run essentially the same due-diligence memo template for every acquisition target we look at, dozens a year. Partners keep noting the same gaps \u2014 missed IP assignment checks, inconsistent treatment of change-of-control clauses \u2014 deal after deal, but that feedback dies in an email thread instead of making the next memo better."
+    expected_diagnosis: [should_improve_over_runs]
+    expected_target: "07"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [6]."
+
+  - id: hailstorm-claim-multistage
+    title: "Hailstorm claim multi-stage process"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "After a hailstorm, a property claim goes through intake, inspection scheduling, adjuster site visit, estimate reconciliation, and payout approval \u2014 routinely two to four weeks end to end, sometimes longer waiting on a contractor's availability. A few of those steps, like confirming the policy was actually active on the date of loss, are pure lookups against our policy system and shouldn't involve any judgment at all, human or otherwise."
+    expected_diagnosis: [long_running_process]
+    expected_target: "08"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [7]."
+
+  - id: regional-compliance-report-assembly
+    title: "Regional compliance report assembly"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Regulatory report request: three operating regions need to be pulled together \u2014 network uptime data, incident disclosures, and infrastructure investment figures \u2014 genuinely three separate work streams with different source systems and different reviewers, currently done by one overworked analyst trying to hold the whole thing together at once."
+    expected_diagnosis: [workflow_too_large]
+    expected_target: "03"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [8]."
+
+  - id: commercial-property-investment-signoff
+    title: "Commercial property investment sign-off"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Recommending a client put eight figures into a commercial property isn't something we're comfortable letting run on autopilot, however good the analysis looks \u2014 a senior partner has to actually sign off, within a defined window before the offer deadline, with a documented reason if they override the recommendation."
+    expected_diagnosis: [human_judgement_in_output]
+    expected_target: "13"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [9]."
+
+  - id: housing-assistance-eligibility-rule
+    title: "Housing assistance eligibility determination"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Eligibility for the housing assistance program is defined by statute \u2014 income thresholds, household size, residency \u2014 and it has to be applied identically for every applicant regardless of anything else about the case. We can have an assistant help gather and summarize the application, but the actual eligibility determination has to be the one that actually goes in the file, produced by something that applies the rule the same way every time, not just advice alongside it."
+    expected_diagnosis: [deterministic_policy_compliance]
+    expected_target: "04"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [10]."
+
+  - id: new-client-conflict-check
+    title: "New client conflict of interest check"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Before we can take on a new client, we need to check whether they're connected to any existing client or matter in a way that creates a conflict \u2014 sometimes that's obvious from the name, but sometimes it's a subsidiary of a subsidiary, or a director who also sits on the board of someone we're currently opposing, and that only turns up once you trace the ownership and relationships across our client records."
+    expected_diagnosis: [relationship_discovery]
+    expected_target: "10"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [11]."
+
+  - id: irrigation-schedule-generate-and-test
+    title: "Irrigation schedule generate and test"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We want the system to actually produce the updated irrigation controller schedule for a field, not just recommend one \u2014 and before it goes live, it has to be run against our simulator to confirm it doesn't over- or under-water any zone, with a fix-and-retry loop if the first attempt fails a check."
+    expected_diagnosis: [validated_artefacts]
+    expected_target: "11"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [12]."
