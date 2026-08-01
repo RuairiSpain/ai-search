@@ -479,6 +479,14 @@ cases:
   # running this cohort even once, never adjusted after seeing a result. See
   # docs/golden-set-methodology.md Phase 3 for the checkpoint rule this cohort
   # exists to support.
+  #
+  # RELABELLED cohort: validation -> tuning on 2026-08-01 (Phase 2 round 2).
+  # This batch's aggregate signal (recall_by_signature, over_fired_signatures)
+  # had already been used twice to decide evidence-list edits -- reusing the
+  # same held-out set's scores repeatedly is itself a slow leak, even though no
+  # case's text was ever read before this point. Relabelling is the honest
+  # move; a fresh blind cohort (Phase 2 round 2 validation batch, below) is
+  # the real holdout going forward. See docs/golden-set-methodology.md.
 
   - id: claims-liability-calls
     title: Adjuster fault-split judgement
@@ -488,7 +496,7 @@ cases:
     expected_diagnosis: [weak_judgement]
     expected_target: "01"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [1]."
 
   - id: subject-line-picker
@@ -499,7 +507,7 @@ cases:
     expected_diagnosis: [weak_judgement]
     expected_target: "01"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [1]."
 
   - id: server-outage-triage
@@ -510,7 +518,7 @@ cases:
     expected_diagnosis: [needs_tools_midreasoning]
     expected_target: "02"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [2]."
 
   - id: corporate-travel-desk
@@ -521,7 +529,7 @@ cases:
     expected_diagnosis: [needs_tools_midreasoning]
     expected_target: "02"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [2]."
 
   - id: press-line-scheduling
@@ -532,7 +540,7 @@ cases:
     expected_diagnosis: [planning_under_constraints]
     expected_target: "09"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [3]."
 
   - id: offsite-room-block
@@ -543,7 +551,7 @@ cases:
     expected_diagnosis: [planning_under_constraints]
     expected_target: "09"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [3]."
 
   - id: weld-defect-recurrence
@@ -554,7 +562,7 @@ cases:
     expected_diagnosis: [multiple_interpretations]
     expected_target: "05"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [4]."
 
   - id: churn-cause-diagnosis
@@ -565,7 +573,7 @@ cases:
     expected_diagnosis: [multiple_interpretations]
     expected_target: "05"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [4]."
 
   - id: personal-shopper-memory
@@ -576,7 +584,7 @@ cases:
     expected_diagnosis: [cross_session_recall]
     expected_target: "06"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [5]."
 
   - id: helpdesk-repeat-callers
@@ -587,7 +595,7 @@ cases:
     expected_diagnosis: [cross_session_recall]
     expected_target: "06"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [5]."
 
   - id: weekly-ops-report-drift
@@ -598,7 +606,7 @@ cases:
     expected_diagnosis: [should_improve_over_runs]
     expected_target: "07"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [6]."
 
   - id: nda-review-repetition
@@ -609,7 +617,7 @@ cases:
     expected_diagnosis: [should_improve_over_runs]
     expected_target: "07"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [6]."
 
   - id: mortgage-file-pipeline
@@ -620,7 +628,7 @@ cases:
     expected_diagnosis: [long_running_process]
     expected_target: "08"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [7]."
 
   - id: employee-onboarding-stages
@@ -631,7 +639,7 @@ cases:
     expected_diagnosis: [long_running_process]
     expected_target: "08"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [7]."
 
   - id: category-launch-report
@@ -642,7 +650,7 @@ cases:
     expected_diagnosis: [workflow_too_large]
     expected_target: "03"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [8]."
 
   - id: acquisition-dd-packet
@@ -653,7 +661,7 @@ cases:
     expected_diagnosis: [workflow_too_large]
     expected_target: "03"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [8]."
 
   - id: borderline-content-escalation
@@ -664,7 +672,7 @@ cases:
     expected_diagnosis: [human_judgement_in_output]
     expected_target: "13"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [9]."
 
   - id: prior-auth-clinician-review
@@ -675,7 +683,7 @@ cases:
     expected_diagnosis: [human_judgement_in_output]
     expected_target: "13"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [9]."
 
   - id: export-screening-gate
@@ -686,7 +694,7 @@ cases:
     expected_diagnosis: [deterministic_policy_compliance]
     expected_target: "04"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [10]."
 
   - id: payroll-tax-withholding
@@ -697,7 +705,7 @@ cases:
     expected_diagnosis: [deterministic_policy_compliance]
     expected_target: "04"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [10]."
 
   - id: contamination-trace-back
@@ -708,7 +716,7 @@ cases:
     expected_diagnosis: [relationship_discovery]
     expected_target: "10"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [11]."
 
   - id: beneficial-ownership-check
@@ -719,7 +727,7 @@ cases:
     expected_diagnosis: [relationship_discovery]
     expected_target: "10"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [11]."
 
   - id: schema-migration-scripts
@@ -730,7 +738,7 @@ cases:
     expected_diagnosis: [validated_artefacts]
     expected_target: "11"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [12]."
 
   - id: template-contract-generator
@@ -741,7 +749,7 @@ cases:
     expected_diagnosis: [validated_artefacts]
     expected_target: "11"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [12]."
 
   - id: better-chatbot-vague
@@ -752,7 +760,7 @@ cases:
     expected_diagnosis: [quality_undefined]
     expected_target: "none"
     expected_outcome: baseline_recommended
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [13]."
 
   - id: meeting-summary-goodness
@@ -763,7 +771,7 @@ cases:
     expected_diagnosis: [quality_undefined]
     expected_target: "none"
     expected_outcome: baseline_recommended
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [13]."
 
   - id: contact-center-cost-ceiling
@@ -774,7 +782,7 @@ cases:
     expected_diagnosis: [cost_latency_pressure]
     expected_target: "none"
     expected_outcome: baseline_recommended
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [14]."
 
   - id: real-time-bid-latency
@@ -785,7 +793,7 @@ cases:
     expected_diagnosis: [cost_latency_pressure]
     expected_target: "none"
     expected_outcome: baseline_recommended
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [14]."
 
   - id: invoice-line-classification
@@ -796,7 +804,7 @@ cases:
     expected_diagnosis: [stable_high_volume]
     expected_target: "none"
     expected_outcome: baseline_recommended
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [15]."
 
   - id: meter-reading-ocr-scale
@@ -807,7 +815,7 @@ cases:
     expected_diagnosis: [stable_high_volume]
     expected_target: "none"
     expected_outcome: baseline_recommended
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [15]."
 
   - id: underwriting-exception-flow
@@ -818,7 +826,7 @@ cases:
     expected_diagnosis: [long_running_process, human_judgement_in_output]
     expected_target: "sequence(08, 13)"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [7, 9]."
 
   - id: expense-report-review
@@ -829,7 +837,7 @@ cases:
     expected_diagnosis: [deterministic_policy_compliance, weak_judgement]
     expected_target: "sequence(04, 01)"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [10, 1]."
 
   - id: legacy-codebase-migration
@@ -840,7 +848,7 @@ cases:
     expected_diagnosis: [workflow_too_large, validated_artefacts]
     expected_target: "sequence(03, 11)"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [8, 12]."
 
   - id: fraud-ring-investigation
@@ -851,7 +859,7 @@ cases:
     expected_diagnosis: [relationship_discovery, multiple_interpretations]
     expected_target: "sequence(10, 05)"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [11, 4]."
 
   - id: support-agent-memory-and-learning
@@ -862,7 +870,7 @@ cases:
     expected_diagnosis: [cross_session_recall, should_improve_over_runs]
     expected_target: "sequence(06, 07)"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [5, 6]."
 
   - id: same-day-delivery-routing
@@ -873,7 +881,7 @@ cases:
     expected_diagnosis: [needs_tools_midreasoning, planning_under_constraints, cost_latency_pressure]
     expected_target: "sequence(02, 09)"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated problem type(s): [2, 3, 14]."
 
   - id: vacation-carryover-lookup
@@ -884,7 +892,7 @@ cases:
     expected_diagnosis: [stale_facts]
     expected_target: "00"
     expected_outcome: baseline_recommended
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated: genuinely retrieval-only, no reasoning."
 
   - id: password-reset-faq
@@ -895,7 +903,7 @@ cases:
     expected_diagnosis: [stale_facts]
     expected_target: "00"
     expected_outcome: baseline_recommended
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated: genuinely retrieval-only, no reasoning."
 
   - id: policy-coverage-limit-lookup
@@ -906,7 +914,7 @@ cases:
     expected_diagnosis: [stale_facts]
     expected_target: "00"
     expected_outcome: baseline_recommended
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated: genuinely retrieval-only, no reasoning."
 
   - id: ops-efficiency-vague
@@ -918,7 +926,7 @@ cases:
     expected_target: "00"
     expected_outcome: baseline_fallback
     expected_confidence: low
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated: too vague to diagnose confidently."
 
   - id: cx-ai-exploration-ticket
@@ -930,7 +938,7 @@ cases:
     expected_target: "00"
     expected_outcome: baseline_fallback
     expected_confidence: low
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated: too vague to diagnose confidently."
 
   - id: agent-hackathon-idea
@@ -942,7 +950,7 @@ cases:
     expected_target: "00"
     expected_outcome: baseline_fallback
     expected_confidence: low
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated: too vague to diagnose confidently."
 
   - id: supply-chain-ai-somewhere
@@ -954,7 +962,7 @@ cases:
     expected_target: "00"
     expected_outcome: baseline_fallback
     expected_confidence: low
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated: too vague to diagnose confidently."
 
   - id: finance-manual-work-reduction
@@ -966,7 +974,7 @@ cases:
     expected_target: "00"
     expected_outcome: baseline_fallback
     expected_confidence: low
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated: too vague to diagnose confidently."
 
   - id: general-productivity-note
@@ -978,5 +986,454 @@ cases:
     expected_target: "00"
     expected_outcome: baseline_fallback
     expected_confidence: low
-    cohort: validation
+    cohort: tuning
     tests: "Phase 1 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md). Author-stated: too vague to diagnose confidently."
+
+  # ================= PHASE 2 ROUND 2 VALIDATION COHORT 2026-08-01 =================
+  # Blind-authored via docs/phase1-validation-authoring-brief.md by a fresh subagent
+  # with zero tool uses (confirmed no repository access) -- the Phase 1 batch above
+  # was relabelled tuning this round (see docs/golden-set-methodology.md), so this is
+  # the genuine holdout for the Phase 2 round 2 checkpoint. expected_diagnosis and
+  # expected_target are MY translation of the author's own stated "which problem
+  # types apply" answer into signature/pattern ids -- set before running this cohort
+  # even once, never adjusted after seeing a result.
+
+  - id: ad-tagline-shortlist
+    title: "Fall campaign tagline pick"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Our brand team has all the customer research and message testing back from the agency. We just can't agree internally on which of the five taglines to run with for the fall campaign, and every meeting ends in a different favorite. We want something that picks one and can defend why it beat the other four."
+    expected_diagnosis: [weak_judgement]
+    expected_target: "01"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [1]."
+
+  - id: menu-item-cut
+    title: "Seasonal menu cuts"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We have all the sales and margin data. Just can't agree which three dishes to cut this season."
+    expected_diagnosis: [weak_judgement]
+    expected_target: "01"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [1]."
+
+  - id: greenhouse-watering-decisions
+    title: "Greenhouse zone watering"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Our greenhouse operator want assistant to decide when water each zone. Need check soil moisture sensor now, check next 24h forecast, check if pump for zone is online before commit to plan. Not fixed schedule, must adjust based on what it find."
+    expected_diagnosis: [needs_tools_midreasoning]
+    expected_target: "02"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [2]."
+
+  - id: printer-fleet-triage
+    title: "Printer fleet ticket triage"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "IT helpdesk ticket: recurring complaints about printers on the 4th floor. Want something that can log into the print server, check queue status, ping the device, maybe restart the spooler, and only loop in a technician if none of that clears it. Priority: medium. Requester: facilities."
+    expected_diagnosis: [needs_tools_midreasoning]
+    expected_target: "02"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [2]."
+
+  - id: turbine-inspection-scheduling
+    title: "Offshore turbine inspection routing"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We run helicopter inspections across an offshore wind farm. There are dozens of valid orders to visit the turbines in, but weather windows, crew certifications, and fuel range rule most of them out immediately. We want the cheap stuff eliminating bad routes first, and only what's left gets the expensive weather-modeling treatment."
+    expected_diagnosis: [planning_under_constraints]
+    expected_target: "09"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [3]."
+
+  - id: exam-hall-seating
+    title: "Exam hall seat allocation"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Need to seat 3,000 exam candidates across 40 rooms respecting subject clashes, accessibility needs, and invigilator counts. Lots of valid layouts, most get killed by one rule or another."
+    expected_diagnosis: [planning_under_constraints]
+    expected_target: "09"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [3]."
+
+  - id: checkout-conversion-drop
+    title: "Checkout conversion drop diagnosis"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Online conversion dropped 12% last Tuesday and nobody agrees why. Marketing blames the new checkout flow, engineering says it's the CDN outage, finance thinks it's just a slow week. First theory people land on is usually wrong and we've wasted two sprints chasing the wrong one before. Want a way to hold a few theories at once and let the data actually rule some out before we commit resources."
+    expected_diagnosis: [multiple_interpretations]
+    expected_target: "05"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [4]."
+
+  - id: dairy-herd-symptom-review
+    title: "Dairy herd symptom cause review"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Several cows in the herd have gone off their feed and milk yield is down. Could be feed contamination, could be early signs of a few different conditions, could be heat stress. Vet visits are expensive and treating for the wrong thing costs us more animals. Want something that keeps a few possible causes open and narrows them as test results come in, rather than committing to the first guess."
+    expected_diagnosis: [multiple_interpretations]
+    expected_target: "05"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [4]."
+
+  - id: fitness-coach-continuity
+    title: "Fitness coaching member continuity"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Members chat with our virtual coaching assistant across many sessions over months. For it to feel like it actually knows them, it needs to remember injuries they mentioned, goals they've changed, what they responded well to before \u2014 but only for that member, and it should stop remembering anything once they cancel their membership."
+    expected_diagnosis: [cross_session_recall]
+    expected_target: "06"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [5]."
+
+  - id: tutor-progress-memory
+    title: "Tutoring bot student recall"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Online tutoring bot should recall what a student struggled with last week without mixing kids up or keeping data past the school year."
+    expected_diagnosis: [cross_session_recall]
+    expected_target: "06"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [5]."
+
+  - id: grant-proposal-drafting-loop
+    title: "Grant proposal drafting improvement"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Our research office drafts a similar type of grant proposal maybe fifteen times a year for different labs. Reviewers keep flagging the same weak spots \u2014 vague impact sections, budget justification gaps. We'd like whatever writes the next draft to actually carry forward what got flagged on the last one instead of making the same mistake again, ideally with someone glancing at the insight before it gets applied so we don't bake in a bad habit."
+    expected_diagnosis: [should_improve_over_runs]
+    expected_target: "07"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [6]."
+
+  - id: sales-call-coaching-notes
+    title: "Sales call debrief carryover"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We debrief every enterprise sales call the same way. Want the notes from each debrief to actually inform how the next call gets prepared, not just sit in a shared doc nobody reopens."
+    expected_diagnosis: [should_improve_over_runs]
+    expected_target: "07"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [6]."
+
+  - id: appliance-recall-tracking
+    title: "Space heater recall process"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We're recalling a batch of space heaters. The process runs for weeks: notify registered owners, log returns as they trickle in, issue refunds once a unit is scanned back in, restock replacement units, close out stragglers after 90 days. Some of those steps are just bookkeeping against a returns database and should never touch a model \u2014 refund amount is a fixed formula. It has to survive our systems going down mid-week without losing track of where each customer is in the process."
+    expected_diagnosis: [long_running_process]
+    expected_target: "08"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [7]."
+
+  - id: new-hire-clearance-pipeline
+    title: "New hire clearance pipeline"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "New employee clearance takes 3-6 weeks across background check, equipment provisioning, badge issuance. Must resume correctly after any system restart. Some stages are pure paperwork, no AI needed there."
+    expected_diagnosis: [long_running_process]
+    expected_target: "08"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [7]."
+
+  - id: quarterly-board-pack
+    title: "Quarterly board pack assembly"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Putting together the quarterly board pack is always a scramble. It really breaks into three separate pieces \u2014 the financial summary, the competitive landscape update, and the product roadmap slide \u2014 that different people already own and could be drafted at the same time. We just need someone to split the work out, get each piece done, and then have one person check the whole thing hangs together before it goes out."
+    expected_diagnosis: [workflow_too_large]
+    expected_target: "03"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [8]."
+
+  - id: multi-market-launch-brief
+    title: "Multi-market launch briefs"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Launching a product across four regional markets at once. Each market needs its own tailored brief \u2014 different regulatory notes, different competitor angle \u2014 but it's really the same four narrow jobs done side by side, then someone needs to sanity-check they don't contradict each other before distribution."
+    expected_diagnosis: [workflow_too_large]
+    expected_target: "03"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [8]."
+
+  - id: borderline-post-review
+    title: "Borderline content escalation"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Most flagged posts on the platform are easy calls. But the borderline ones \u2014 where getting it wrong either way costs us either a user or a headline \u2014 need an actual trust & safety person to look, with a clock on how long that can sit, and if nobody picks it up in time it needs to go up to someone more senior. We also want a record of why the human made the call they made."
+    expected_diagnosis: [human_judgement_in_output]
+    expected_target: "13"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [9]."
+
+  - id: research-animal-protocol-review
+    title: "Animal protocol change review"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Suggested changes to an animal research protocol must be reviewed by a named ethics committee member within 48 hours, with a documented reason, before anything moves forward."
+    expected_diagnosis: [human_judgement_in_output]
+    expected_target: "13"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [9]."
+
+  - id: recipe-allergen-guardrail
+    title: "Recipe substitution allergen check"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We let an assistant suggest recipe substitutions for our packaged meal kits. Problem is, it occasionally proposes a swap that quietly introduces a declared allergen and that cannot happen, even once \u2014 we've had two near-misses. Whatever we build, the actual go/no-go on any substitution has to be checked against our allergen list on every batch, with zero tolerance for a miss, and that check has to be the final word, not a suggestion."
+    expected_diagnosis: [deterministic_policy_compliance]
+    expected_target: "04"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [10]."
+
+  - id: crane-load-limit-check
+    title: "Crane load limit hard check"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Model can suggest crane lift plans but the load-limit check against certified capacity has to be a hard, unbreakable check every time, not a best guess."
+    expected_diagnosis: [deterministic_policy_compliance]
+    expected_target: "04"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [10]."
+
+  - id: foodborne-illness-source-trace
+    title: "Foodborne illness cluster trace"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Health department has a cluster of foodborne illness cases across six unrelated restaurants. No single invoice or inspection report shows the connection \u2014 it's buried in which distributor supplied which producer, which delivery went to which restaurant, on which dates. Need to trace that across a lot of separate records and be able to show the path that led to the supplier we think is responsible."
+    expected_diagnosis: [relationship_discovery]
+    expected_target: "10"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [11]."
+
+  - id: patent-citation-conflict-check
+    title: "Patent citation conflict trace"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Trying to work out whether a new patent application actually infringes on prior work means following citation trails across dozens of filings, inventor overlaps, and licensing records \u2014 the conflict isn't sitting in any one document, it's in how they connect."
+    expected_diagnosis: [relationship_discovery]
+    expected_target: "10"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [11]."
+
+  - id: schema-migration-script
+    title: "Legacy table migration script"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We need a script that migrates about 40 legacy tables to the new schema. We already have a test suite that tells us pass or fail. Want something that writes the migration, runs it against the test suite, and if it fails, figures out why and fixes it, rather than us babysitting every attempt."
+    expected_diagnosis: [validated_artefacts]
+    expected_target: "11"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [12]."
+
+  - id: firmware-config-generator
+    title: "Turbine firmware config generator"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Need generated turbine firmware configs to pass our existing simulator check before they ship, with automatic retry-and-fix on failure."
+    expected_diagnosis: [validated_artefacts]
+    expected_target: "11"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [12]."
+
+  - id: better-brainstorm-sessions
+    title: "Vague brainstorming improvement ask"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Leadership wants an AI assistant to 'make our product brainstorming sessions better.' Nobody has said what a better session even produces, or how we'd know it worked. Flagging this before we design anything."
+    expected_diagnosis: [quality_undefined]
+    expected_target: "none"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [13]."
+
+  - id: culture-survey-assistant
+    title: "Culture survey summary quality"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We want something to help make sense of the open-text answers on our culture survey. Ask five people what a 'good' summary of that would look like and you get five different answers. There's no agreed measure of quality here yet."
+    expected_diagnosis: [quality_undefined]
+    expected_target: "none"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [13]."
+
+  - id: checkout-recommendation-latency
+    title: "Checkout recommendation latency budget"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We want live product recommendations at checkout for a retailer doing millions of transactions a day. Whatever we build has to return in under 200 milliseconds and the per-call cost has to stay low enough that it doesn't eat the margin on a $12 item. This isn't a nice-to-have constraint, it's the whole ballgame."
+    expected_diagnosis: [cost_latency_pressure]
+    expected_target: "none"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [14]."
+
+  - id: meter-anomaly-code-classification
+    title: "Smart meter anomaly classification scale"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Every day we classify around two million smart-meter anomaly codes into about a dozen fixed categories. The categories haven't changed in three years and aren't going to. At this volume, the cost of any heavy multi-step process per reading would dwarf the value of the classification itself."
+    expected_diagnosis: [stable_high_volume]
+    expected_target: "none"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [15]."
+
+  - id: barcode-tag-sorting
+    title: "Barcode format sorting at scale"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Same handful of barcode formats, sorted into the same bins, millions of times a day, never changes. Worried the extra machinery costs more than it saves."
+    expected_diagnosis: [stable_high_volume]
+    expected_target: "none"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [15]."
+
+  - id: parental-leave-policy-lookup
+    title: "Parental leave policy lookup"
+    source: authored
+    case_type: negative_baseline
+    requirements_brief: "An employee asked HR what our parental leave policy is for a second child. Should just pull the answer from the handbook and point to the section."
+    expected_diagnosis: [stale_facts]
+    expected_target: "00"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): neg."
+
+  - id: bolt-torque-spec-lookup
+    title: "Bolt torque spec lookup"
+    source: authored
+    case_type: negative_baseline
+    requirements_brief: "Technician needs the torque spec for the M10 bolts on the compressor housing, straight out of the maintenance manual."
+    expected_diagnosis: [stale_facts]
+    expected_target: "00"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): neg."
+
+  - id: warranty-window-check
+    title: "Warranty window lookup"
+    source: authored
+    case_type: negative_baseline
+    requirements_brief: "Customer wants to know if their blender is still under warranty. Serial number and purchase date determine it, answer's a lookup against the warranty terms doc."
+    expected_diagnosis: [stale_facts]
+    expected_target: "00"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): neg."
+
+  - id: be-more-efficient-ticket
+    title: "Vague ops-efficiency ticket"
+    source: authored
+    case_type: insufficient_input
+    requirements_brief: "Ticket #4471. Priority: high. Description: 'Use AI to help the ops team be more efficient.' No further detail provided."
+    expected_diagnosis: []
+    expected_target: "00"
+    expected_outcome: baseline_fallback
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): None."
+
+  - id: something-with-agents-memo
+    title: "Vague agentic-AI scoping memo"
+    source: authored
+    case_type: insufficient_input
+    requirements_brief: "Internal memo, subject line only: 'Explore agentic AI for the fulfillment center.' Requesting a scoping call. No specifics on what's slow, what's wrong, or what winning looks like yet."
+    expected_diagnosis: []
+    expected_target: "00"
+    expected_outcome: baseline_fallback
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): None."
+
+  - id: help-us-with-customers
+    title: "Vague customer-help ask"
+    source: authored
+    case_type: insufficient_input
+    requirements_brief: "We want AI to help us with our customers."
+    expected_diagnosis: []
+    expected_target: "00"
+    expected_outcome: baseline_fallback
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): None."
+
+  - id: home-aide-visit-scheduling
+    title: "Home aide scheduling with hard hours cap"
+    source: authored
+    case_type: positive_composition
+    requirements_brief: "We match home health aides to patient visits across the city. Lots of valid schedules exist depending on aide certifications, patient preferences, and drive time, and we want the obviously broken ones filtered out cheap before spending effort optimizing the rest. Separately \u2014 and this part really can't slip \u2014 no schedule can ever put an aide over the legal daily hours cap, no matter how good the match looks otherwise. That check has to hold every time, and whatever proposes the schedule doesn't get the final say on that part."
+    expected_diagnosis: [planning_under_constraints, deterministic_policy_compliance]
+    expected_target: "sequence(04, 09)"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [3, 10]."
+
+  - id: quarterly-filing-prep-cycle
+    title: "Quarterly compliance filing cycle"
+    source: authored
+    case_type: positive_composition
+    requirements_brief: "INTERNAL TICKET \u2014 COMPLIANCE OPS. Ref: CO-2291. Priority: High. Requested by: Filing Team Lead.\n- Quarterly filing cycle runs ~3 weeks: gather data, draft, internal review, submit.\n- Process must keep going even if someone's out sick or a system goes down mid-cycle.\n- Compliance officer must personally approve before submission, hard deadline, escalate to director if not actioned in time.\n- We repeat the same drafting mistakes every quarter \u2014 review comments from last quarter never seem to make it into this quarter's first draft."
+    expected_diagnosis: [should_improve_over_runs, long_running_process, human_judgement_in_output]
+    expected_target: "sequence(07, 08, 13)"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [6, 7, 9]."
+
+  - id: brand-voice-localization-rollout
+    title: "Multi-market localization with brand memory"
+    source: authored
+    case_type: positive_composition
+    requirements_brief: "We're rolling out a product into six new language markets at once \u2014 genuinely six separate, fairly narrow jobs that could run in parallel, with someone checking the combined set reads consistently before release. On top of that, our brand team has strong preferences about tone that get refined over many rounds of feedback across many separate projects, and we'd want whatever handles this to actually remember those preferences project to project rather than starting fresh with generic phrasing every time, for each market."
+    expected_diagnosis: [workflow_too_large, cross_session_recall]
+    expected_target: "sequence(03, 06)"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [8, 5]."
+
+  - id: production-defect-root-cause
+    title: "Production defect root-cause trace"
+    source: authored
+    case_type: positive_composition
+    requirements_brief: "A batch of parts failed tolerance checks on the line and nobody's sure why yet \u2014 could be the new supplier's raw material, could be a machine that's due for calibration, could be the shift change last week. We don't want to lock onto the first explanation before it's actually been tested against the data. And the evidence isn't sitting in one report \u2014 it's scattered across supplier certificates, machine logs, and shift handover notes that have to be connected to even see the pattern."
+    expected_diagnosis: [multiple_interpretations, relationship_discovery]
+    expected_target: "sequence(05, 10)"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [4, 11]."
+
+  - id: outage-support-chat-at-scale
+    title: "Outage support chat, escalation and cost"
+    source: authored
+    case_type: positive_composition
+    requirements_brief: "During a network outage, our support chat needs to check live service status and ticket systems mid-conversation rather than working off a static script, so it can actually tell a customer what's going on with their line right now. For customers who are, say, threatening to leave or running a business off that connection, we want a real person pulled in rather than letting the bot handle it alone. And because this runs across hundreds of thousands of chats during a major outage, both response speed and cost per conversation are real constraints, not something we can ignore."
+    expected_diagnosis: [needs_tools_midreasoning, human_judgement_in_output, cost_latency_pressure]
+    expected_target: "sequence(02, 13)"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [2, 9, 14]."

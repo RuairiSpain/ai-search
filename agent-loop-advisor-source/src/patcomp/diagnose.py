@@ -98,8 +98,20 @@ _NEG = re.compile(
 # review" lets "no LLM" erase the human-review signal three clauses later —
 # and without the colon, "the deliverable is a pipeline, not guidance: generate
 # migration changes, run validation tests..." lets an unrelated "not guidance"
-# erase every evidence term in the list that follows the colon.
-_SEGMENT = re.compile(r";|:|,\s+(?:and|while|whereas)\b|(?<=[.!?])\s+")
+# erase every evidence term in the list that follows the colon. An em/en-dash
+# is the same story one level up: "...80 milliseconds to respond per auction
+# ... — cost and speed are the whole ballgame here, not accuracy" is two
+# independent clauses joined by a dash, not one; without splitting on it, the
+# second clause's "not accuracy" reaches back across the dash and erases
+# "milliseconds" in the first. ", not X" at the end of a sentence is the same
+# shape again, one level down: "pick the best one with a reason, not run
+# endless split tests" and "a considered call..., not a coin flip" are both a
+# main clause plus a trailing contrastive aside, not a single clause under one
+# negation — without splitting there, the aside's "not" reaches back and
+# erases the main clause's own positive evidence. This does not touch the
+# list case ("does not compare options, plan, or take actions"): there the
+# comma-separated items never have "not" as the word right after the comma.
+_SEGMENT = re.compile(r";|:|—|–|,\s+(?:and|while|whereas|not)\b|(?<=[.!?])\s+")
 
 
 def negated_spans(text: str) -> list[str]:
@@ -128,10 +140,21 @@ def score_signatures(
     labels: list[SignatureLabel] = []
     for sig in cat.signatures:
         weights = {t: term_weight(norm, t, norm_stem) for t in sig.evidence}
-        # discount any term whose only support sits inside a negated clause
+        # Discount any term whose only support sits inside a negated clause —
+        # UNLESS the term itself is what triggered the negation cue. Several
+        # evidence terms are themselves absence-shaped ("no exceptions", "no
+        # one filing shows", "never bend"): the catalogue's own patterns
+        # define these signatures by that absence (04's beats_baseline_when
+        # is "not usually. A tendency is not a guarantee"; 10's is "no single
+        # document contains it"). Without this exception the term's own "no "
+        # makes negated_spans() flag its segment, and the discount then
+        # zeroes the very term that caused the flag — the term cancels
+        # itself out on every occurrence, not just when something else in
+        # the sentence actually negates it.
         for t, w in list(weights.items()):
-            if w > 0 and any(term_weight(span, t, span_stem) > 0
-                             for span, span_stem in neg):
+            if w == 0 or _NEG.search(normalise(t)):
+                continue
+            if any(term_weight(span, t, span_stem) > 0 for span, span_stem in neg):
                 weights[t] = 0.0
         matched = [t for t, w in weights.items() if w > 0]
         # Saturating: two solid term hits is meaningful support, and more hits

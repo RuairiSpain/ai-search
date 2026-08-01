@@ -28,18 +28,38 @@ signatures:
     # a longer tool loop; the actual distinguishing signal is the multi-step/
     # live-reasoning framing, not the word "look up" itself, so it belongs on
     # needs_tools_midreasoning ("mid-reasoning" below) and NOT here.
-    evidence: [rag, retrieval, out of date, knowledge base, cannot find, already exists somewhere,
-              no actions are taken, answer and cite, cite, quote it back,
-              already documented, single answer in]
+    # "quoted back" added (2026-08-01, Phase 2 round 2) alongside "quote it
+    # back" — same silent-e stemmer limitation as workflow_too_large's
+    # decompose/decomposed below: stem("quoted") -> "quot", stem("quote")
+    # stays "quote", so the two never match through the stemmer and both
+    # forms have to be listed. "word for word" added for the same round:
+    # genuinely grounding-only requests are often described by exactness of
+    # the copy, not by naming "cite" or "quote" at all. "single number in" is
+    # a sibling of "single answer in" — the fact being looked up is often
+    # named as a number (a limit, a maximum, a rate), not as "the answer".
+    # "out of date" removed in round 2: matched no true positive in the
+    # golden set and bag-of-words-collided on "throws OUT the ones that
+    # break a hard due DATE" in an unrelated planning-under-constraints case.
+    evidence: [rag, retrieval, knowledge base, cannot find, already exists somewhere,
+              no actions are taken, answer and cite, cite, quote it back, quoted back,
+              already documented, single answer in, single number in, word for word]
 
   - id: weak_judgement
     problem: Correct facts, weak judgement
     pattern: "01"
     paper_section: 5
+    # "weigh it differently" added (2026-08-01, Phase 2 round 2) as a sibling
+    # inflection of the already-present "weigh the evidence"/"weigh the
+    # facts" — same people, same facts, different conclusion is the
+    # signature's own definition, and this is simply the way that gets
+    # phrased when the facts themselves aren't named. "pick the best one"
+    # grounds pattern 01's own summary ("select one and say why the others
+    # lost") in the way people actually ask for it.
     evidence: [wrong recommendation, first answer, weak judgement, decide whether, root cause,
               propose an assessment, commits to the first, weigh the evidence, draft a recommendation,
               bounded iterations, critique them, inconsistent recommendations, judgement call,
-              considered call, reasonable call, weigh the facts, same facts different]
+              considered call, reasonable call, weigh the facts, same facts different,
+              weigh it differently, pick the best one]
 
   - id: needs_tools_midreasoning
     problem: Needs tools, data lookups or actions mid-reasoning
@@ -57,18 +77,28 @@ signatures:
     # goes live" in a long_running_process tuning case — both words individually
     # common enough that non-adjacent bag-of-words credit is too easy to trip;
     # already covered by "checking as it goes" and "live systems" separately.
+    # "act on it" and "live traffic" added (2026-08-01, Phase 2 round 2): the
+    # ReAct loop this signature names (pattern 02's own summary: "Thought,
+    # action, observation, repeated") is very often described as check-act-
+    # observe-decide without ever naming a tool, a system, or an action verb
+    # from the existing list; "live traffic" is a sibling of "live systems"
+    # for the same live-conditions-mid-task framing.
     evidence: [call the api, crm, system of record, take action, update the record,
-              live systems, gathers evidence from, checking as it goes,
+              live systems, live traffic, gathers evidence from, checking as it goes,
               react to what it finds, changes while it works,
-              adjust based on what it finds, mid-reasoning, mid reasoning]
+              adjust based on what it finds, mid-reasoning, mid reasoning, act on it]
 
   - id: planning_under_constraints
     problem: Planning under constraints with many valid options
     pattern: "09"
     paper_section: 7
+    # "technically fit" added (2026-08-01, Phase 2 round 2): a sibling of
+    # "many workable"/"many possible" for the same "lots of candidates
+    # superficially satisfy the ask" concept, just phrased as "fit" instead
+    # of "workable"/"possible".
     evidence: [ordering constraints, dependency order, many valid, migration order, feasible,
               must be migrated in, sensible one, hard constraints, many workable,
-              rule out the ones that, valid combinations, many possible]
+              rule out the ones that, valid combinations, many possible, technically fit]
 
   - id: multiple_interpretations
     problem: Multiple plausible interpretations, first answer often wrong
@@ -91,10 +121,13 @@ signatures:
     # suffix table (strips trailing "s" -> "personali"), which doesn't equal
     # what "personalised" stems to ("personalis") — list the real word forms
     # instead of leaning on the stemmer to reconcile a stem against a stem.
+    # "shouldn't have to re-explain" added (2026-08-01, Phase 2 round 2) as a
+    # sibling of the already-present "shouldn't have to repeat" — same
+    # complaint, different verb.
     evidence: [remember, previous conversation, conversation history, session history,
               personalised, personalized, returning customer, context across sessions,
               each session, repeats failed, picks up where, same account over,
-              shouldn't have to repeat, aware of earlier]
+              shouldn't have to repeat, shouldn't have to re-explain, aware of earlier]
 
   - id: should_improve_over_runs
     problem: Repeated task that should improve run over run
@@ -109,9 +142,15 @@ signatures:
     problem: Long-running business process with defined stages
     pattern: "08"
     paper_section: 11
+    # "restarts overnight" added (2026-08-01, Phase 2 round 2): "survive a
+    # restart" required both words adjacent-enough for bag-of-words credit
+    # ("survive" + "restart" both present) and a lot of genuine cases only
+    # name the restart, never "survive" — pattern 08's own beats_baseline_when
+    # is literally "survives restarts", but that's paper language; "restarts
+    # overnight" is closer to how an operator actually says it.
     evidence: [sla, case management, several days, over several, escalates, second approval,
               then either, sits in, across days, state transition, defined stages,
-              picks back up, survive a restart, keep its place, persist through]
+              picks back up, survive a restart, restarts overnight, keep its place, persist through]
 
   - id: workflow_too_large
     problem: Workflow too large or heterogeneous for one agent
@@ -123,10 +162,21 @@ signatures:
     # original terms (heterogeneous, breadth, many sources) are formal paper
     # language a requirements author rarely writes verbatim; added the more
     # natural business phrasing pattern 03 is actually defined by.
-    evidence: [multiple teams, several steps, decompose, decomposed, heterogeneous, many sources,
+    # "splitting it up" added, "split it up" and "several steps" removed
+    # (2026-08-01, Phase 2 round 2). "split it up" was a bag-of-words
+    # collision magnet: "split" + "up" scattered non-adjacently in unrelated
+    # text ("fault splits... why the others didn't hold up") and matched no
+    # true positive in the golden set at all — pure risk, no signal.
+    # "splitting it up" is its exact-phrase-safe replacement (also fixes the
+    # decompose/decomposed-style stemmer gap: "splitting" stems to "splitt",
+    # not "split", so the two forms never bridge through the stemmer).
+    # "several steps" was the same story — matched no true positive either,
+    # and bag-of-words-collided on "two blending steps... several linked
+    # records" in an unrelated relationship-discovery case.
+    evidence: [multiple teams, decompose, decomposed, heterogeneous, many sources,
               breadth, split the work, narrow subtasks, worker agents, small model can, in parallel,
-              independent reviewer, different source system, split it up, too much for one,
-              run side by side, different skill sets]
+              independent reviewer, different source system, splitting it up,
+              too much for one, run side by side, different skill sets]
 
   - id: human_judgement_in_output
     problem: Human judgement is part of output quality, not just a gate
@@ -140,9 +190,16 @@ signatures:
     problem: Deterministic policy compliance required
     pattern: "04"
     paper_section: 14
+    # "no close enough" added (2026-08-01, Phase 2 round 2), grounded in
+    # pattern 04's own beats_baseline_when ("not usually. A tendency is not
+    # a guarantee.") — this is the plain-English version of exactly that
+    # claim. It is deliberately the FULL phrase including "no": the term
+    # itself is the positive evidence (see diagnose.score_signatures' fix
+    # for self-negating evidence terms), not something for the negation
+    # scanner to discount.
     evidence: [regulation, must not, mandatory, cannot vary, set by compliance, which rule was,
               audit trail, threshold, deterministic, policy compliance, no exceptions,
-              cannot bend, never bend, hard rule, has to be guaranteed]
+              cannot bend, never bend, hard rule, has to be guaranteed, no close enough]
 
   - id: relationship_discovery
     problem: Relationship discovery, no single document has the answer
@@ -156,8 +213,14 @@ signatures:
     problem: Validated artefacts required, not advice
     pattern: "11"
     paper_section: 16
+    # "compliance checklist" added (2026-08-01, Phase 2 round 2): pattern
+    # 11's evaluator doesn't have to be a test suite in the literal sense —
+    # "pass our compliance checklist... if a clause is missing, redo it" is
+    # the same free, unflatterable evaluator pattern 11's beats_baseline_when
+    # describes, just for a document artefact instead of code.
     evidence: [generate code, migration script, artefact, must compile, the deliverable is,
-              tests pass, fails the tests, pass or fail, look at the error and repair]
+              tests pass, fails the tests, pass or fail, look at the error and repair,
+              compliance checklist]
 
   # Advisory signatures. No folder, no emitted agents. These change the shape of
   # the recommendation rather than adding a pattern to the composition.
@@ -180,7 +243,17 @@ signatures:
     # of phrases that require cost or speed to be the explicit point
     # (2026-08-01, Phase 2, following the Phase 1 checkpoint's over-fired-
     # signatures report — this and stable_high_volume were the two largest).
-    evidence: [high volume, cost per, latency, real time, seconds, throughput, scale,
+    # Round 2 (2026-08-01) found the ACTUAL dominant over-firer once "per day"
+    # was gone: "real time", a two-generic-word bag-of-words phrase. Neither
+    # "real" nor "time" is rare enough alone to carry signal, and the two
+    # scatter-matched non-adjacently in unrelated text (e.g. "real cause...
+    # last time" in a root-cause case) on every occurrence checked. Removed —
+    # "latency"/"seconds"/"milliseconds" already cover the genuine real-time
+    # cases as single, much rarer words that can't scatter-match this way.
+    # "scale" removed for the same reason (over-generic single word; the
+    # signature's actual claim is cost/speed, which stable_high_volume's own
+    # volume-specific terms already own better).
+    evidence: [high volume, cost per, latency, seconds, throughput,
               cost per conversation, capping what we, respond within, milliseconds,
               whatever this costs]
 
@@ -193,5 +266,13 @@ signatures:
     # reads as this) and is a likely over-firer; the signature's actual claim
     # — stability AND high volume AND unchanging shape together — is already
     # covered by the more specific phrases below (2026-08-01, Phase 2).
-    evidence: [millions, unchanged for, fine-tune, distil, same shape every time,
+    # "millions" removed in round 2 (2026-08-01) for the same reason "stable"
+    # was: it names only the volume half of the claim, so it fired on cases
+    # that are high-volume and GROWING (the opposite of stable) whenever the
+    # word happened to appear — e.g. "heading to over a million by next
+    # year" is explicitly not a stable workload. "same format" added in its
+    # place: it's still grounded in the actual stability half of the claim,
+    # like the other phrases here, so the genuine stable+volume cases this
+    # was covering for don't lose their signal.
+    evidence: [unchanged for, fine-tune, distil, same shape every time, same format,
               hasn't changed in years, isn't going to change]
