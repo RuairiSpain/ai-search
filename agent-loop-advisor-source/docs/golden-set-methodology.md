@@ -49,27 +49,61 @@ produce numbers that are actually trustworthy rather than just improving.
   `long_running_process` aren't a registered confusable pair, and
   shouldn't need to be for this). Also pinned as accepted, unfixed.
 
-**Phase 1 — a genuinely blind validation cohort (not yet run).**
+**Phase 1 — a genuinely blind validation cohort (done, 2026-08-01).**
 See `docs/phase1-validation-authoring-brief.md` — a self-contained brief
-with no evidence terms, no synonym choices, and no technical framing,
-meant to be handed to an author (ideally an isolated subagent with no
-visibility into this conversation or `signatures.yaml`) who has not seen
-any tuning decision made in Phase 2 rounds. That's the actual holdout
-mechanism: cohort tagging alone doesn't prevent leakage if the same author
-who tunes the evidence lists also writes the "held-out" cases.
+with no evidence terms, no synonym choices, and no technical framing.
+Handed to an isolated subagent with no visibility into this conversation,
+`signatures.yaml`, or any prior tuning decision (confirmed: it made **zero**
+tool calls, i.e. never touched the repository). It authored 45 scenarios;
+`expected_diagnosis`/`expected_target`/`expected_outcome` were mechanically
+translated from its own stated "which problem types apply" answers
+*before* the cohort was ever run — never adjusted afterward. Added to
+`golden-set.yaml` with `cohort: validation`.
 
-Recommended scale: **40-60 scenarios**, weighted toward the signatures
-that currently have the fewest tuning-cohort examples (03, 06, 07, 08, 09,
-11, and the three advisory signatures). See the sample-size reasoning
-below for why this range, not a smaller one.
+**One labeling bug found and fixed during integration** (not a system
+finding): the build script tagged all 3 of the author's "genuinely
+retrieval-only" scenarios as `case_type: positive_single` instead of
+`negative_baseline`, which would have hidden a real over-selling event.
+Fixed before the checkpoint ran — see `test_original_tuning_cases_are_still_tagged_tuning`
+and the corrected `case_type` fields in `golden-set.yaml`.
 
-Once authored, add the scenarios to `golden-set.yaml` with
-`cohort: validation`, translate the brief's "which problem types apply"
-answers into `expected_diagnosis`, and — critically — **do not read their
-exact wording while making any Phase 2 evidence-list edit.** If a
-validation case is opened to understand *why* it failed, it stops being a
-valid holdout for that round; move it to `tuning` and note why in its
-`tests` field, the same as any other tuning case.
+### Phase 3 checkpoint — first run, 2026-08-01
+
+| Metric | Tuning (26, self-tuned) | Validation (45, blind, never tuned against) |
+|---|---|---|
+| positive outcome match | 20/20 | 15/36 |
+| positive target match | 16/20 | 11/36 |
+| diagnosis recall (positives) | **0.938** | **0.231** |
+| diagnosis precision (all cases) | 0.962 | 0.819 |
+| give-up rate (baseline_fallback) | 0.154 | 0.644 |
+| negatives over-sold | 0 | 1 (`policy-coverage-limit-lookup`, pinned as a tracked finding — see `TestGoldenSetValidationCohort`) |
+
+**This is exactly the overfitting signal the whole Phase 0/1 exercise was
+built to catch.** Recall drops from 0.938 to 0.231 and the give-up rate
+more than quadruples — the tuning-cohort numbers from the two prior rounds
+describe how well the evidence lists fit 26 specific examples, not how
+well the diagnoser generalises. The dominant failure mode on the
+validation cohort is *not* wrong signatures firing (precision only drops
+to 0.819) — it's **nothing firing at all**, pushing the case to
+`baseline_fallback` (low confidence) rather than a wrong three_cards. That
+is the system's own honesty mechanism working as designed on genuinely
+unfamiliar phrasing: it under-commits rather than confidently
+mis-recommends. But it also means most of these realistic scenarios
+currently get "we don't know" instead of a usable recommendation, which is
+the actual, now-measured cost of Round 1-2's evidence lists being narrower
+than real business phrasing.
+
+Over-fired signatures on the holdout (`cost_latency_pressure` ×4,
+`needs_tools_midreasoning` ×3, `multiple_interpretations` ×2,
+`weak_judgement` ×2, `stale_facts`/`cross_session_recall`/`stable_high_volume`
+×1 each) are the concrete Phase 2 worklist this checkpoint produced — not
+fixed in this round, per the rule below.
+
+Once evidence lists are widened in a Phase 2 round against these findings,
+**do not re-run this specific 45-case cohort as the checkpoint** — reading
+its wording to fix it consumes it as a holdout. Author a fresh validation
+batch for the next checkpoint (this file's cohort can move to `tuning` at
+that point, since it will have informed edits).
 
 **Phase 2 — expand evidence lists (tuning cohort only).**
 Per signature, source candidate terms from its `problem` text and the
