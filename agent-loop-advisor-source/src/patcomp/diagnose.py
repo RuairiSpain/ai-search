@@ -89,14 +89,45 @@ class ModelDiagnoser(Protocol):
 # evidence AGAINST planning, not for it. Without this the prior reads a
 # document's own disclaimers as support and over-sells orchestration — the
 # dominant failure mode this compiler exists to avoid.
+#
+# This is matched against the NORMALISED segment (see negated_spans below),
+# so "doesn t"/"don t"/etc. are written the way normalise() actually spells
+# a contraction — apostrophes aren't alphanumeric, so _WORD tokenisation
+# splits "doesn't" into "doesn" + "t", never leaving the apostrophe in.
+# Round 5 (2026-08-01) found that this had been matched against the RAW,
+# un-normalised segment since the fix was written: "doesn t" as a literal
+# string never appears in real text (which has an apostrophe, "doesn't"),
+# so EVERY contraction-based negation — "shouldn't", "doesn't", "can't",
+# all of them, not just the two spelled out here — was silently invisible
+# to the scanner. "are pure lookups against our policy system and
+# shouldn't involve any judgment at all, human or otherwise" let
+# "human approval on" fire as if the sentence never said "shouldn't" at
+# all. Widened the contraction list now that matching actually works.
 _NEG = re.compile(
-    r"\b(does not|do not|doesn t|don t|no |not |never|without|"
+    r"\b(does not|do not|doesn t|don t|didn t|isn t|aren t|wasn t|weren t|"
+    r"haven t|hasn t|hadn t|won t|wouldn t|shouldn t|couldn t|can t|"
+    r"mustn t|shan t|no |not |never|without|"
     r"rather than|instead of|nothing that)\b", re.I)
 # A negation's scope ends at a coordinating boundary that starts a new
-# predicate (";", ", and", ", while"), not at the end of the sentence. Without
-# this, "a payment step with no LLM, and exceptions route to human review"
-# lets "no LLM" erase the human-review signal three clauses later.
-_SEGMENT = re.compile(r";|,\s+(?:and|while|whereas)\b|(?<=[.!?])\s+")
+# predicate (";", ":", ", and", ", while"), not at the end of the sentence.
+# Without this, "a payment step with no LLM, and exceptions route to human
+# review" lets "no LLM" erase the human-review signal three clauses later —
+# and without the colon, "the deliverable is a pipeline, not guidance: generate
+# migration changes, run validation tests..." lets an unrelated "not guidance"
+# erase every evidence term in the list that follows the colon. An em/en-dash
+# is the same story one level up: "...80 milliseconds to respond per auction
+# ... — cost and speed are the whole ballgame here, not accuracy" is two
+# independent clauses joined by a dash, not one; without splitting on it, the
+# second clause's "not accuracy" reaches back across the dash and erases
+# "milliseconds" in the first. ", not X" at the end of a sentence is the same
+# shape again, one level down: "pick the best one with a reason, not run
+# endless split tests" and "a considered call..., not a coin flip" are both a
+# main clause plus a trailing contrastive aside, not a single clause under one
+# negation — without splitting there, the aside's "not" reaches back and
+# erases the main clause's own positive evidence. This does not touch the
+# list case ("does not compare options, plan, or take actions"): there the
+# comma-separated items never have "not" as the word right after the comma.
+_SEGMENT = re.compile(r";|:|—|–|,\s+(?:and|while|whereas|not)\b|(?<=[.!?])\s+")
 
 
 def negated_spans(text: str) -> list[str]:
@@ -105,11 +136,29 @@ def negated_spans(text: str) -> list[str]:
     Within a segment a negation carries across a list ("does not compare
     options, plan, or take actions" negates all three), but it does not cross
     into an independent clause.
+
+    Scope runs FORWARD from the cue to the end of the segment, not across the
+    whole segment. "During a network outage... needs to check live service
+    status... rather than working off a static script" has "rather than"
+    negating the static-script alternative, not the live-status-checking
+    that's stated before it — a whole-segment scope wrongly erased the
+    earlier, unrelated positive evidence. The "does not compare options,
+    plan, or take actions" list case is unaffected: "does not" sits at the
+    start of its segment, so the forward scope still covers the whole list.
+
+    Matches against the NORMALISED segment, not the raw one — see _NEG's
+    comment for why: normalise() is what actually turns "doesn't" into
+    "doesn t", so searching raw text for that literal string never matched
+    any real contraction.
     """
     out = []
     for segment in _SEGMENT.split(text):
-        if segment and _NEG.search(segment):
-            out.append(normalise(segment))
+        if not segment:
+            continue
+        norm_segment = normalise(segment)
+        m = _NEG.search(norm_segment)
+        if m:
+            out.append(norm_segment[m.start():])
     return out
 
 
@@ -125,10 +174,21 @@ def score_signatures(
     labels: list[SignatureLabel] = []
     for sig in cat.signatures:
         weights = {t: term_weight(norm, t, norm_stem) for t in sig.evidence}
-        # discount any term whose only support sits inside a negated clause
+        # Discount any term whose only support sits inside a negated clause —
+        # UNLESS the term itself is what triggered the negation cue. Several
+        # evidence terms are themselves absence-shaped ("no exceptions", "no
+        # one filing shows", "never bend"): the catalogue's own patterns
+        # define these signatures by that absence (04's beats_baseline_when
+        # is "not usually. A tendency is not a guarantee"; 10's is "no single
+        # document contains it"). Without this exception the term's own "no "
+        # makes negated_spans() flag its segment, and the discount then
+        # zeroes the very term that caused the flag — the term cancels
+        # itself out on every occurrence, not just when something else in
+        # the sentence actually negates it.
         for t, w in list(weights.items()):
-            if w > 0 and any(term_weight(span, t, span_stem) > 0
-                             for span, span_stem in neg):
+            if w == 0 or _NEG.search(normalise(t)):
+                continue
+            if any(term_weight(span, t, span_stem) > 0 for span, span_stem in neg):
                 weights[t] = 0.0
         matched = [t for t, w in weights.items() if w > 0]
         # Saturating: two solid term hits is meaningful support, and more hits

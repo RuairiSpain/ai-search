@@ -6,6 +6,8 @@
     patcomp catalogue                    show the catalogue and its integrity
     patcomp explain 05                   what a pattern is and when it wins
     patcomp goldenset                    run the golden set, report accuracy
+    patcomp goldenset --cohort=validation   held-out cases only — the number to quote
+    patcomp audit-signatures             check evidence lists for cross-signature firing
 """
 from __future__ import annotations
 
@@ -148,7 +150,18 @@ def cmd_goldenset(args) -> int:
     from .goldenset import run_golden_set, report
     cat = cat_mod.load(args.catalogue) if args.catalogue else cat_mod.default()
     rows = run_golden_set(cat)
-    print(report(rows))
+    print(report(rows, cohort=args.cohort))
+    return 0
+
+
+def cmd_audit_signatures(args) -> int:
+    """Informational, not a gate: diagnosis is deliberately multi-label, so a
+    finding here means "a human should look at this," not "the build is
+    broken." The regression guard that fails CI on a NEW, unreviewed
+    collision lives in tests/test_patcomp.py, not in this exit code."""
+    from . import signature_audit
+    cat = cat_mod.load(args.catalogue) if args.catalogue else cat_mod.default()
+    print(signature_audit.report(cat))
     return 0
 
 
@@ -237,7 +250,13 @@ def build_parser() -> argparse.ArgumentParser:
     e.set_defaults(func=cmd_explain)
 
     s = sub.add_parser("goldenset", help="run the golden set and report accuracy")
+    s.add_argument("--cohort", choices=["tuning", "validation"], default=None,
+                   help="report one cohort only; omit to see everything mixed "
+                        "(fine for a local look, never for a number you quote)")
     s.set_defaults(func=cmd_goldenset)
+
+    au = sub.add_parser("audit-signatures", help="check signature evidence lists for cross-firing")
+    au.set_defaults(func=cmd_audit_signatures)
 
     d = sub.add_parser("diagram", help="print a pattern or composition diagram")
     d.add_argument("--pattern", help="a pattern id, e.g. 05")
