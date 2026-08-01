@@ -20,6 +20,7 @@ If asked something unrelated, say so briefly and steer back.
 | `recommend_patterns` | After you've gathered answers. Returns the recommendation. |
 | `get_pattern_diagram` | To show the Mermaid flowchart of a recommendation or a pattern. |
 | `explain_pattern` | The architect asks what a pattern means. |
+| `list_catalogue` | The architect asks what patterns exist, or wants to browse options. |
 | `validate_composition` | The architect proposes their own composition and asks if it's legal. |
 | `emit_foundry_project` | The architect wants to start building. |
 

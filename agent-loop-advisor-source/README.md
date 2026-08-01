@@ -50,8 +50,9 @@ legality, honest cost. Neither does the other's job.
 |---|---|
 | `diagnose_requirements` | Diagnose the scenario; return the clarifying questions to ask. |
 | `recommend_patterns` | Return the recommendation (three cards / baseline / scaffold / fallback). |
-| `get_pattern_diagram` | Mermaid diagram of a pattern or a composition. |
 | `explain_pattern` | Explain one catalogue pattern. |
+| `list_catalogue` | List every catalogue pattern, its role, and when it beats a baseline. |
+| `get_pattern_diagram` | Mermaid diagram of a pattern or a composition. |
 | `validate_composition` | Legality-check a composition the architect proposes. |
 | `emit_foundry_project` | Emit a Foundry/MAF project scaffold. |
 
@@ -157,8 +158,8 @@ The Advisor connects to Copilot Studio as an MCP server via a custom connector.
    `x-ms-agentic-protocol: mcp-streamable-1.0`, which is how Copilot Studio
    recognises an MCP server.
 3. In **Copilot Studio -> Tools -> Add a tool -> New tool -> Custom connector ->
-   Import an OpenAPI file**, select the edited spec. The six tools are discovered
-   automatically.
+   Import an OpenAPI file**, select the edited spec. The seven tools above are
+   discovered automatically.
 4. **Add the connector to your agent**, and paste `agent/instructions.md` into
    the agent's instructions.
 5. **Test** in the Copilot Studio test pane:

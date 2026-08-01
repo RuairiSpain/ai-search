@@ -129,6 +129,7 @@ class IR:
     sensitive_data: bool = False
     weak_tests: bool = False
     raw_text: str = ""
+    injection_flags: list[str] = field(default_factory=list)   # instruction-like spans, kept as data
 
     # ---- readiness (computed) ----
     @property

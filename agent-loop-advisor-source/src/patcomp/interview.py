@@ -176,11 +176,3 @@ def run(ir: IR, cat: Catalogue, ask: Asker, limit: int = 5) -> IR:
             choice = q.default
         q.apply(ir, choice)
     return ir
-
-
-def auto_asker(ir: IR):
-    """Non-interactive asker: always takes the default. Used by tests and by
-    --no-interview, so the pipeline is exercisable end to end without a human."""
-    def ask(_prompt: str, _options: list[str], default: int) -> int:
-        return default
-    return ask
