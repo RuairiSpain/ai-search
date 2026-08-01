@@ -1,0 +1,168 @@
+"""Stage 4 — diagnosis against the §2 selection matrix.
+
+The deterministic evidence prior runs BEFORE any model sees the document. It is
+a hint, never a verdict. Where a model diagnoser is configured its label is
+recorded alongside the prior and disagreement is surfaced; where the interview
+answers, the human wins outright.
+
+Multi-label by design: real projects match three or four rows of the matrix.
+"""
+from __future__ import annotations
+
+import re
+from typing import Protocol
+
+from .catalogue import Catalogue
+from .models import IR, SignatureLabel
+
+# A term matches when it appears as a phrase, allowing simple inflection at the
+# end of a word ("personalis" -> "personalised") and flexible whitespace.
+_WORD = re.compile(r"[a-z0-9]+")
+
+
+def stem(word: str) -> str:
+    """Light suffix stripping so 'dependencies' matches 'dependency' and
+    'ordered' matches 'order'. Requirements prose inflects; the §2 evidence
+    terms are verbatim from the paper, so without this the prior misses
+    matches a human would call obvious."""
+    w = word
+    for suf, repl in (("ies", "y"), ("ing", ""), ("ed", ""), ("es", ""), ("s", "")):
+        if len(w) > len(suf) + 3 and w.endswith(suf):
+            return w[: -len(suf)] + repl
+    return w
+
+
+def normalise(text: str) -> str:
+    return " ".join(_WORD.findall(text.lower()))
+
+
+def stem_text(text: str) -> str:
+    return " ".join(stem(w) for w in _WORD.findall(text.lower()))
+
+
+# Terms too generic to carry signal on their own.
+_STOP = {"the", "a", "an", "of", "to", "is", "are", "in", "on", "for", "and",
+         "or", "no", "not", "it", "be", "at", "by", "with", "that", "this"}
+
+
+def term_weight(text_norm: str, term: str, text_stem: str | None = None) -> float:
+    """1.0 for an exact phrase, 0.9 stemmed, 0.6 when every content word is present.
+
+    Requirements documents paraphrase; the §2 evidence terms are verbatim from
+    the paper. Exact-phrase-only matching makes the prior much weaker than the
+    matrix it encodes, so partial credit is given when all the content words of
+    a term appear, even if not adjacent.
+
+    `text_stem` is the pre-stemmed document. Pass it to avoid re-stemming the
+    whole document on every term (a diagnosis scores ~110 terms); when omitted
+    it is computed once here for callers that score a single short span.
+    """
+    t = normalise(term)
+    if not t:
+        return 0.0
+    padded = f" {text_norm} "
+    if f" {t} " in padded:
+        return 1.0
+    if text_stem is None:
+        text_stem = stem_text(text_norm)
+    padded_s = f" {text_stem} "
+    ts = " ".join(stem(w) for w in t.split())
+    if f" {ts} " in padded_s:
+        return 0.9
+    words = [stem(w) for w in t.split() if w not in _STOP]
+    if len(words) >= 2 and all(f" {w} " in padded_s for w in words):
+        return 0.6
+    return 0.0
+
+
+def term_hits(text_norm: str, term: str) -> bool:
+    return term_weight(text_norm, term) > 0
+
+
+class ModelDiagnoser(Protocol):
+    """Optional LLM stage. The compiler runs fully without one."""
+
+    def label(self, text: str, signature_id: str, problem: str) -> bool: ...
+
+
+# Negation cues. "It does not compare options, plan, or take actions" is
+# evidence AGAINST planning, not for it. Without this the prior reads a
+# document's own disclaimers as support and over-sells orchestration — the
+# dominant failure mode this compiler exists to avoid.
+_NEG = re.compile(
+    r"\b(does not|do not|doesn t|don t|no |not |never|without|"
+    r"rather than|instead of|nothing that)\b", re.I)
+# A negation's scope ends at a coordinating boundary that starts a new
+# predicate (";", ", and", ", while"), not at the end of the sentence. Without
+# this, "a payment step with no LLM, and exceptions route to human review"
+# lets "no LLM" erase the human-review signal three clauses later.
+_SEGMENT = re.compile(r";|,\s+(?:and|while|whereas)\b|(?<=[.!?])\s+")
+
+
+def negated_spans(text: str) -> list[str]:
+    """Segments under the scope of a negation cue.
+
+    Within a segment a negation carries across a list ("does not compare
+    options, plan, or take actions" negates all three), but it does not cross
+    into an independent clause.
+    """
+    out = []
+    for segment in _SEGMENT.split(text):
+        if segment and _NEG.search(segment):
+            out.append(normalise(segment))
+    return out
+
+
+def score_signatures(
+    text: str,
+    cat: Catalogue,
+    threshold: float = 0.15,
+) -> list[SignatureLabel]:
+    """Deterministic evidence prior over the §2 matrix."""
+    norm = normalise(text)
+    norm_stem = stem_text(norm)                      # stem the document ONCE
+    neg = [(span, stem_text(span)) for span in negated_spans(text)]
+    labels: list[SignatureLabel] = []
+    for sig in cat.signatures:
+        weights = {t: term_weight(norm, t, norm_stem) for t in sig.evidence}
+        # discount any term whose only support sits inside a negated clause
+        for t, w in list(weights.items()):
+            if w > 0 and any(term_weight(span, t, span_stem) > 0
+                             for span, span_stem in neg):
+                weights[t] = 0.0
+        matched = [t for t, w in weights.items() if w > 0]
+        # Saturating: two solid term hits is meaningful support, and more hits
+        # should not let one verbose signature dominate the ranking.
+        raw = sum(weights.values())
+        score = min(1.0, raw / 2.0) if raw else 0.0
+        labels.append(SignatureLabel(
+            signature_id=sig.id,
+            problem=sig.problem,
+            pattern=sig.pattern,
+            advisory=sig.advisory,
+            prior_score=score,
+            prior_label=score >= threshold,
+            matched_terms=matched,
+        ))
+    return labels
+
+
+def diagnose(
+    ir: IR,
+    cat: Catalogue,
+    model: ModelDiagnoser | None = None,
+    threshold: float = 0.15,
+) -> IR:
+    ir.signatures = score_signatures(ir.raw_text, cat, threshold)
+    if model is not None:
+        for lab in ir.signatures:
+            try:
+                lab.model_label = model.label(ir.raw_text, lab.signature_id, lab.problem)
+            except Exception:
+                lab.model_label = None
+    return ir
+
+
+def disagreements(ir: IR) -> list[SignatureLabel]:
+    """Prior vs model. The richest signal about whether the matrix is right."""
+    return [s for s in ir.signatures if s.agreement is False]

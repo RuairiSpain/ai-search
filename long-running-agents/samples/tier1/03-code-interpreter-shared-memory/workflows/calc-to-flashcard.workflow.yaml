@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+#
+# Mirror image of ../08-workflow-executor-reviewer/workflows/review-loop.workflow.yaml:
+# BOTH steps here share `conversationId: =System.ConversationId`, matching
+# docs/04-tier1-prompt-agents.md's own workflow example exactly (that
+# example is what sample 08 deliberately departs from for its reviewer;
+# this workflow is the case where sharing it is the right call).
+kind: workflow
+trigger:
+  kind: OnConversationStart
+  id: trigger_wf
+actions:
+  - kind: SetVariable
+    id: init_question
+    variable: Local.Question
+    value: =UserMessage(System.LastMessageText)
+
+  - kind: InvokeAzureAgent
+    id: invoke_calculator
+    agent:
+      name: calculator
+    conversationId: =System.ConversationId
+    input:
+      messages: =Local.Question
+    output:
+      messages: Local.CalcResult
+    autoSend: false
+
+  - kind: InvokeAzureAgent
+    id: invoke_formatter
+    agent:
+      name: flashcard-formatter
+    conversationId: =System.ConversationId   # same conversation -- full history + memory
+    input:
+      # Deliberately no `messages` override beyond a nudge to look back at
+      # the conversation -- the formatter already sees Local.Question and
+      # Local.CalcResult because it shares the conversation, unlike sample
+      # 08's reviewer which is handed only its input.messages value.
+      messages: "Format the calculation above as an ELI5 flashcard."
+    output:
+      messages: Local.Flashcard
+    autoSend: false
+
+  - kind: SendActivity
+    id: emit_flashcard
+    activity: =Last(Local.Flashcard).Text

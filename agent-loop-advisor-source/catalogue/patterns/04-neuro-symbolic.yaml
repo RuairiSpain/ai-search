@@ -1,0 +1,27 @@
+id: "04"
+name: neuro-symbolic
+title: Neuro-symbolic reasoning
+paper_section: 14
+folder: patterns/04-neuro-symbolic
+implemented: true
+emits: full
+role: guard
+summary: The model interprets and proposes, a deterministic rules engine decides. The engine's verdict wins.
+problem_signatures: [deterministic_policy_compliance]
+primitives: [constrain]
+inputs: {accepts: [Case, Decision]}
+outputs: {produces: Decision}
+evaluator: {type: rule_based, target: final, cost_class: free}
+state_mechanism: in_process
+budget_profile: {llm_calls: 5, tokens: 20000, wall_clock_s: 60}
+latency_class: fast
+cost_class: low
+azure_services: [foundry_agent_service, azure_functions]
+capabilities: {guard: true, human_gate: false, decision_nodes: false, evaluator_slot: false, deterministic_core: true, loop: false}
+beats_baseline_when: "A policy must hold every time, not usually. A tendency is not a guarantee."
+failure_modes: [rules_drift_from_policy, unmodelled_cases]
+composes_with: ["01", "02", "03", "05", "08", "09", "10"]
+conflicts_with: []
+variants: [baseline, prompt-rules-only, single-frontier]
+agents: [onboarding-proposer, decision-explainer]
+skills: [case-structuring]

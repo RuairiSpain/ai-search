@@ -1,0 +1,29 @@
+# Merge into config/apps.yaml alongside the T2 snippet -- see
+# ../../tier2/04-long-running-hello-world/apps.yaml.snippet.yaml.
+apps:
+  - name: hello-world-t3
+    tier: t3
+    upstream: hello-world-t3-durable
+    default_mode: long
+    # T3's whole stack is prerelease (agent-framework-durabletask/-a2a/
+    # -azurefunctions, all pinned --pre -- docs/01 §3), so preview: deny
+    # is unsatisfiable here too, same reasoning as the T2 snippet.
+    preview: allow
+    card:
+      description: Durable hello-world with narrated progress.
+      capabilities: { streaming: false, pushNotifications: true }
+      # streaming: false -- the T3 A2A server pushes via webhook, it does
+      # not hold an SSE connection (docs/06 §4.1).
+
+upstreams:
+  - id: hello-world-t3-durable
+    tier: t3
+    protocol: a2a
+    instances: ["https://hello-world-t3.internal"]
+    health: /healthz
+
+# Also required at the top level (see config/apps.example.yaml) since this
+# app declares pushNotifications: true -- gwlint's L023 fails the build
+# without it:
+# push_notification_allowlist:
+#   - <your gateway's own callback host, if you use CreateTaskPushNotificationConfig>

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "patcomp"
+version = "0.1.0"
+description = "Pattern compiler: requirements in, a verified agent pattern recommendation out — CLI and MCP server."
+requires-python = ">=3.10"
+dependencies = ["PyYAML>=6.0"]
+
+[project.scripts]
+patcomp = "patcomp.cli:main"
+patcomp-mcp = "patcomp_mcp.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+patcomp = ["../../catalogue/**/*.yaml"]

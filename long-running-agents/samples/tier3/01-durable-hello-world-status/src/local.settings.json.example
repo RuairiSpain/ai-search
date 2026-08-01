@@ -1,0 +1,10 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "DURABLE_TASK_SCHEDULER_CONNECTION_STRING": "Endpoint=http://localhost:8080;Authentication=None",
+    "GATEWAY_CALLBACK_URL": "http://localhost:8080/webhooks",
+    "GATEWAY_CALLBACK_TOKEN": ""
+  }
+}

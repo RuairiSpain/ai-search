@@ -1,0 +1,34 @@
+# Merge into config/apps.yaml -- see ../01-durable-hello-world-status/apps.yaml.snippet.yaml
+# for the pattern this follows.
+apps:
+  - name: push-hello-world-t3
+    tier: t3
+    upstream: push-hello-world-t3-durable
+    default_mode: long
+    # T3's whole stack is prerelease (agent-framework-durabletask/-a2a/
+    # -azurefunctions, all pinned --pre -- docs/01 §3), so preview: deny
+    # is unsatisfiable here too, same reasoning as every other T2/T3
+    # snippet in this repo.
+    preview: allow
+    card:
+      description: Durable hello-world, watched via push notifications instead of polling.
+      capabilities: { streaming: false, pushNotifications: true }
+      # streaming: false -- T3 pushes via webhook, it does not hold an SSE
+      # connection (docs/06 §4.1). pushNotifications: true is the whole
+      # point of this sample -- see client/push_demo.py.
+
+upstreams:
+  - id: push-hello-world-t3-durable
+    tier: t3
+    protocol: a2a
+    instances: ["https://push-hello-world-t3.internal"]
+    health: /healthz
+
+# Required at the top level (see config/apps.example.yaml) since this
+# app declares pushNotifications: true -- gwlint's L023 fails the build
+# without it. `localhost` because client/push_demo.py's own receiver runs
+# on the same machine as the gateway in local dev -- see the README's
+# "Never hand out raw blob URLs"-adjacent caveat about this NOT being a
+# real production topology:
+# push_notification_allowlist:
+#   - localhost

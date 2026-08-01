@@ -1,0 +1,35 @@
+id: "12"
+name: pattern-compiler
+title: The pattern compiler
+paper_section: 2
+also_covers: [3, 17]
+folder: patterns/12-pattern-compiler
+implemented: true
+emits: full
+role: meta
+summary: >
+  Requirements document in, verified agent harness out. Diagnoses against the §2
+  selection matrix, composes candidates from the catalogue over five operators,
+  kills the illegal ones deterministically, presents three plus a baseline, and
+  emits a folder that passes structural verification.
+problem_signatures: [workflow_too_large, quality_undefined]
+primitives: [generate_alternatives, branch_hypotheses, constrain, verify]
+inputs: {accepts: [Spec, Case]}
+outputs: {produces: Artefact}
+evaluator: {type: hybrid, target: trajectory, cost_class: free}
+state_mechanism: typed_ir
+budget_profile: {llm_calls: 12, tokens: 60000, wall_clock_s: 180}
+latency_class: slow
+cost_class: medium
+azure_services: [foundry_agent_service, app_insights]
+capabilities: {guard: false, human_gate: true, decision_nodes: true, evaluator_slot: true, deterministic_core: true, loop: true}
+beats_baseline_when: >
+  The same translation from requirements to architecture happens repeatedly and
+  its quality currently depends on who is holding the pen.
+failure_modes: [pattern_astrology, invented_cost_figures, catalogue_drift, unevaluated_builder]
+composes_with: ["13"]
+conflicts_with: []
+self_hosting: true
+variants: [baseline, frontier, no-baseline-candidate, no-constraint-kill, no-critic]
+agents: [intake-extractor, diagnostician, candidate-architect, critic, instruction-author]
+skills: [requirements-hygiene, composition-discipline, baseline-first]

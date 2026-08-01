@@ -30,13 +30,16 @@ resource searchToFoundry 'Microsoft.Network/virtualNetworks/virtualNetworkPeerin
   }
 }
 
+// foundryToSearch is a child of foundryVnet, which lives in a different
+// subscription/resource group than this file's own deployment scope — Bicep
+// requires that as a separately-scoped module (BCP165), not a plain resource.
 module foundryToSearch './foundry-vnet-peering-remote.bicep' = {
   name: 'foundry-to-search-peering'
   scope: resourceGroup(foundryVnetSubscriptionId, foundryVnetResourceGroupName)
   params: {
-    foundryVnetName: foundryVnetName
     searchVnetName: searchVnetName
     searchVnetId: searchVnetId
+    foundryVnetName: foundryVnetName
     allowForwardedTraffic: allowForwardedTraffic
   }
 }

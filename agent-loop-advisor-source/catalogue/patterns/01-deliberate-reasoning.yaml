@@ -1,0 +1,27 @@
+id: "01"
+name: deliberate-reasoning
+title: From chain-of-thought to deliberate reasoning
+paper_section: 5
+folder: patterns/01-deliberate-reasoning
+implemented: true
+emits: full
+role: reasoning
+summary: Generate candidate answers, evaluate them against criteria, select one and say why the others lost.
+problem_signatures: [weak_judgement]
+primitives: [generate_alternatives]
+inputs: {accepts: [Question, Case, Evidence, GraphContext, MemoryContext]}
+outputs: {produces: Decision}
+evaluator: {type: model_judge, target: final, cost_class: low}
+state_mechanism: in_process
+budget_profile: {llm_calls: 8, tokens: 30000, wall_clock_s: 90}
+latency_class: medium
+cost_class: medium
+azure_services: [foundry_agent_service, evaluations]
+capabilities: {guard: false, human_gate: false, decision_nodes: false, evaluator_slot: true, deterministic_core: false, loop: true}
+beats_baseline_when: "The facts are already available and the failure is in judgement, not retrieval."
+failure_modes: [false_confidence_from_length, weak_evaluator, judge_flattery]
+composes_with: ["04", "13", "11", "06", "10"]
+conflicts_with: []
+variants: [baseline, cheap-model, improved-instructions, single-frontier]
+agents: [deliberate-diagnostician, baseline-diagnostician]
+skills: [hypothesis-generation, runbook-compliance]

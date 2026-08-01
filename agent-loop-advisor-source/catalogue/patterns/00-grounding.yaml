@@ -1,0 +1,30 @@
+id: "00"
+name: grounding-baseline
+title: Grounded single agent (candidate zero)
+paper_section: 4
+folder: null
+implemented: true
+emits: baseline
+role: baseline
+summary: >
+  One agent, grounded on a knowledge source, no orchestration. The falsifiability
+  test every other candidate must beat. §4: grounding is not reasoning, and if
+  grounding is enough you stop here.
+problem_signatures: [stale_facts]
+primitives: []
+inputs: {accepts: [Question, Case]}
+outputs: {produces: Answer}
+evaluator: {type: model_judge, target: final, cost_class: low}
+state_mechanism: none
+budget_profile: {llm_calls: 1, tokens: 8000, wall_clock_s: 30}
+latency_class: fast
+cost_class: low
+azure_services: [foundry_agent_service, ai_search]
+capabilities: {guard: false, human_gate: false, decision_nodes: false, evaluator_slot: false, deterministic_core: false, loop: false}
+beats_baseline_when: "It is the baseline. Every other candidate must beat it on quality or cost."
+failure_modes: [ungrounded_claims]
+composes_with: []
+conflicts_with: []
+variants: [baseline]
+agents: [grounded-responder]
+skills: []

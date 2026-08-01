@@ -1,0 +1,27 @@
+id: "05"
+name: branching-hypotheses
+title: Tree of thoughts and branching reasoning
+paper_section: 8
+folder: patterns/05-branching-hypotheses
+implemented: true
+emits: full
+role: reasoning
+summary: Several hypotheses live at once, evidence prunes them, the survivor is synthesised into a verdict.
+problem_signatures: [multiple_interpretations]
+primitives: [branch_hypotheses]
+inputs: {accepts: [Question, Case, Evidence, GraphContext]}
+outputs: {produces: Decision}
+evaluator: {type: hybrid, target: trajectory, cost_class: medium}
+state_mechanism: in_process
+budget_profile: {llm_calls: 24, tokens: 100000, wall_clock_s: 180, max_rounds: 3, keep_top_k: 3}
+latency_class: slow
+cost_class: high
+azure_services: [foundry_agent_service, app_insights]
+capabilities: {guard: false, human_gate: false, decision_nodes: true, evaluator_slot: true, deterministic_core: false, loop: true}
+beats_baseline_when: "The first plausible explanation is often wrong and being wrong is expensive."
+failure_modes: [over_branching, hidden_cost_explosion, premature_pruning]
+composes_with: ["04", "13", "10", "08", "02"]
+conflicts_with: ["09"]
+variants: [baseline, narrow, no-pruning, single-frontier, steerable]
+agents: [hypothesis-generator, evidence-assessor, verdict-synthesist]
+skills: [hypothesis-discipline]

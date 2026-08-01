@@ -1,0 +1,19 @@
+# Merge into config/apps.yaml (see config/apps.example.yaml for the full
+# file this fits into, including the top-level `auth` and
+# `push_notification_allowlist` blocks this sample doesn't need).
+apps:
+  - name: hello-world-t2
+    tier: t2
+    upstream: hello-world-t2-hosted
+    default_mode: long
+    # T2 is preview end to end -- FoundryHostedAdapter always sends
+    # Foundry-Features: HostedAgents=V1Preview. preview: deny is
+    # unsatisfiable for any T2 app (D10).
+    preview: allow
+
+upstreams:
+  - id: hello-world-t2-hosted
+    tier: t2
+    project_endpoint: ${FOUNDRY_PROJECT_ENDPOINT}
+    agent_name: hello-world-t2
+    identity: per_user

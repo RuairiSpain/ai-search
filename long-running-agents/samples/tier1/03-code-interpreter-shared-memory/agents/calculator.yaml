@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+kind: prompt
+name: calculator
+displayName: Math Calculator
+description: Runs the arithmetic in a user's prompt via code interpreter -- never estimates in its head.
+
+model:
+  deployment: ${FOUNDRY_MODEL_DEPLOYMENT}
+  options:
+    temperature: 0        # deterministic: this agent's job is arithmetic, not creativity
+
+instructionsFile: ./calculator.instructions.md
+
+# Code interpreter attaches directly to the agent definition (GA,
+# docs/04-tier1-prompt-agents.md "Code interpreter on tier 1"), not via a
+# toolboxes/MCP indirection the way sample 01's tools are wired.
+tools:
+  - type: code_interpreter
+    container: { type: auto }

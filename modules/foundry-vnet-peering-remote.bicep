@@ -1,11 +1,12 @@
-// Deploys the Foundry-side half of the VNet peering. Split out from
-// foundry-vnet-peering.bicep because this resource must be deployed into the
-// Foundry VNet's own resource group/subscription (Bicep requires a nested
-// module - not a plain `parent:`/`scope:` on the resource itself - to deploy
-// into a scope different from the calling file's).
-param foundryVnetName string
+// Deploys the foundry-side half of the vnet peering. Split out from
+// foundry-vnet-peering.bicep because this resource's parent (foundryVnet)
+// lives in a different subscription/resource group than the caller's
+// deployment scope — Bicep requires that as its own scoped module (BCP165),
+// it cannot be a plain child resource declared alongside a differently-scoped
+// deployment.
 param searchVnetName string
 param searchVnetId string
+param foundryVnetName string
 param allowForwardedTraffic bool
 
 resource foundryVnet 'Microsoft.Network/virtualNetworks@2024-05-01' existing = {
