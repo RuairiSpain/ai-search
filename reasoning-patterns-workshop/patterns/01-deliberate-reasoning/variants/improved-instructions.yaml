@@ -1,0 +1,9 @@
+# Same models as baseline, instructions rewritten (by you, or by Agent
+# Optimizer — see README step 7). Point the file somewhere new and re-eval.
+generator_deployment: small
+judge_deployment: nano
+n_candidates: 3
+instructions_file: agents/deliberate-diagnostician/instructions.v2.md
+skills:
+  - skills/hypothesis-generation/SKILL.md
+  - skills/runbook-compliance/SKILL.md

@@ -1,0 +1,4 @@
+# Falsifiability baseline: one frontier call with the rules in the prompt.
+# Often gets easy rows right — the question is the failure rows.
+mode: single_call
+proposer_deployment: frontier

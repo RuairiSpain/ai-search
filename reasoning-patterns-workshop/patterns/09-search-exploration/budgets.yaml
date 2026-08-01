@@ -1,0 +1,3 @@
+max_llm_calls: 18
+max_total_tokens: 90000
+max_wall_clock_s: 150

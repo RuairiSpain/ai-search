@@ -1,0 +1,4 @@
+max_llm_calls: 14
+max_total_tokens: 90000
+max_wall_clock_s: 180
+max_review_rounds: 2      # debate bound (§12): third rejection escalates to human

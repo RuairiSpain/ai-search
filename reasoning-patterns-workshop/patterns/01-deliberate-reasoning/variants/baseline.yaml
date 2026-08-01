@@ -1,0 +1,8 @@
+# Default variant: the pattern as designed.
+generator_deployment: small        # gpt-5-mini class
+judge_deployment: nano             # judging is cheaper than generating (§12 table)
+n_candidates: 3
+instructions_file: agents/deliberate-diagnostician/instructions.md
+skills:
+  - skills/hypothesis-generation/SKILL.md
+  - skills/runbook-compliance/SKILL.md

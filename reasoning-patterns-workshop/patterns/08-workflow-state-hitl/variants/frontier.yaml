@@ -1,0 +1,5 @@
+extractor_deployment: frontier
+assessor_deployment: frontier
+reviewer_deployment: frontier
+mode: local
+approval_mode: auto

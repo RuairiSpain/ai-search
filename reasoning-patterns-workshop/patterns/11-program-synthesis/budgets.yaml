@@ -1,0 +1,4 @@
+max_llm_calls: 10
+max_total_tokens: 60000
+max_wall_clock_s: 240        # includes pytest subprocess time
+max_repair_rounds: 3

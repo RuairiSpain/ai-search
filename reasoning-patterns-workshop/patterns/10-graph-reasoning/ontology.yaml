@@ -1,0 +1,13 @@
+# The ontology discipline at workshop scale: entity and relation types declared
+# in business language BEFORE any agent reasons over them. In production this
+# is a Fabric IQ Ontology definition; agents ground in it instead of private
+# interpretations of tables (§15).
+entities:
+  account:        {keys: [id], attrs: [name, opened, risk_flags], note: "names are NOT unique"}
+  device:         {keys: [id], attrs: [fingerprint, notes]}
+  address:        {keys: [id], attrs: [value, kind], note: "kind=corporate-registrar links are usually benign"}
+  payment_method: {keys: [id], attrs: [last4, instrument]}
+relations:
+  uses_device:    {from: account, to: device,         fraud_weight: high}
+  pays_with:      {from: account, to: payment_method, fraud_weight: high}
+  registered_at:  {from: account, to: address,        fraud_weight: "low when kind=corporate-registrar"}

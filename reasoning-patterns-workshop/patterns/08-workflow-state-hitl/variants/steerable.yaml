@@ -1,0 +1,7 @@
+# HITL live: the exception state pauses for a real human decision at the CLI.
+# make run-interactive
+extractor_deployment: nano
+assessor_deployment: small
+reviewer_deployment: small
+mode: local
+approval_mode: human

@@ -1,0 +1,8 @@
+# The §15 ablation: same question, but the agent only gets per-account
+# "documents" (entity records), no traversal tools. Watch it either miss the
+# ring or hallucinate connections — a relationship problem cannot be solved
+# by reading documents harder (grounding != reasoning, again).
+planner_deployment: small
+synth_deployment: small
+graph_tools: false
+shield_observations: true

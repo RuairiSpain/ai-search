@@ -1,0 +1,5 @@
+# The ablation: same copilot, no cross-session memory. Session 3 has to re-ask.
+# Watch the cross-session-recall row collapse.
+agent_deployment: small
+memory_mode: none
+attach_procedural: true

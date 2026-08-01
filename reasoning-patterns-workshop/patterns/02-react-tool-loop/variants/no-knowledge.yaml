@@ -1,0 +1,11 @@
+# Knowledge base detached. Watch groundedness + policy-compliance scores fall:
+# the agent can still see tickets and contracts (MCP) but loses CP-12/CP-19.
+# Teaching point: grounding is necessary — just not sufficient (§4).
+agent_deployment: small
+agent_name: p02-renewals-copilot-nokb
+instructions_file: agents/renewals-copilot/instructions.md
+skills:
+  - skills/tool-hygiene/SKILL.md
+  - skills/retention-offers/SKILL.md
+attach_knowledge: false
+mcp_tools: [get_account, list_tickets, get_contract_terms, draft_offer]

@@ -1,0 +1,11 @@
+# Durable Functions host deps — this exact pair was resolved together and the
+# API surface (DFApp, orchestration_trigger, activity_trigger, task_any,
+# create_timer, wait_for_external_event, raise_event, TimerTask.cancel) was
+# introspection-verified against it. azure-functions-durable requires
+# azure-functions>=1.12.0; 1.24.0 is what a clean resolve produces and what
+# was validated here — do NOT bump to azure-functions 2.x untested.
+azure-functions==1.24.0     # HOLD: what a clean resolve produces with durable 1.6.0; 2.x untested
+azure-functions-durable==1.6.0
+
+# The shared package deps are appended by infra/deploy-durable.sh from
+# common/reasoning_common/requirements.txt so the two stay in lockstep.

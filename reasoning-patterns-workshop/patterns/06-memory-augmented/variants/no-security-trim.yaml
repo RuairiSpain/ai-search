@@ -1,0 +1,7 @@
+# Deletes the read-time scope check. Guarantees the security-trimming row fails.
+# The teaching point (§9): scope enforcement is not a nice-to-have.
+agent_deployment: small
+memory_mode: explicit
+episode_ttl_hours: 24
+enforce_scope: false
+attach_procedural: true

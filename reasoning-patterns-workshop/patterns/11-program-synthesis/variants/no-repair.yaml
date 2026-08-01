@@ -1,0 +1,6 @@
+# One shot, no repair loop. First-attempt pass rate is the metric — usually
+# the typed-nested-KeyError combination takes a round or two.
+gen_deployment: small
+analyst_deployment: small
+repair_rounds: 0
+test_subset: null

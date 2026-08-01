@@ -1,0 +1,9 @@
+# Beam of 2 from round 1: cheaper, but watch p05-01 — the travel branch can
+# crowd out the OAuth branch early. Premature commitment as a variant.
+hypo_deployment: small
+assessor_deployment: small
+scorer_deployment: nano
+synth_deployment: small
+n_hypotheses: 5
+keep_top_k_override: 2
+shield_observations: true

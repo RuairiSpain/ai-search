@@ -1,0 +1,4 @@
+planner_deployment: small
+synth_deployment: small
+graph_tools: true
+shield_observations: true

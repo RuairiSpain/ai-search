@@ -1,0 +1,5 @@
+# §18 reasoning budget for this task class. `make run` prints the snapshot;
+# breaching any limit raises BudgetExceeded and the run escalates to baseline.
+max_llm_calls: 8
+max_total_tokens: 30000
+max_wall_clock_s: 90

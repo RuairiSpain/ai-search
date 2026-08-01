@@ -1,0 +1,6 @@
+hypo_deployment: small
+assessor_deployment: small
+scorer_deployment: nano
+synth_deployment: small
+n_hypotheses: 5
+shield_observations: true

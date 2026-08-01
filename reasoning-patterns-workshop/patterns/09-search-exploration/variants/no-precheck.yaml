@@ -1,0 +1,10 @@
+# The §7 lesson by ablation: no free deterministic kill — every candidate,
+# valid or not, gets a model score. Same answer, multiple times the cost,
+# and search now amplifies whatever the scorer rewards.
+generator_deployment: small
+scorer_deployment: nano
+deep_deployment: small
+n_candidates: 8
+deepen_top_k: 3
+constraint_precheck: false
+shield_observations: true

@@ -1,0 +1,35 @@
+name: Offline checks
+
+# Runs on every push/PR. No Azure credentials, no secrets, no network calls
+# beyond PyPI for pip install — everything here uses the fake backend
+# (reasoning_common.fake_backend) or pure-Python logic. See
+# scripts/verify_offline.py and scripts/run_ci_smoke.py for what each step
+# actually covers, and docs/FOUNDRY-MAF-COVERAGE.md for what this does NOT
+# replace (real evaluation against real models).
+on:
+  push:
+  pull_request:
+
+jobs:
+  offline-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install shared dependencies
+        run: pip install -r common/reasoning_common/requirements.txt
+
+      - name: Package version audit (pins vs PyPI; documented HOLDs excluded)
+        run: python3 scripts/check_package_versions.py
+
+      - name: Offline unit/integration suite (budgets, contracts, sandbox,
+              caching, graders, deterministic evaluators, schema sniffer)
+        run: python3 scripts/verify_offline.py
+
+      - name: CI smoke test — every pattern's run_case() end-to-end via the
+              fake backend (no live Azure, no network, ~3 seconds)
+        run: python3 scripts/run_ci_smoke.py

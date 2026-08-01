@@ -1,0 +1,27 @@
+# ============================================================================
+# TESTED-AGAINST SDK BASELINE — verified to exist on PyPI on 2026-07-23 via
+# scripts/check_package_versions.py. Re-run that script before every workshop
+# and read changelogs before bumping; foundry_client.py and maf_workflow.py
+# are the two files that absorb any breaking changes.
+# ============================================================================
+
+# --- Foundry / Azure surface (the volatile part) ---------------------------
+azure-ai-projects==2.3.0        # project client, agents, datasets, evaluations
+azure-ai-agents==1.1.0          # agents data-plane types pulled in explicitly
+azure-identity==1.25.3          # DefaultAzureCredential everywhere; no keys
+openai==2.47.0                  # AOAI-compatible chat surface exposed by the project client
+azure-search-documents==12.0.0  # knowledge index build + retrieval
+azure-storage-blob==12.30.0     # pattern 03 fan-out state checkpoints
+azure-data-tables==12.7.0       # pattern 06 episodic memory (scope + TTL)
+azure-monitor-opentelemetry==1.8.9  # traces -> App Insights / Activity tab
+opentelemetry-api==1.43.0        # HOLD: azure-monitor-opentelemetry pins opentelemetry-sdk~=1.43.0,
+                                 # which caps the api package. 1.44.0 makes this file UNINSTALLABLE.
+
+# --- Microsoft Agent Framework (MAF) ---------------------------------------
+agent-framework==1.12.1         # WorkflowBuilder/executors used in pattern 03
+
+# --- Protocols & plumbing --------------------------------------------------
+mcp==1.28.1                     # streamable-HTTP client (needs >=1.9; do not downgrade)
+pydantic==2.13.4                # typed inter-agent contracts
+pyyaml==6.0.3                   # variants + budgets config
+httpx==0.28.1
