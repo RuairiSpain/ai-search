@@ -311,6 +311,82 @@ cases:
     expected_outcome: three_cards
     tests: "TRAP CASE. The team built retrieval, so the surface signature reads as stale_facts. The real diagnosis is judgement. A diagnostician that stops at stale_facts and recommends baseline fails this case."
 
+  # ================= COVERAGE EXPANSION 2026-08-01 =================
+  # workflow_too_large (03), planning_under_constraints (09), long_running_process
+  # (08), should_improve_over_runs (07) and validated_artefacts (11) each had
+  # exactly one case (03 had ZERO) before this batch — not enough to measure a
+  # per-pattern recall figure at all, let alone credibly. See the coverage
+  # caveat at the bottom of this file.
+  - id: onboarding-multi-team-workflow
+    title: New-hire onboarding across four teams
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Onboarding a new hire touches IT provisioning, facilities, payroll setup and training enrolment — four narrow subtasks that each run fine on a small model. We want separate worker agents handling each in parallel, with a different-family reviewer checking the combined result before it is sent to the new hire's manager."
+    expected_diagnosis: [workflow_too_large]
+    expected_target: "03"
+    expected_outcome: three_cards
+    tests: "Pattern 03 had zero golden-set coverage before this case — its evidence vocabulary (heterogeneous, breadth, decompose) was formal paper language a requirements author would rarely write verbatim, and 'decompose'/'decomposed' didn't even stem to the same root. This is the literal multi-agent pattern; it must be reachable."
+
+  - id: factory-changeover-scheduling
+    title: Factory changeover scheduling
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Scheduling the factory changeover has hundreds of valid orderings, but hard constraints — parts availability, technician certification, safety lockout order — eliminate most of them for free. Once the constraints are applied, only a handful of feasible orderings remain and we need the best one."
+    expected_diagnosis: [planning_under_constraints]
+    expected_target: "09"
+    expected_outcome: three_cards
+    tests: "Second data point for planning_under_constraints (09) — the first (legacy-modernisation-planning) was the only measurement this pattern had."
+
+  - id: vendor-onboarding-case-management
+    title: Vendor onboarding case management
+    source: authored
+    case_type: positive_single
+    requirements_brief: "A vendor onboarding case sits in intake for identity checks, then moves to a risk-assessment stage, then a contracts stage that can take weeks depending on the vendor's response, with defined stages and a required second approval before the vendor goes live. Every state transition must be recorded."
+    expected_diagnosis: [long_running_process]
+    expected_target: "08"
+    expected_outcome: three_cards
+    tests: "Second data point for long_running_process (08) — phrased around 'defined stages' and 'second approval' rather than the exact 'several days'/'sla' wording the first case (claims-processing-workflow) happened to use."
+
+  - id: support-skill-reflection
+    title: Support ticket skill reflection
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Every week the same category of support ticket trips up the assistant in a new way. We want it to reflect on failed tickets, author a reusable skill capturing the fix, and have a lead review the skill before it is added to the library so next week's version of the same ticket is handled correctly."
+    expected_diagnosis: [should_improve_over_runs, human_judgement_in_output]
+    expected_target: "guard(07, 13)"
+    expected_outcome: three_cards
+    tests: "Second data point for should_improve_over_runs (07) — the first (month-end-close-reflection) was the only measurement this pattern had."
+
+  - id: data-pipeline-migration-artefact
+    title: Data pipeline migration, deliverable is working code
+    source: authored
+    case_type: positive_single
+    requirements_brief: "The deliverable for the data-pipeline migration is working code, not a plan: generate the pipeline, run it against the validation dataset, and if it fails the tests, analyse the failure and repair it, capped at three attempts."
+    expected_diagnosis: [validated_artefacts]
+    expected_target: "11"
+    expected_outcome: three_cards
+    tests: "Second data point for validated_artefacts (11) — the first (dotnet-migration-synthesis) was the only measurement this pattern had, and was itself a complete miss before the negation-scope fix (see diagnose.py's _SEGMENT)."
+
+  - id: field-engineer-visit-memory
+    title: Field engineer visit history and preferences
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Field engineers open a new session every visit. The assistant should remember what was tried on this asset in previous visits, and recall each technician's own preferred phrasing so responses stay personalised per engineer."
+    expected_diagnosis: [cross_session_recall]
+    expected_target: "06"
+    expected_outcome: three_cards
+    tests: "Second data point for cross_session_recall (06). NOTE: an earlier, more naturally-phrased draft of this case ('...personalised per engineer, not shared across all of them') scored zero signatures — a long comma-separated sentence with no semicolon/colon/coordinating-conjunction boundary before an unrelated 'not' let the negation scope swallow the whole sentence. Rephrased to avoid it; the underlying negation-scope fragility is a known open gap, not fully fixed (see diagnose.py's _SEGMENT), only worked around here."
+
+  - id: support-inbox-cost-latency
+    title: High-volume support inbox, cost and latency bound
+    source: authored
+    case_type: positive_single
+    requirements_brief: "This runs on every inbound support message, tens of thousands a day, and a reply must go out inside two seconds — cost per resolved ticket and latency both matter more than getting the hardest 1% exactly right."
+    expected_diagnosis: [cost_latency_pressure]
+    expected_target: "none"
+    expected_outcome: baseline_recommended
+    tests: "First case for the cost_latency_pressure advisory signature (previously zero coverage). Advisory signatures carry no pattern and are excluded from reasoning_signatures, so an advisory-only diagnosis correctly falls through to baseline_recommended rather than three_cards — this case exercises that the signature fires and is surfaced as guidance, not that it changes the composition."
+
   # ================= NEGATIVE — baseline suffices =================
   - id: travel-policy-qa
     title: Travel policy Q&A bot

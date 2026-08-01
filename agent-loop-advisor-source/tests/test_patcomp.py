@@ -22,7 +22,7 @@ from patcomp import catalogue as cat_mod                       # noqa: E402
 from patcomp import diagnose, estimate, generate, intake       # noqa: E402
 from patcomp import legality, present, primitives, route       # noqa: E402
 from patcomp.cli import main                                   # noqa: E402
-from patcomp.goldenset import metrics, run_golden_set          # noqa: E402
+from patcomp.goldenset import Row, metrics, run_golden_set     # noqa: E402
 from patcomp.models import (IR, Blast, Candidate, Confidence,  # noqa: E402
                             EvaluatorCandidate, Field_, Node, Outcome,
                             SignatureLabel, TaskClass, ToolBinding)
@@ -103,6 +103,44 @@ class TestDiagnose(unittest.TestCase):
         lab = SignatureLabel("x", "p", "01", None, 0.9, True)
         lab.user_label = False
         self.assertFalse(lab.final_label)
+
+    def test_negation_scope_ends_at_a_colon(self):
+        """An unrelated 'not X:' clause must not erase evidence terms that
+        follow the colon in the rest of the sentence — this silently
+        zeroed out validated_artefacts on a real golden-set case."""
+        text = ("The deliverable is a passing CI/CD pipeline, not guidance: "
+                "generate migration changes, run validation tests.")
+        labels = diagnose.score_signatures(text, CAT)
+        artefacts = next(s for s in labels if s.signature_id == "validated_artefacts")
+        self.assertTrue(artefacts.prior_label, artefacts.matched_terms)
+
+    def test_long_running_process_matches_natural_multi_day_phrasing(self):
+        """Evidence terms were narrow exact-phrases ('several days') that
+        missed natural phrasing like 'moves across days' — the tool's own
+        canonical durable-workflow example fell through to a memory
+        misdiagnosis because of it."""
+        text = ("A claim moves across days: an intake step extracts data, an "
+                "assessment step reasons over policy, exceptions route to "
+                "human review. Every state transition is on an audit trail.")
+        labels = diagnose.score_signatures(text, CAT)
+        workflow = next(s for s in labels if s.signature_id == "long_running_process")
+        self.assertTrue(workflow.prior_label, workflow.matched_terms)
+
+    def test_deterministic_policy_compliance_matches_the_word_deterministic(self):
+        text = "Keep specified steps deterministic and escalate the hard cases."
+        labels = diagnose.score_signatures(text, CAT)
+        det = next(s for s in labels if s.signature_id == "deterministic_policy_compliance")
+        self.assertTrue(det.prior_label, det.matched_terms)
+
+    def test_cross_session_recall_does_not_fire_on_unrelated_context_across(self):
+        """'context across accounts' (relationship discovery) must not be
+        read as 'context across sessions' (memory) — a real false positive
+        introduced and then fixed while widening this signature's evidence."""
+        text = ("A fraud copilot needs relationship context across accounts "
+                "and holds competing hypotheses about a ring.")
+        labels = diagnose.score_signatures(text, CAT)
+        memory = next(s for s in labels if s.signature_id == "cross_session_recall")
+        self.assertFalse(memory.prior_label, memory.matched_terms)
 
 
 # ---------------------------------------------------------------- legality
@@ -524,7 +562,7 @@ class TestGoldenSet(unittest.TestCase):
         cls.m = metrics(cls.rows)
 
     def test_all_cases_run(self):
-        self.assertEqual(len(self.rows), 19)
+        self.assertEqual(len(self.rows), 26)
 
     def test_no_over_selling(self):
         """Recommending orchestration for a grounding problem is a BUG, not a
@@ -553,6 +591,53 @@ class TestGoldenSet(unittest.TestCase):
     def test_measurements_are_reported(self):
         self.assertIsNotNone(self.m["false_positive_rate"])
         self.assertIsNotNone(self.m["give_up_rate"])
+
+    def test_recall_and_target_match_hold_the_diagnosis_fixes(self):
+        """Regression guard for the evidence-term/negation-scope fixes: don't
+        let per-case tuning regress without someone noticing in CI."""
+        self.assertEqual(self.m["positive_outcome_match"], self.m["positive_n"])
+        self.assertGreaterEqual(self.m["positive_target_match"], 16)
+        self.assertGreaterEqual(self.m["diagnosis_recall"], 0.90)
+        self.assertEqual(self.m["negatives_false_positive"], 0)
+
+
+class TestGoldenSetRowMatching(unittest.TestCase):
+    """Row.target_match must compare PATTERN IDS, not operator names — the
+    previous approach both false-passed (any guard(...) satisfied any
+    expected guard(...), regardless of which patterns were inside) and
+    false-failed (guard(01,13) never matched an expected sequence(01,13)
+    even though it names the exact same two patterns)."""
+
+    def _row(self, expected_target, got_targets):
+        return Row(id="t", case_type="positive_single", expected_outcome="three_cards",
+                  expected_target=expected_target, got_outcome="three_cards",
+                  got_confidence="high", descent_reason=None, got_targets=got_targets,
+                  diagnosed=[], expected_diagnosis=[])
+
+    def test_same_ids_different_operator_matches(self):
+        r = self._row("sequence(01, 13)", ["guard(01,13)", "guard(01,04)"])
+        self.assertTrue(r.target_match)
+
+    def test_same_operator_different_ids_does_not_match(self):
+        r = self._row("guard(11, 13)", ["guard(01,04)"])
+        self.assertFalse(r.target_match)
+
+    def test_prose_expected_target_extracts_ids(self):
+        r = self._row(
+            "08 spine; nest(08.assessment, 01); nest(08.exception, 05); guard(08.exception, 13)",
+            ["guard(nest(08,13),04)"])
+        # doesn't cover 01 or 05, so a full match is correctly still a miss
+        self.assertFalse(r.target_match)
+        r2 = self._row("08 spine; nest(08.exception, 13)", ["guard(nest(08,13),04)"])
+        self.assertTrue(r2.target_match)
+
+    def test_bare_pattern_id_still_matches(self):
+        r = self._row("05", ["05", "guard(05,04)"])
+        self.assertTrue(r.target_match)
+
+    def test_none_or_empty_expected_always_matches(self):
+        self.assertTrue(self._row("none", []).target_match)
+        self.assertTrue(self._row("", []).target_match)
 
 
 # ---------------------------------------------------------------- CLI

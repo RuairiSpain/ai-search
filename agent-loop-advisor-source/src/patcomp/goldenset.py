@@ -9,6 +9,7 @@ never counted as a pass; it is a diagnosis failure.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 
 import yaml
@@ -16,6 +17,9 @@ import yaml
 from .catalogue import Catalogue, DEFAULT_ROOT, default as default_catalogue
 from .models import Outcome
 from .pipeline import compile_requirements
+
+# Every catalogue pattern id is a zero-padded 2-digit token.
+_PATTERN_ID = re.compile(r"\b\d{2}\b")
 
 
 @dataclass
@@ -37,13 +41,26 @@ class Row:
 
     @property
     def target_match(self) -> bool:
-        """Expected target appears among the presented candidates."""
+        """Every pattern id named in expected_target appears together in at
+        least one presented candidate's composition.
+
+        Matches on PATTERN IDS, not operator names: expected_target is
+        sometimes an operator expression ("guard(07, 13)") and sometimes
+        descriptive prose ("08 spine; nest(08.assessment, 01); ..."), neither
+        of which is safe to compare structurally. Matching the leading
+        operator token instead (the previous approach) both false-passed
+        (any "guard(...)" candidate satisfied any "guard(...)" expectation,
+        regardless of which patterns were inside) and false-failed (a
+        candidate built with a different but equally- or more-correct
+        operator, e.g. guard(01,13) for an expected sequence(01,13), never
+        matched even though it contains exactly the right patterns).
+        """
         if self.expected_target in ("none", ""):
             return True
-        exp = self.expected_target.strip()
-        # a bare pattern id, or the id appearing in any presented composition
-        base = exp.split("(")[0].strip().strip('"')
-        return any(base in t or exp == t for t in self.got_targets)
+        exp_ids = set(_PATTERN_ID.findall(self.expected_target))
+        if not exp_ids:
+            return self.expected_target.strip() in self.got_targets
+        return any(exp_ids <= set(_PATTERN_ID.findall(t)) for t in self.got_targets)
 
     @property
     def diagnosis_recall(self) -> float:

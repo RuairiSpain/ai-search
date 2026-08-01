@@ -93,10 +93,13 @@ _NEG = re.compile(
     r"\b(does not|do not|doesn t|don t|no |not |never|without|"
     r"rather than|instead of|nothing that)\b", re.I)
 # A negation's scope ends at a coordinating boundary that starts a new
-# predicate (";", ", and", ", while"), not at the end of the sentence. Without
-# this, "a payment step with no LLM, and exceptions route to human review"
-# lets "no LLM" erase the human-review signal three clauses later.
-_SEGMENT = re.compile(r";|,\s+(?:and|while|whereas)\b|(?<=[.!?])\s+")
+# predicate (";", ":", ", and", ", while"), not at the end of the sentence.
+# Without this, "a payment step with no LLM, and exceptions route to human
+# review" lets "no LLM" erase the human-review signal three clauses later —
+# and without the colon, "the deliverable is a pipeline, not guidance: generate
+# migration changes, run validation tests..." lets an unrelated "not guidance"
+# erase every evidence term in the list that follows the colon.
+_SEGMENT = re.compile(r";|:|,\s+(?:and|while|whereas)\b|(?<=[.!?])\s+")
 
 
 def negated_spans(text: str) -> list[str]:

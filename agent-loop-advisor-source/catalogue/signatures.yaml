@@ -22,13 +22,16 @@ signatures:
     problem: Correct facts, weak judgement
     pattern: "01"
     paper_section: 5
-    evidence: [wrong recommendation, first answer, weak judgement, decide whether, root cause, propose an assessment]
+    evidence: [wrong recommendation, first answer, weak judgement, decide whether, root cause,
+              propose an assessment, commits to the first, weigh the evidence, draft a recommendation,
+              bounded iterations, critique them, inconsistent recommendations]
 
   - id: needs_tools_midreasoning
     problem: Needs tools, data lookups or actions mid-reasoning
     pattern: "02"
     paper_section: 6
-    evidence: [look up, call the api, crm, system of record, take action, update the record, tool]
+    evidence: [look up, call the api, crm, system of record, take action, update the record, tool,
+              live systems, gathers evidence from]
 
   - id: planning_under_constraints
     problem: Planning under constraints with many valid options
@@ -46,37 +49,62 @@ signatures:
     problem: Needs recall across sessions, personalised or accumulating context
     pattern: "06"
     paper_section: 9
-    evidence: [remember, previous conversation, history, personalis, returning customer, context across]
+    # "history" alone is too generic — "case history" and "policy history" show up in
+    # unrelated domains and false-positive against long_running_process and others.
+    # Require it in an explicit conversation/session phrase instead — "context across
+    # sessions", not the bare "context across" (which also matches "context across
+    # accounts" in an unrelated relationship-discovery scenario).
+    # "personalis" relied on the stemmer to bridge "personalise"/"personalised"/
+    # "personalized", but stem() applies a single suffix rule per call and a
+    # pre-truncated term like "personalis" gets RE-stemmed against its own
+    # suffix table (strips trailing "s" -> "personali"), which doesn't equal
+    # what "personalised" stems to ("personalis") — list the real word forms
+    # instead of leaning on the stemmer to reconcile a stem against a stem.
+    evidence: [remember, previous conversation, conversation history, session history,
+              personalised, personalized, returning customer, context across sessions,
+              each session, repeats failed]
 
   - id: should_improve_over_runs
     problem: Repeated task that should improve run over run
     pattern: "07"
     paper_section: 10
-    evidence: [learn from, improve over time, same task each, recurring, run over run, gets better]
+    evidence: [learn from, improve over time, same task each, recurring, run over run, gets better,
+              reflect, reusable skill, skill library, loads automatically next time]
 
   - id: long_running_process
     problem: Long-running business process with defined stages
     pattern: "08"
     paper_section: 11
-    evidence: [sla, case management, several days, over several, escalates, second approval, then either, sits in]
+    evidence: [sla, case management, several days, over several, escalates, second approval,
+              then either, sits in, across days, state transition, defined stages]
 
   - id: workflow_too_large
     problem: Workflow too large or heterogeneous for one agent
     pattern: "03"
     paper_section: 12
-    evidence: [multiple teams, several steps, decompose, heterogeneous, many sources, breadth]
+    # "decompose" vs "decomposed" don't stem to the same root (the stemmer only
+    # strips trailing -ed/-ing/-s, and does nothing for silent-e verbs — see
+    # diagnose.stem), so both forms are listed rather than relying on one. The
+    # original terms (heterogeneous, breadth, many sources) are formal paper
+    # language a requirements author rarely writes verbatim; added the more
+    # natural business phrasing pattern 03 is actually defined by.
+    evidence: [multiple teams, several steps, decompose, decomposed, heterogeneous, many sources,
+              breadth, split the work, narrow subtasks, worker agents, small model can, in parallel,
+              independent reviewer, different source system]
 
   - id: human_judgement_in_output
     problem: Human judgement is part of output quality, not just a gate
     pattern: "13"
     paper_section: 13
-    evidence: [analyst decides, expert judgement, sign off, human review, senior handler, cannot be automated, for review before]
+    evidence: [analyst decides, expert judgement, sign off, human review, senior handler,
+              cannot be automated, for review before, critique, human approval on, escalate the hard]
 
   - id: deterministic_policy_compliance
     problem: Deterministic policy compliance required
     pattern: "04"
     paper_section: 14
-    evidence: [regulation, must not, mandatory, cannot vary, set by compliance, which rule was, audit trail, threshold]
+    evidence: [regulation, must not, mandatory, cannot vary, set by compliance, which rule was,
+              audit trail, threshold, deterministic, policy compliance]
 
   - id: relationship_discovery
     problem: Relationship discovery, no single document has the answer

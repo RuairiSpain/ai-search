@@ -15,7 +15,9 @@ from .models import (IR, Candidate, Confidence, Kill, Outcome, Result)
 from . import generate, legality, estimate, primitives
 
 # Calibrated 2026-08-01 against golden-set.yaml. The measured blast-weighted
-# unknown_ratio across all 19 cases spans 0.133 to 0.383, so both thresholds
+# unknown_ratio across all 26 cases spans 0.133 to 0.383 (unchanged after the
+# 2026-08-01 coverage expansion — re-verify this range if you add cases with
+# very different amounts of stated detail), so both thresholds
 # sit above the observed range and act as a SAFETY NET for documents worse than
 # anything in the set. The ladder is driven in practice by diagnosis_confident
 # and evaluator_named, which do discriminate (2/2 on the insufficient-input
