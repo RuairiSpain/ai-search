@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+#
+# Source of truth for this sample's agent (docs/04-tier1-prompt-agents.md
+# "Source of truth: YAML in git, applied by SDK"). azd's agent extension is
+# still preview and doesn't fully cover prompt agents yet, so scripts/deploy.py
+# applies this file directly via create_version() rather than `azd deploy`.
+# When azd closes that gap, this file deploys unchanged.
+name: t1-basic-declarative-agent
+
+services:
+  ai-project:
+    host: azure.ai.project
+    deployments:
+      # ${FOUNDRY_MODEL_DEPLOYMENT} lets you point this at whatever's
+      # actually deployed in your project without editing the sample.
+      - name: ${FOUNDRY_MODEL_DEPLOYMENT}
+        model: { format: OpenAI, name: gpt-5.4-mini, version: "2026-03-17" }
+        sku:   { name: GlobalStandard, capacity: 50 }
+
+  house-style:
+    host: azure.ai.skill
+    uses: [ai-project]
+
+  concierge-tools:
+    host: azure.ai.toolbox
+    uses: [ai-project]
+    tools:
+      # See toolboxes/README.md — this is the sample's one external
+      # dependency: an MCP server exposing order-lookup tools. Point it at
+      # your own MCP endpoint, or at the reference stub in that README.
+      - type: mcp
+        target: ${ORDER_LOOKUP_MCP_ENDPOINT}
+        authType: CustomKeys
+
+  concierge:
+    host: azure.ai.agent
+    uses: [ai-project, concierge-tools, house-style]
+    $ref: ./agents/concierge.yaml

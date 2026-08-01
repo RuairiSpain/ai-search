@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+kind: prompt
+name: reviewer
+displayName: Ticket Response Reviewer
+description: >-
+  Reviews a drafted support-ticket reply cold, with no visibility into how
+  it was produced.
+
+model:
+  deployment: ${FOUNDRY_MODEL_DEPLOYMENT}
+  options:
+    temperature: 0.1      # low: this is a rubric check, not a creative task
+
+instructionsFile: ./reviewer.instructions.md
+
+# Deliberately no `memory` block and no `skills`/`toolboxes` shared with
+# executor.yaml. The isolation this sample demonstrates comes from HOW this
+# agent is invoked (a fresh conversation every call, only the draft as
+# input -- see workflows/review-loop.workflow.yaml and scripts/run.py), not
+# from anything declared in this file, but the absence of a `memory` block
+# here matters too: it means there's no memory-service channel this agent
+# could read stale executor context through even by accident.

@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+kind: prompt
+name: flashcard-formatter
+displayName: ELI5 Flashcard Formatter
+description: >-
+  Turns a verified calculation into a preschool-level multiple-choice
+  flashcard. Invoked in the SAME conversation as calculator.yaml -- see
+  ../../README.md and this sample's README for why, in contrast with
+  ../08-workflow-executor-reviewer's isolated reviewer.
+
+model:
+  deployment: ${FOUNDRY_MODEL_DEPLOYMENT}
+  options:
+    temperature: 0.6      # some creative room for kid-friendly phrasing
+
+instructionsFile: ./flashcard-formatter.instructions.md
+
+# Preview service (D10). Session memory: this agent reads the calculator's
+# turns in the shared conversation. User memory: lets it vary difficulty /
+# phrasing across a user's sessions over time -- the concrete reason this
+# agent needs memory and sample 08's reviewer deliberately does not.
+memory:
+  kinds: [session, user]
+  scope: per-user
+
+outputSchema:
+  properties:
+    question:       { type: string,  required: false }   # null on the failure path -- see README
+    choices:         { type: array,   required: false }   # 4 strings when question is set
+    correct_index:   { type: integer, required: false }   # 0-3, index into choices
+    explanation:     { type: string,  required: true }    # always present, even on failure

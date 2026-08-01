@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+kind: prompt
+name: executor
+displayName: Ticket Response Executor
+description: Drafts a reply to a customer support ticket.
+
+model:
+  deployment: ${FOUNDRY_MODEL_DEPLOYMENT}
+  options:
+    temperature: 0.5
+
+instructionsFile: ./executor.instructions.md
+
+# No skills/toolboxes/memory for this sample -- kept minimal so the thing
+# under test (the reviewer's isolation) isn't obscured by unrelated moving
+# parts. Add a toolbox the same way sample 01 does if you extend this.

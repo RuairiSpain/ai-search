@@ -1,0 +1,42 @@
+# Merge into config/apps.yaml -- see ../01-durable-hello-world-status/apps.yaml.snippet.yaml
+# for the pattern this follows.
+apps:
+  - name: expense-approval-t3
+    tier: t3
+    upstream: expense-approval-t3-durable
+    default_mode: long
+    # T3's whole stack is prerelease (agent-framework-durabletask/-a2a/
+    # -azurefunctions, all pinned --pre -- docs/01 §3), so preview: deny
+    # is unsatisfiable here too, same reasoning as every other T2/T3
+    # snippet in this repo.
+    preview: allow
+    # A multi-day approval's lease has to outlive the default 300s by a
+    # wide margin, or gw_task_reaper's carve-out for `input-required`
+    # (migrations/0001_init.sql -- the reaper index already excludes it,
+    # verified there directly rather than assumed) is the only thing
+    # standing between this task and being treated as wedged the moment
+    # ANY other lease-worthy event stops arriving for 5 minutes. Set well
+    # above your longest expected approval wait, not just above the
+    # timeout_seconds default below.
+    lease_seconds: 1209600  # 14 days, matching this sample's own default timeout
+    card:
+      description: Multi-day human-in-the-loop expense approval, durable orchestration.
+      capabilities: { streaming: false, pushNotifications: true }
+      # streaming: false -- the T3 A2A server pushes via webhook, it does
+      # not hold an SSE connection (docs/06 §4.1). pushNotifications: true
+      # so a client doesn't have to hold a days-long poll loop open either
+      # -- see ../05-push-notifications for a worked example of actually
+      # using it, on a different (much shorter) sample.
+
+upstreams:
+  - id: expense-approval-t3-durable
+    tier: t3
+    protocol: a2a
+    instances: ["https://expense-approval-t3.internal"]
+    health: /healthz
+
+# Also required at the top level (see config/apps.example.yaml) since this
+# app declares pushNotifications: true -- gwlint's L023 fails the build
+# without it:
+# push_notification_allowlist:
+#   - <your gateway's own callback host, if you use CreateTaskPushNotificationConfig>

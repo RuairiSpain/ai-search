@@ -1,0 +1,36 @@
+# Merge into config/apps.yaml.
+apps:
+  - name: isolated-storage-t2
+    tier: t2
+    upstream: isolated-storage-t2-hosted
+    default_mode: long
+    preview: allow      # T2 is preview end-to-end -- D10
+
+upstreams:
+  - id: isolated-storage-t2-hosted
+    tier: t2
+    project_endpoint: ${FOUNDRY_PROJECT_ENDPOINT}
+    agent_name: isolated-storage-t2
+    identity: per_user      # <- the whole isolation demo depends on this
+
+# The deliberate failure path (README "The deliberate failure path"):
+# a second app/upstream pair pointed at the SAME agent_name, but with
+# identity: service -- FoundryHostedAdapter._headers() never sends
+# x-ms-user-identity for this mode, so every caller collapses into one
+# shared sandbox. Uncomment to run `fake_chat_ui.py --identity-mode
+# service` against it and watch the isolation property fail on purpose.
+#
+# apps:
+#   - name: isolated-storage-t2-shared
+#     tier: t2
+#     upstream: isolated-storage-t2-shared-hosted
+#     default_mode: long
+#     preview: allow
+#
+# upstreams:
+#   - id: isolated-storage-t2-shared-hosted
+#     tier: t2
+#     project_endpoint: ${FOUNDRY_PROJECT_ENDPOINT}
+#     agent_name: isolated-storage-t2         # same agent, different upstream identity mode
+#     identity: service
+#     justification: "L020 requires this for identity: service -- sample demonstrates the isolation failure mode deliberately, never deployed with real users"

@@ -1,0 +1,758 @@
+# Open Items, Experiments, and Merge Corrections
+
+This is the consolidated backlog. Every ⚠/◆ scattered across the individual
+docs is collected here so nothing gets lost between them, plus a record of
+where the source drafts disagreed with each other and which position won.
+
+## A. Empirical checks to run before trusting the design (⚠)
+
+These are spikes, not design work — the decisions doc's own framing is
+right: "run them in a scratch project this week; several of them can
+change the design." None of them block scaffolding the project structure,
+CI, schema, or adapter interfaces — they block *trusting* specific
+capability claims.
+
+| # | Check | Blocks | Doc |
+|---|---|---|---|
+| 1 | **ISO-1** — does `x-ms-user-identity` actually scope conversation reads, or is `gw_context` the entire boundary? | D1 review weight | `02-decisions.md` D1 |
+| 2 | **ISO-2** — is user/procedural memory isolated per identity? | D2, possible simplification (delete gateway-side memory store) | `02-decisions.md` D2 |
+| 3 | **T2-FAB-1** — can a hosted-agent container consume `UserEntraToken` passthrough and complete a consent flow, or does it hit `AADSTS50013`? | The single highest-leverage check in the whole plan — a fail **inverts the escalation table** (per-user Fabric access becomes T1-only) | `05-tier2-hosted-agents.md` §4.3 |
+| 4 | Cancel endpoint semantics: shape, billing effect, code-interpreter-container effect | `Capabilities.cancel` for T2 (the only gateway tier built on `FoundryResponsesAdapter`) stays feature-flagged until verified | `02-decisions.md` D7 |
+| 5 | T1 workflow mid-run injection — does `SetVariable` re-read actually see appended conversation items? | D7 feasibility for workflow-level steering | `02-decisions.md` D7 |
+| 6 | ~~A2A protocol version: does `message/send` accept a task in `working` state, or only `input-required`?~~ **Resolved:** disallowed (confirmed against the spec building `a2a_server/executor.py`, Phase 3). The gateway-local endpoint this predicted is built — see item E.9. | ~~If disallowed, interjections need a gateway-local endpoint~~ | `02-decisions.md` D7 |
+| 7 | T2 container sizing: 0.5/1/2 vCPU-GiB list vs. 0.25–4.0 vCPU / 0.5–8.0 GiB range — both documented as current | Capacity planning | `05-tier2-hosted-agents.md` §1 |
+| 8 | Model quota/TPM: per-deployment or shared across a project's agents? | Whether noisy T2 apps need dedicated deployments | `05-tier2-hosted-agents.md` §6.2 |
+| 9 | ~~W3C `traceparent` propagation gateway → Responses call → container span (T2) and gateway → A2A → orchestration → activity (T3)~~ **Partially resolved (item 22):** the gateway's own outbound propagation is built and tested for both tiers, and T3's receiving half has a real worked example (`samples/tier3/01-durable-hello-world-status`). Still genuinely empirical and unresolved: whether Foundry's hosted-agent Responses API proxy actually reads the header and correlates it into its own container span — needs a live endpoint this repo doesn't have. | End-to-end debuggability | `05-tier2-hosted-agents.md` §6.3, `06-tier3-durable-agents.md` §6.3 |
+| 10 | Does the platform serialise concurrent requests to one `agent_session_id`? | Serialise per session in the gateway regardless — but confirm the failure mode if you don't | `05-tier2-hosted-agents.md` §6.3 |
+| 11 | Cold-start restore time after 15-minute idle deprovision | Gateway timeout and reaper lease durations must exceed worst case | `05-tier2-hosted-agents.md` §6.3 |
+| 12 | Payload/upload limits on `/responses` and `/files` | The MCP-data-to-code-interpreter path with real datasets | `05-tier2-hosted-agents.md` §6.3 |
+| 13 | Three-way A2A version matrix: gateway's A2A target × `agent-framework-a2a`'s `a2a-sdk` pin × Foundry's 1.0/0.3 support | T3 module layout | `06-tier3-durable-agents.md` §6.2 |
+| 14 | Python surface parity for `agent-framework-azurefunctions` / `agent-framework-durabletask` — Learn docs skew C# | Correctness of every T3 code sample | `06-tier3-durable-agents.md` §2.2 |
+| 15 | Does durable large-payload offload cover **entity state**, or only orchestration inputs/outputs as documented? | Whether it actually helps durable agent sessions (built on entities) | `06-tier3-durable-agents.md` §6.3 |
+| 16 | Container delete API (`DELETE /v1/containers/{id}`) exposed on Foundry's `/openai/v1/containers/` path for your API version | Whether explicit reclaim is even reachable | `07-artifacts-and-code-interpreter.md` §3 |
+| 17 | Real cost of code-interpreter container idle time — guidance suggests no separate charge | Whether reclaim engineering is worth doing at all | `07-artifacts-and-code-interpreter.md` §3 |
+
+## B. Open design decisions (◆) — not yet made
+
+| # | Item | Doc |
+|---|---|---|
+| 1 | Gateway-as-traffic-splitter mechanism for T2 canary (deploy `-v2` as a separate agent name; `gw_context` must pin agent name, not just version) | `05-tier2-hosted-agents.md` §6.1 |
+| 2 | Region topology — where blob/gateway/hosted-agent regions must match | `05-tier2-hosted-agents.md` §6.1 |
+| 3 | Registry drift detection (deleted/renamed/redeployed Foundry agent) | `05-tier2-hosted-agents.md` §6.2 |
+| 4 | RBAC provisioning automation for `UserIdentityImpersonation` | `05-tier2-hosted-agents.md` §6.2 |
+| 5 | Version cutover runbook automation (steps are written; tooling isn't) | `05-tier2-hosted-agents.md` §6.2 |
+| 6 | Cost attribution export pipeline | `05-tier2-hosted-agents.md` §6.2 |
+| 7 | Session/conversation divergence UX (T2 session dies at 30d idle; conversation retention is a separate 30d sliding clock) | `05-tier2-hosted-agents.md` §6.3 |
+| 8 | T3 hosting model — Flex Consumption is *recommended*, not locked | `06-tier3-durable-agents.md` §2.5 |
+| 9 | T3 cancel-vs-terminate contract (per app, on the card) | `06-tier3-durable-agents.md` §6.1 |
+| 10 | T3 DTS RBAC grants in the provisioning pipeline | `06-tier3-durable-agents.md` §6.2 |
+| 11 | T3 instance ID scheme + purge policy alignment with `gw_task` (D5: 90d) | `06-tier3-durable-agents.md` §6.2 |
+| 12 | **T3 session TTL (14 days) vs. D5 conversation retention (30 days sliding)** — a user returning on day 20 gets history with no session behind it. Needs a per-tier retention override, a keep-alive, or an honest UI downgrade. Resolve before the first month-long T3 app ships. | `06-tier3-durable-agents.md` §6.3, `02-decisions.md` D5 |
+| 13 | Multi-day HITL: a 45-day approval outliving 30-day context retention | `06-tier3-durable-agents.md` §5.3 |
+| 14 | Blob immutability requirement for artifacts of record | `02-decisions.md` D5, `07-artifacts-and-code-interpreter.md` §2 |
+| 15 | Per-app artifact retention period beyond the D5 default | `07-artifacts-and-code-interpreter.md` §2 |
+| 16 | APIM + SSE: response buffering and the 240s default timeout — v2 concern, note now so v1 doesn't get painted into a corner | `02-decisions.md` D3 |
+
+## C. Already resolved by a later draft — corrections applied while merging
+
+The source material arrived as multiple revisions of the same documents.
+Where a later revision silently corrected an earlier one, this plan kept
+only the final position. Recorded here so nobody re-opens a settled
+question by reading an old copy:
+
+1. **T3 upstream protocol.** Early adapter-spec drafts (and the decisions
+   doc's own "open items" table) listed "A2A-to-A2A vs REST+callback" as
+   unresolved. The T3 guide resolves it: **A2A-to-A2A, with the gateway's
+   `gw_task` as system of record, and the T3 A2A server pushing status via
+   webhook rather than holding an SSE connection.** Any reference to this
+   as still-open is stale.
+2. **T2 progress fidelity.** The T2 guide's own "three planes" table
+   listed "T2 progress fidelity → FINE" as "◆ decide before samples." The
+   informal outstanding-items note is explicit that this is wrong: §5.4
+   (app-emitted `gw.progress.v1` events) **is the decision**, not an
+   experiment. Marked decided in `05-tier2-hosted-agents.md` §6.1.
+3. **T3 `affinity: context`.** An early gateway-config example pinned
+   worker affinity for the T3 upstream. The T3 guide corrects this:
+   Durable Task Scheduler means any worker can resume any orchestration,
+   so affinity only applies to non-DTS bring-your-own-compute. Removed
+   from the config schema in `01-gateway-config-and-adapter-contract.md`.
+4. **T1 `Capabilities.artifacts`.** An early adapter-spec draft set this
+   `False` on the reasoning that prompt agents have no filesystem. A later
+   note corrects it: code interpreter gives T1 a real, if fragile,
+   artifact channel with a ~1-hour container lifecycle. Both the final
+   adapter contract and the escalation table reflect `True` plus the
+   gateway's harvest obligation (`07-artifacts-and-code-interpreter.md`).
+5. **Escalation table, progress row.** "Does the UI need per-step
+   narration → T3" is stale for the same reason as #2 above — T2 can reach
+   `FINE`. Reworded in `00-tier-model-and-concepts.md` §4; some apps
+   currently pointed at T3 on this basis belong in T2.
+6. **D7 mid-run steering.** An early decisions draft proposed a simple
+   `IMPORTANT ***`-prefixed injection with only a security-envelope
+   critique attached, and left tier-by-tier feasibility largely
+   unaddressed. The final version replaces it with the tier-dependent
+   steering table (T1 none/deferred, T1-workflow/T2/T3 checkpoint via
+   different mechanisms), the `steer()` adapter method, `SteerResult`, and
+   the `gw_interjection` table. The security envelope rules carried
+   forward unchanged into the final version.
+7. **Adapter contract `UpstreamRef`.** Early drafts lacked `container_id`.
+   Added once the code-interpreter container lifecycle work made explicit
+   container mode (vs. `type: auto`) the recommended pattern.
+8. **A2A gateway spec / decisions doc revision count.** Both documents
+   arrived in two near-identical generations; the only functional deltas
+   between them are items 4, 6 and 7 above. No other content differences
+   were found between revisions of the same document.
+
+## E. Corrections applied after the initial build (a2a-sdk adoption, T1 removed from the gateway, bidirectional files, closing the remaining known gaps)
+
+Unlike section C, these weren't found while merging source drafts — they
+were found building against the real `a2a-sdk` package and a real Postgres,
+after the initial hand-rolled-router version of the gateway already worked.
+Recorded for the same reason as section C: don't re-discover these the hard
+way from a stale doc.
+
+1. **T1 removed as a gateway tier.** `src/gateway/config.py`'s
+   `AppConfig.tier`/`UpstreamConfig.tier` are now `Literal["t2", "t3"]`;
+   `registry.py` no longer builds a T1 adapter; `api/a2a.py` (the old
+   hand-rolled JSON-RPC router) is deleted. T1 is fronted by Foundry's own
+   native incoming A2A endpoint instead — see `00-tier-model-and-concepts.md`
+   and `04-tier1-prompt-agents.md`'s new scope banner. `T1-ISO-1`/`T1-ISO-2`
+   were renamed to `ISO-1`/`ISO-2` throughout (they're platform-behavior
+   checks, not really tier-specific — see item A.1/A.2 above).
+2. **The gateway's client-facing A2A surface now runs on `a2a-sdk`**
+   (`src/gateway/a2a_server/`), replacing the hand-rolled JSON-RPC dispatch.
+   Scoped to T2/T3 only, per item 1. See `01-gateway-config-and-adapter-contract.md`
+   §4 for what this bought and the three integration pitfalls below — none
+   of them are in any SDK changelog or docstring; each was found only by
+   running a real client (or a test standing in for one) against the
+   mounted routes.
+3. **Missing `A2A-Version` header on the call context.** A custom
+   `ServerCallContextBuilder` that doesn't populate `state["headers"]` gets
+   every request treated as protocol 0.3 and rejected — the SDK's own
+   `DefaultServerCallContextBuilder` does this, but nothing forces a custom
+   builder to. `GatewayCallContextBuilder` was missing it, so every real
+   client call would have failed: a clean HTTP 200 wrapping a JSON-RPC
+   `VersionNotSupportedError`, easy to miss in casual testing since nothing
+   about the transport layer complains. Fixed in
+   `src/gateway/a2a_server/context.py`.
+4. **Duplicate initial-task creation.** The executor created the `gw_task`
+   row directly (so it can carry `app`/`tier`, which aren't part of the
+   generic A2A `Task` schema) *and* enqueued an SDK `new_task()` event for
+   the same id — which the SDK's own `TaskManager` sees as a second,
+   redundant creation and logs as an error ("Task already exists, ignoring
+   task replacement") on every single send. Fixed by dropping the redundant
+   enqueue: the direct DB row is sufficient for the SDK's own requirement
+   (a row must exist before it will accept a `TaskStatusUpdateEvent`), it
+   never needed a matching `Task` event too.
+5. **Cancellation ordering.** `a2a-sdk`'s `ActiveTask.cancel()`
+   force-cancels the task's running `AgentExecutor.execute()` coroutine
+   *before* awaiting `AgentExecutor.cancel()`. A design (the original one
+   here) that expects the `follow()` loop to observe and persist the
+   upstream's cancellation confirmation never gets the chance — and writing
+   the terminal state through `TaskUpdater`/the event queue from inside
+   `cancel()` doesn't work either, because the producer's own teardown may
+   be concurrently closing that exact queue (confirmed via the SDK's own
+   log line: "Queue was closed during enqueuing. Event dropped."). Fixed by
+   having `cancel()` persist the terminal state directly against the store,
+   right after `adapter.cancel()` confirms — see the D7 implementation note
+   in `02-decisions.md`.
+6. **Per-request task identity breaks blind retries.** `a2a-sdk` mints a
+   fresh `task_id` per `message/send` whenever the client's message omits
+   one; there's no supported way to redirect that request's `ActiveTask` to
+   a *different*, already-existing task after the fact (`TaskManager`
+   rejects an event whose id doesn't match the id it was constructed with).
+   The original dedupe-retry design assumed the gateway could hand a
+   client-blind retry back its original task under a fabricated event —
+   confirmed to crash the request instead. Fixed: the upstream submission
+   is still never repeated (D7's actual idempotency property, unaffected),
+   but a retry with no `taskId` is now rejected with a clear error rather
+   than misrouted. Clients that want idempotent retries need to supply
+   their own `taskId` up front. Open item: no gateway-side workaround for a
+   client that truly cannot do this exists yet.
+7. **`DurableAdapter`'s wire format predated Phase 3's a2a-sdk
+   verification and was never corrected.** `submit()`/`cancel()` used
+   `"method": "message/send"`/`"tasks/cancel"` (old A2A method-name
+   convention) and a `kind`-discriminated `Part` shape, neither of which
+   `a2a-sdk`'s real JSON-RPC dispatcher accepts (it wants PascalCase
+   `SendMessage`/`CancelTask`, and `Part` has no `kind` field). The response
+   parser also compared task state against the wrong vocabulary — plain
+   lowercase strings like `"submitted"` against what the SDK actually
+   returns, `"TASK_STATE_SUBMITTED"`. Every T3 call would have failed
+   end-to-end against a real T3 upstream built on `agent-framework-a2a`.
+   Found and fixed while wiring in file-part support (Phase 4, item 8
+   below), not by a dedicated T3 review — no real T3 A2A server has been
+   run against this gateway yet, so this fix is verified only as far as
+   "the request now parses correctly against the installed a2a-sdk's own
+   `ParseDict`," not against an actual T3 server's behavior.
+8. **Bidirectional files (Phase 4).** Inbound `Part.raw`/`Part.url` are now
+   extracted and passed to `UpstreamAdapter.submit()`/`resume()` as
+   `InboundFile`s. T2 uploads via the Files API and references the
+   resulting `file_id` in the Responses input; T3 relays the part as-is to
+   its own upstream A2A server. See `01-gateway-config-and-adapter-contract.md`
+   §5. Only inbound was in scope for this phase — outbound T3 artifacts
+   still go through T3's native mechanism rather than the shared blob
+   container, a pre-existing gap this phase didn't touch.
+
+**Phase 5 — closing the remaining known gaps.** The README's "known gaps"
+list (steering, T2 `resume()`, T3 artifact harvesting, the reaper,
+`gw_push_config`, orphan-session cleanup, `gwlint`) turned out not to be
+independent items — building and actually verifying each one surfaced
+real bugs in already-shipped code that no amount of code review had
+caught, because nothing had exercised these paths against anything more
+real than a `FakeAdapter`. In order found:
+
+9. **Mid-run steering, exposed.** A2A has no client-initiated-message-into-
+   a-`working`-task concept (confirmed against the spec while building
+   `a2a_server/executor.py` back in Phase 3), so steering needed a
+   gateway-owned side channel rather than an A2A method:
+   `POST /apps/{app}/tasks/{task_id}/interject`
+   (`a2a_server/interjections.py`), same IDOR posture as every other
+   task-scoped endpoint, backed by a new `InterjectionStore` writing to
+   `gw_interjection` (the table already existed, unused, since the
+   original schema design).
+10. **`TaskStore.append_event()` never updated `gw_task.state` for a
+    non-final transition.** Only a `final` status event (completed/failed/
+    canceled/rejected) touched the `state` column — a genuinely `working`
+    task stayed reported as `submitted` for its entire in-flight lifetime,
+    every single time, since the gateway first started polling/relaying
+    events. Found via the interject endpoint's own "is this task actually
+    working" check, which could never observe `working` because of it.
+    Every other test that touched task state only ever checked a terminal
+    state, which is exactly why this went unnoticed through two prior
+    phases of testing.
+11. **`FoundryHostedAdapter` never called `FoundryResponsesAdapter.__init__`,
+    so `self._openai` was unconditionally `None`.** `follow()`, `steer()`,
+    `cancel()`, and the newly-implemented `resume()` are all *inherited*
+    from `FoundryResponsesAdapter` and reference `self._openai` directly —
+    every one of them would have raised `AttributeError` the first time it
+    ran against a real T2 task. `fetch_artifact_bytes()` had the matching
+    problem with `self._project_endpoint`/`self._credential`, never set at
+    all on this class. Fixed by making `_openai` a property (a fresh
+    per-call client, matching T2's actual client lifecycle) and plumbing
+    the two missing constructor params through from the registry. Never
+    caught because every test exercising the A2A surface used a
+    `FakeAdapter` standing in for the whole `UpstreamAdapter` Protocol,
+    never this class itself — a new offline test
+    (`tests/test_foundry_hosted_adapter.py`) now exercises the real class
+    directly specifically to keep this from recurring.
+12. **`a2a-sdk`'s REST routes always include an undocumented
+    `Mount(path='/{tenant}', ...)` multi-tenancy catch-all** (regex
+    `^/(?P<tenant>[^/]+)/(?P<path>.*)$`, present in `create_rest_routes()`'s
+    output regardless of whether tenancy is used) whose path pattern
+    matches almost any 2+-segment path. Starlette tries routes in
+    registration order and a matching `Mount` fully delegates rather than
+    falling through, so the interject route — registered after
+    `add_a2a_routes_to_fastapi()` in the first draft — 404'd on every
+    single call, silently, because the catch-all Mount claimed the match
+    first and its own sub-app didn't recognise the path. Root-caused only
+    by bisecting real HTTP requests through progressively smaller route
+    sets (`app.routes` introspection alone didn't reveal it — everything
+    LOOKED registered correctly). Fixed by registering gateway-owned
+    routes *before* `add_a2a_routes_to_fastapi()`, not after.
+13. **`DurableAdapter` never sent the `A2A-Version` header on its outbound
+    calls to the T3 upstream.** Standing up a *real* `a2a-sdk`
+    `DefaultRequestHandler` as a T3 test double (`tests/test_durable_adapter_wire_format.py`
+    — stronger verification than item 7's `ParseDict`-only check, since it
+    exercises the SDK's actual server-side dispatch) immediately rejected
+    every request with `VERSION_NOT_SUPPORTED`: the same header-omission
+    bug as item 3 above, just on the outbound side this time, and missed
+    by the item-7 fix because `ParseDict` alone can't detect a header the
+    request handler needs but the parser doesn't. This is the concrete
+    payoff of building a real test double instead of trusting isolated
+    parsing checks.
+14. **T3 artifact harvesting, orphan-session termination, the reaper
+    schedule, and `gwlint`** are now real: `DurableAdapter.fetch_artifact_bytes()`
+    fetches a `download_url` the orchestrator supplies in `upstream_ref`
+    and harvests through the same `ArtifactHarvester` T2 uses;
+    `FoundryHostedAdapter.terminate_session()` calls the real, documented
+    `AgentsOperations.stop_session` (confirmed present on
+    `AIProjectClient.agents` in the installed `azure-ai-projects` package —
+    not a guessed REST endpoint, unlike some other integration points in
+    this codebase); `main.py`'s lifespan now runs a background sweep
+    calling `TaskStore.reap_wedged_tasks` on a timer, with lease
+    renewal wired into task creation and every relayed event
+    (`TaskStore.renew_lease`, `AppConfig.lease_seconds`); and `gwlint`
+    (`src/gateway/gwlint.py`) implements the D6 safety rules actually
+    checkable from this repo alone (L020, L022, L023, L030, L032),
+    reporting every other rule as `SKIP` with a reason rather than
+    silently omitting it.
+
+15. **`samples/` added, and a real narration bug found + fixed while
+    building it.** `GatewayAgentExecutor._follow_and_relay`
+    (`src/gateway/a2a_server/executor.py`) called
+    `TaskUpdater.update_status(state)` with no `message` for every event of
+    every tier — `StatusEvent.detail`, the `gw.progress.v1` narration text
+    computed and stored in `gw_event`, never reached the A2A wire. Fixed by
+    building a `Message` via `a2a.helpers.proto_helpers.new_text_message`
+    when `detail` is set and passing it through, verified against the real
+    installed `a2a-sdk` package (`TaskUpdater.update_status`'s
+    `message: Message | None` parameter) before writing the fix, not
+    assumed. Found while building `samples/tier3/01-durable-hello-world-status`,
+    whose whole premise depends on a client actually seeing narration text.
+    Building the T2 counterpart (`samples/tier2/04-long-running-hello-world`)
+    surfaced the mirror-image, NOT-fixed gap: `FoundryResponsesAdapter.follow()`
+    never populates `StatusEvent.detail` in the first place, so
+    `FoundryHostedAdapter.capabilities`'s claim of "COARSE promoted to FINE
+    by the gw.progress.v1 filter" (docs/05 §5.4) describes a decision that
+    was never implemented, not current behavior. Left undone here — parsing
+    custom events out of a Foundry Responses poll loop is materially bigger
+    and touches an unverified part of the SDK surface, unlike the T3 fix's
+    four lines against a signature already confirmed real. `samples/README.md`
+    and the five sample READMEs underneath it are the map; the top-level
+    `README.md`'s bug list and `docs/02-decisions.md`'s samples-structure
+    section both point here.
+
+16. **T2 progress narration, fixed for real — and the API it was supposed
+    to use turned out not to exist.** Item 15 above left T2's "no useful
+    state messages" gap undone, reasoning that fixing it meant "parsing
+    custom events out of a Foundry Responses poll loop" against unverified
+    SDK surface. Following up on that: downloaded and inspected the real,
+    installed `agent-framework-foundry` package (1.10.3) looking for the
+    `ctx.emit_custom_event`/`ResponsesHostServer` API
+    `05-tier2-hosted-agents.md` §5.1 and §5.4 described — neither exists.
+    `agent-framework-foundry` has no `hosting` submodule at all, only
+    client/agent-authoring surface. The real T2 container-hosting package
+    is a completely different one, `azure-ai-agentserver-responses`
+    (`azure.ai.agentserver.responses.hosting.ResponsesAgentServerHost`),
+    confirmed by downloading and inspecting it directly — and it has no
+    generic "custom application event" concept either, only the standard
+    OpenAI Responses event vocabulary (`ResponseStreamEventType`).
+
+    So the `gw.progress.v1`/`emit_custom_event` convention this project's
+    docs described as "a decision, not an open experiment" was never
+    real anywhere — not built, not buildable against any installed
+    package as described. Both `05-tier2-hosted-agents.md` §5.1 (import
+    path/class name) and §5.4 (the whole convention) are corrected, along
+    with the pin table (`01-gateway-config-and-adapter-contract.md` §3),
+    the escalation-table note (`00-tier-model-and-concepts.md` §4), and
+    the T3 doc's now-inaccurate "same schema as T2" cross-reference
+    (`06-tier3-durable-agents.md` §5.4).
+
+    The actual fix, grounded in a mechanism that does exist and is already
+    verified elsewhere in this same investigation: `Response.output` — a
+    real field on the `openai` package's `Response` model
+    (`AIProjectClient.get_openai_client()` is typed `-> AsyncOpenAI`,
+    confirmed in `azure-ai-projects`'s own source, so `_openai` genuinely
+    is a standard `openai.AsyncOpenAI` client) — is an ordered list of
+    `ResponseOutputItem`s (`function_call`, `mcp_call`,
+    `code_interpreter_call`, `reasoning`, `message`, ...) the platform
+    attaches to every polled response as the agent works, with real,
+    verified field names (`name`, `server_label`, `status`) confirmed
+    against the installed `openai` package's own generated types.
+    `FoundryResponsesAdapter.follow()` (`src/gateway/upstream/
+    foundry_responses.py`) now derives a short narration line from the
+    most recent output item on every poll (`_narrate()`) and sets it as
+    `StatusEvent.detail` — automatically, for every T2 agent, no
+    agent-side opt-in code required, unlike the fabricated convention this
+    replaces. `Capabilities.progress` stays `COARSE` deliberately: this is
+    best-effort per-*item* narration ("running tool: X"), not a guaranteed
+    per-step stream the way T3's explicit webhook push is — `FINE` would
+    overclaim. Tests: `tests/test_foundry_progress_narration.py`, item
+    shapes verified field-for-field against the installed `openai`
+    package, not guessed.
+
+17. **T2 tasks never delivered the agent's actual answer text at all —
+    found while building `samples/tier2/02-per-user-isolated-storage`.**
+    That sample needs to read a T2 agent's conversational reply back
+    (a note count, stated in the model's own words) through the A2A
+    surface. Tracing how that would reach a client surfaced that it
+    couldn't: item 16's `_narrate()` maps a terminal `message`-type output
+    item to the **static string** `"drafting a response"` — appropriate
+    while the answer is still being written, wrong once the run is
+    actually done. Because `GatewayTaskStoreAdapter.get()`
+    (`src/gateway/a2a_server/task_store.py`) also sets `history=[]`
+    unconditionally (a separate, previously-documented gap — full
+    turn-by-turn history isn't persisted), the *only* place a T2 answer
+    could ever have reached a client was `StatusEvent.detail` on the final
+    status update. With `_narrate()` returning a placeholder there, no A2A
+    client had any path to a T2 agent's actual reply — not a narrower
+    progress-fidelity gap like items 15/16, but the delivery of the answer
+    itself.
+
+    Fixed with `_detail_for(resp, state)`
+    (`src/gateway/upstream/foundry_responses.py`): on a **terminal** state,
+    prefer `resp.output_text` — a real `openai` package convenience
+    `@property` (verified against the installed package's
+    `openai/types/responses/response.py`) that aggregates every
+    `output_text` content block from `resp.output` into the same string a
+    plain `chat.py`-style caller would print — falling back to
+    `_narrate()`'s coarse tool-call narration only if there's no text (a
+    failed/canceled run, or a tool-only turn with nothing to say). Non-terminal
+    states are untouched: `_narrate()` still drives in-progress narration,
+    and a non-empty `output_text` mid-run (partial streamed text) is
+    deliberately not surfaced early, so a client never sees a still-forming
+    answer reported as if it were final. Tests:
+    `tests/test_foundry_progress_narration.py::TestDetailFor` plus a
+    `follow()` integration test confirming the real answer text reaches
+    `StatusEvent.detail` on completion.
+
+18. **`samples/tier2/02-per-user-isolated-storage` added.** Three
+    simulated users (a fake chat UI script issuing real, distinct Entra
+    bearer tokens — no dev-mode auth bypass exists in `EntraValidator`, nor
+    should one) hit the same hosted agent through the same gateway app,
+    interleaved rather than sequential. Two mechanisms demonstrated, kept
+    deliberately separate since they're genuinely different subsystems (see
+    the sample's README "Two different sandboxes, one story" table):
+
+    - **Per-user `$HOME` isolation**: a function tool
+      (`@ai_function`, pre-written Python, executes inside the agent's own
+      hosted-session container) appends to a *fixed*-path notes file and
+      returns a turn count. Same code, same path, every call — what
+      differs, and is what the sample proves, is which sandbox that path
+      resolves inside, driven entirely by the gateway's existing
+      `identity: per_user` → `x-ms-user-identity` delegation
+      (`FoundryHostedAdapter._headers()`, docs/00 §5). No new gateway code.
+    - **Artifacts outliving the agent**: code interpreter writes the
+      user's prompt into a real `.docx`, using a hand-verified
+      `zipfile`-only (no `python-docx`, not installed in the sandbox)
+      docx-builder pasted verbatim into the agent's `instructions.md` —
+      built and round-tripped through `python-docx.Document()` in this
+      sample's own development to confirm Word can actually open it,
+      before being trusted in an instructions file the model executes
+      unmodified. This reuses the gateway's existing code-interpreter
+      harvest pipeline (`_new_artifacts()`, `ArtifactHarvester`) completely
+      unchanged, and the download link is read off
+      `task.artifacts[].parts[].url` — verified end to end by reading
+      `GatewayTaskStoreAdapter._project_artifacts()`
+      (`src/gateway/a2a_server/task_store.py`) directly: it mints a fresh
+      SAS on every `GetTask` read from `gw_artifact` rows already in
+      `state = 'stored'`. No new gateway code here either.
+
+    The one adjacent thing this sample's build *did* change is item 17
+    above — without it, the isolation demo's note count would never have
+    been visible to the client at all.
+
+19. **Turn-by-turn A2A message history, persisted for real.**
+    `GatewayTaskStoreAdapter.get()` always returned `Task.history=[]` —
+    tracing item 17's answer-delivery bug back to its root cause is what
+    surfaced this as the next thing worth fixing, not a coincidence: with
+    no history, `status.message` on the terminal update was the *only*
+    path an answer could ever reach a client, which is exactly why that
+    bug went unnoticed as long as it did.
+
+    Read the installed `a2a-sdk`'s `TaskManager` source directly before
+    designing anything: it already assembles `Task.history`/
+    `Task.status.message` correctly in memory before every single
+    `TaskStore.save()` call — `history` holds every message once
+    superseded by a later status update, `status.message` holds the
+    current, not-yet-superseded one, seeded from the original inbound
+    message at task creation. `GatewayTaskStoreAdapter.save()` was handed
+    this fully-assembled `Task` object on every call already and simply
+    never persisted `history`/`status.message`, only `status.state`. No
+    new message-accumulation logic was needed — only the persistence layer
+    the SDK's own work was being handed to and dropped by.
+
+    New table `gw_message` (`migrations/0001_init.sql`,
+    `docs/03-postgres-schema.md`), keyed on `message_id TEXT PRIMARY KEY`
+    — every `Message` a2a-sdk hands the gateway already carries a globally
+    unique id (agent-authored via `uuid4()`, inbound ids already globally
+    deduped by the existing `gw_inbound_message` table for D7 submit
+    idempotency) — so `ON CONFLICT (message_id) DO NOTHING` makes
+    `MessageStore.append_messages()` (`src/gateway/store/message_store.py`,
+    new) trivially idempotent against the fact that `save()` re-sends the
+    full, growing history on every call, not a delta. A new
+    `gw_task.current_message_id` column (bare pointer, no FK, same style as
+    the existing `run_id` column) records which persisted message is
+    "current" at write time — read-time "last row wins" would be wrong the
+    moment a later status update carries no message of its own, so which
+    message is current has to be tracked explicitly, not inferred.
+    `GatewayTaskStoreAdapter._project_messages()` splits persisted rows
+    back into `(history, status.message)` using that pointer.
+    Serialization: `google.protobuf.json_format.MessageToDict`/`ParseDict`
+    — round-tripped by hand against the installed `protobuf` package before
+    committing to it, including a `raw` (bytes) `Part` surviving the
+    base64-under-the-hood round trip byte-identically, not assumed to work.
+
+    `GatewayTaskStoreAdapter.list()` needed **no changes** — it already
+    builds each task in a context via `self.get(task_id, context)`, so
+    multi-task conversation history (separate `task_id`s sharing one
+    `context_id`, the normal shape of a multi-turn chat) started working
+    the moment `get()` did.
+
+    Verified against a real, already-migrated local Postgres, not just a
+    fresh one: `ALTER TABLE gw_task ADD COLUMN IF NOT EXISTS
+    current_message_id` re-applied cleanly against a database that already
+    had every other table from a prior run. Tests:
+    `tests/test_message_store.py` (idempotent append, order preservation
+    across repeated saves, role/content round-trip including bytes,
+    per-task scoping) plus two new end-to-end tests in `tests/test_a2a_api.py`
+    — one confirming a completed task's answer lands in `status.message`
+    and the inbound prompt lands in `history` (the direct regression test
+    for item 17's bug pattern), one confirming a superseded status message
+    is correctly demoted into `history` on a later update. Found and fixed
+    a real bug in the *tests* themselves along the way: an early draft
+    reused literal `message_id` strings ("m-1", "m-2") across different
+    test functions sharing one persistent, non-torn-down local Postgres —
+    since `message_id` is a genuine global primary key, a later test's
+    insert silently no-opped against an earlier test's row under
+    `ON CONFLICT DO NOTHING`, and two tests failed with "message missing"
+    until each was given real globally-unique ids (`uuid4()`-based, same
+    fix already applied elsewhere in this suite for exactly this reason —
+    see `FakeAdapter.submit()`'s `task_id` in `test_a2a_api.py`).
+
+20. **T2 `resume()`/`input_required` detection.** `resume()` already had a
+    real, correct body, and `GatewayAgentExecutor._continue_existing()`
+    already routed a reply to an `INPUT_REQUIRED` task into it — that
+    whole path needed zero changes. The actual gap was narrower than it
+    looked: `_map_state()` only translates the raw OpenAI Responses API
+    status (`queued/in_progress/completed/failed/incomplete/cancelled`) —
+    there is no "waiting for input" status at that protocol level. A
+    response that's really a paused clarifying question still reports
+    `status: "completed"`; the only way to detect a pause is to inspect
+    the response's *content*.
+
+    D4 already decided the contract (`input_required: true` + a
+    conforming `outputSchema`) but its text was written for T1, where the
+    agent's own definition carried the schema and Foundry's native A2A
+    endpoint did the invocation and status mapping. For T2 the **gateway**
+    calls `responses.create()`, so the schema has to be gateway-configured
+    (`AppConfig.output_schema`, `apps.yaml`) and attached as a `text.format`
+    param on every call the gateway makes for that app — same decision,
+    different mechanism. See D4's "Extended for T2" subsection in
+    `docs/02-decisions.md` for the full mechanism description.
+
+    Verified directly against the installed `openai==2.48.0` package, not
+    assumed: the request shape is `text={"format": {"type": "json_schema",
+    "name", "schema", "strict"}}`; the resulting structured JSON comes
+    back as a **plain string** inside `resp.output_text` — the same
+    property item 17's `_detail_for()` fix already reads — there is no
+    separate "structured output" response item type. Chose non-strict mode
+    (`strict: False`): OpenAI's `strict: true` requires every property in
+    `required`, which would have forced `question` (genuinely optional in
+    D4's shape) into a bigger schema change than warranted without a live
+    endpoint to verify strict-mode edge cases against. The cost:
+    `_extract_structured_status()` gets no server-side conformance
+    guarantee, so it fails open — anything that doesn't parse as the
+    expected JSON shape falls back to ordinary plain-text `COMPLETED`
+    handling rather than raising.
+
+    Found a real architectural gap while implementing, not anticipated in
+    the initial design: `Registry.build()` cached one adapter per
+    **upstream**, shared across every app pointing at it, but
+    `output_schema` is per-**app**. Re-keyed `self._adapters` by
+    `app_cfg.name`, resolving each app's upstream via the already-existing
+    `GatewayConfig.upstream_for_app()` — a small amount of duplicate
+    `AIProjectClient` overhead for the rare app pair sharing an upstream,
+    traded against not inventing a new 1:1-enforcement validation layer.
+
+    The single highest-risk line in this feature: `follow()`'s `final=`
+    expression (`final=state in TERMINAL_STATES`) and its loop-stop
+    condition (`if state in TERMINAL_STATES or state ==
+    TaskState.INPUT_REQUIRED: return`) must stay two separate expressions.
+    Collapsing them into one shared boolean would report every
+    `INPUT_REQUIRED` event as `final=True`, which is wrong (`INPUT_REQUIRED`
+    is a pause, not a terminal state) and silently breaks the resume path.
+    A dedicated test (`test_follow_detects_input_required_when_output_schema_configured`,
+    `tests/test_foundry_progress_narration.py`) exhausts the `follow()`
+    generator fully and asserts both `len(events) == 1` and `event.final
+    is False` to guard this specifically.
+
+    `gwlint` L013 (previously skipped as "an adapter Capability, not
+    YAML-configurable here") is now implementable and implemented, since
+    `input_required`/`output_schema` are real `AppConfig`/`apps.yaml`
+    fields.
+
+    **Not verified against a live Foundry endpoint** — same class of risk
+    already flagged elsewhere in this file: whether the hosted-agent
+    Responses API proxy actually honors `text.format` end to end is
+    unconfirmed. Only the request/response shapes against the installed
+    `openai` SDK, and offline tests, back this.
+
+21. **T2 artifact-harvest race, hardened.** A real race, not a theoretical
+    one, and it was already visible in this repo's own sample:
+    `samples/tier2/02-per-user-isolated-storage`'s `fake_chat_ui.py` polls
+    `GetTask` until `status.state` reaches `TASK_STATE_COMPLETED`, then
+    checks that same response for `task.artifacts` — and had a resigned
+    `print("(no artifact yet -- harvest may still be in flight; re-run
+    GetTask)")` for the case where it lost.
+
+    Root cause: `FoundryResponsesAdapter.follow()`
+    (`src/gateway/upstream/foundry_responses.py`) yielded a completed
+    poll's terminal `StatusEvent` (`final=True`) *before* that same poll's
+    `ArtifactEvent`s. `_follow_and_relay()` (`src/gateway/a2a_server/
+    executor.py`) processes yielded events strictly in order, awaiting each
+    one fully — `updater.update_status()` for a status event,
+    `self._harvester.harvest()` (a real network copy into blob storage,
+    genuinely slow relative to a status write) then `updater.add_artifact()`
+    for an artifact. Read the installed `a2a-sdk` directly to confirm the
+    consequence: its `EventConsumer` drains the single per-task event queue
+    strictly FIFO, awaiting `TaskManager.process()` to completion for each
+    event before dequeuing the next
+    (`a2a.server.agent_execution.active_task`). So whichever event this
+    adapter yields first is guaranteed persisted first — meaning a client
+    calling `GetTask` the instant it observed `COMPLETED` could reliably
+    get a task response with no artifacts yet, not just occasionally.
+
+    Fix: swap the yield order — artifacts before the terminal status event,
+    for the same poll. No sequence-numbering or persistence concern from
+    the swap: T2's `follow()` writes nothing to `gw_event` (that table is
+    T3-only, read by `DurableAdapter`'s `event_source`); T2 always calls
+    `follow()` fresh with `from_sequence=0` (`executor.py`), so there's no
+    resume path depending on the old ordering. New regression test,
+    `test_follow_yields_artifacts_before_the_terminal_status_event`
+    (`tests/test_foundry_progress_narration.py`), asserts yield *order*
+    specifically (`events[0]` is the `ArtifactEvent`, `events[1]` the
+    `StatusEvent`) — a test that only checked event presence or count would
+    pass either way and miss a regression back to the old order.
+
+    T3 is explicitly out of scope for this fix: `DurableAdapter.follow()`
+    only relays `gw_event` rows in whatever order the T3 app's own webhook
+    pushed them, so getting the order right there is an
+    orchestrator-*author* responsibility, not something this adapter can
+    enforce. The reference orchestrator in `06-tier3-durable-agents.md` §5.2
+    already gets it right (`harvest_artifact` activity awaited, then the
+    `"completed"` notify) — flagged in `07-artifacts-and-code-interpreter.md`
+    §2 item 6 as the pattern to follow, with an explicit warning about
+    getting it backwards.
+
+    `fake_chat_ui.py`'s stale message updated to stop blaming a race that
+    no longer exists — a missing artifact now means the model genuinely
+    didn't call the code interpreter this turn (a real, separate,
+    already-tracked risk: LLM instruction-following reliability for the
+    docx-writing recipe in `instructions.md`), not a harvest still in
+    flight.
+
+22. **End-to-end trace correlation, gateway-side built.** docs/05 §6.3 and
+    docs/06 §6.3 both flagged this "the gap to close first" — without a
+    shared trace-id, one slow or failing turn can't be followed from the
+    chat client through the gateway into the upstream. New module
+    `src/gateway/tracing.py`: W3C `traceparent` parse/generate, no
+    `opentelemetry-api` dependency — the header format is a small, stable,
+    public spec, not an Azure/OpenAI-specific behavior this project's
+    "verify against the installed SDK" discipline applies to, and actual
+    span recording/export is already the platform's own job (docs/05 §6.3:
+    "App Insights is injected... by default").
+
+    Wired at the one place every piece of per-request state already enters
+    the system: `GatewayCallContextBuilder.build()`
+    (`src/gateway/a2a_server/context.py`), which already captured every
+    inbound header into `state["headers"]` for the SDK's own
+    `validate_version` check — extracting `traceparent` there cost nothing
+    extra. `trace_id_from()` mirrors `principal_from()`'s own
+    single-source-of-truth pattern. Threaded through
+    `GatewayAgentExecutor` (`execute()`/`_continue_existing()`/
+    `_follow_and_relay()`) into `UpstreamAdapter.submit()`/`follow()`/
+    `resume()` — a real Protocol signature change, not just an internal
+    detail, since `FakeAdapter` and every direct test caller needed
+    updating too. Persisted on `gw_task.trace_id` (new column, same bare-
+    pointer/no-FK style as `run_id`/`current_message_id`), overwritten on
+    resume to reflect the current turn rather than accumulating history.
+
+    `steer()`/`cancel()` deliberately NOT in scope — both make their own
+    outbound calls but neither has an inbound trace_id of its own to
+    propagate from its current call sites; `steer()`'s internal reuse of
+    `resume()` now needs a trace_id, so it mints a fresh standalone one
+    rather than reusing whatever happened to be active from an unrelated
+    earlier call. Flagged here, not silently left inconsistent.
+
+    T2 (`FoundryResponsesAdapter`/`FoundryHostedAdapter`): a fresh
+    `traceparent` header (same trace-id, new span-id per hop) on every
+    `submit()`/`follow()`-poll/`resume()` call to the Responses API, plus
+    `FoundryHostedAdapter.health()`'s own startup probe (no inbound
+    request to correlate with, so it mints a standalone one-off trace
+    rather than requiring every `_headers()` caller to supply one that
+    doesn't exist yet at startup). T3 (`DurableAdapter`): same header on
+    `submit()`/`resume()`'s outbound `SendMessage`/`raise_event` HTTP
+    calls; `follow()` accepts `trace_id` for Protocol uniformity but never
+    uses it — it makes no outbound call, only reads already-persisted
+    `gw_event` rows.
+
+    T3's receiving half — propagating the trace-id INTO the orchestration
+    and its activities — can't be built by the gateway at all, since T3
+    apps run arbitrary code the gateway has no visibility into. Built as a
+    real worked example instead: `samples/tier3/01-durable-hello-world-status`
+    now reads `context.call_context.state["headers"]["traceparent"]` in its
+    own A2A server (free, courtesy of a2a-sdk's own
+    `DefaultServerCallContextBuilder`), threads it through
+    `client_input`, and includes the trace-id segment in every `notify`
+    payload — a plain string extraction, no clock/randomness/I/O, so it
+    stays replay-safe (docs/06 §5.1). Not retrofitted onto
+    `samples/tier3/03-hitl-durable` or `samples/tier3/05-push-notifications`
+    (both literal-copy-derived from sample 01's structure, same three-line
+    change would apply identically to each) — a documented gap, not a
+    silent one.
+
+    Tests: `tests/test_tracing.py` (parse/generate unit tests),
+    `tests/test_a2a_api.py::test_inbound_traceparent_propagates_to_the_adapter`
+    / `test_missing_traceparent_mints_a_fresh_trace_id` (end-to-end through
+    the real mounted FastAPI routes), `tests/test_task_store_trace_id.py`
+    (persistence against real Postgres), a new
+    `test_submit_attaches_a_traceparent_header_with_the_same_trace_id` in
+    `tests/test_foundry_hosted_adapter.py`.
+
+    **Not verified against a live Foundry endpoint** — same class of risk
+    flagged elsewhere in this file: whether Foundry's hosted-agent
+    Responses API proxy actually reads this header and correlates it into
+    its own container span is unconfirmed. What's verified is that the
+    gateway sends a correctly-formed header on every call it makes — the
+    half actually in this codebase's control.
+
+23. **A real, if rare, lost-cancellation race — found chasing what looked
+    like test flakiness, not invented speculatively.**
+    `tests/test_a2a_api.py::test_cancel_relays_to_adapter_and_state_converges`
+    started failing intermittently (roughly 1 run in 4–5) after the trace-
+    correlation work above added more tests to the same file — not because
+    that feature touched anything relevant, but because the added load
+    widened an existing race's window. Initial instinct was "the test's
+    polling budget is too tight for a noisy shared container" — widened
+    `tests/test_a2a_api.py`'s five separate `for _ in range(100):
+    asyncio.sleep(0.05)` polling loops (all migrated to two new shared
+    helpers, `_poll_until`/`_poll_task_state`, cutting real duplication
+    along the way) from a 5s budget to 30s. That made it *worse*, not
+    better: a reproduction run hung for the full 30s and still failed,
+    which is not what "scheduling jitter" looks like — genuine jitter
+    would show up as occasional slowness, not a hang that outlasts a
+    30-second budget on a test that talks to nothing but a local Postgres
+    and an in-process ASGI app.
+
+    Root cause, found via a standalone repro script and reading
+    `GatewayTaskStoreAdapter.save()` directly: `GatewayAgentExecutor.cancel()`
+    (`src/gateway/a2a_server/executor.py`) writes `'canceled'` straight to
+    `gw_task` at the same moment a2a-sdk's own event consumer can still be
+    draining an already-queued status event (e.g. the task's initial
+    WORKING transition) through `GatewayTaskStoreAdapter.save()`
+    (`src/gateway/a2a_server/task_store.py`) — both call
+    `TaskStore.append_event()`. Both derive their `sequence` argument from
+    a separately-fetched, stale `task_row.last_sequence + 1` read in
+    Python, so under concurrency they can independently compute the
+    *identical* next sequence number. `append_event()`'s
+    `INSERT ... ON CONFLICT (task_id, sequence) DO NOTHING` silently drops
+    whichever writer loses that collision, but its accompanying
+    `UPDATE gw_task SET state = ...` ran unconditionally regardless of the
+    INSERT's outcome — so whichever writer's UPDATE physically executed
+    *last* won, non-deterministically. When the stale WORKING write landed
+    after the CANCELED write, state reverted to `'working'` with nothing
+    left to ever fix it: not a slow convergence, a **genuinely lost
+    cancellation** — a real production correctness bug this test happened
+    to be the only thing exercising concurrently enough to surface.
+
+    Fix: `append_event()`'s status UPDATE (`src/gateway/store/task_store.py`)
+    now carries `AND state NOT IN ('completed', 'failed', 'canceled',
+    'rejected')` — once a task reaches a terminal state, no further status
+    write can move it to a different state, regardless of arrival order.
+    Matches `TaskState.TERMINAL_STATES` in `gateway.upstream.base` exactly
+    (kept as literal strings since this is raw SQL). This is a real,
+    always-true invariant worth having on its own merits, not a band-aid
+    scoped to this one race. Verified the fix, not just the symptom: 25
+    consecutive full runs of `tests/test_a2a_api.py` after the fix, versus
+    a reproducible failure roughly 1 run in 4–5 before it. New dedicated
+    regression tests against real Postgres,
+    `tests/test_task_store_terminal_state_sticky.py`, exercise the guard
+    directly (a late-arriving higher-sequence write cannot revert a
+    terminal state; all four terminal states are sticky; ordinary
+    non-terminal transitions still apply normally) — independent of the
+    SDK machinery that originally surfaced it, so this stays covered even
+    on a run that doesn't happen to hit the race.
+
+## D. Duplicate source documents collapsed during merge
+
+For traceability: these upload sets were identical or near-identical
+copies of the same document and were merged into one position in this
+plan rather than kept as separate files.
+
+- `t2-hosted-agents-guide.md` — 3 identical copies → `05-tier2-hosted-agents.md`
+- `t2-identity-delegation.md` — 2 identical copies → folded into `05-tier2-hosted-agents.md` §3
+- `a2a-gateway-adapter-spec.md` — 3 revisions (2 identical latest + 1 earlier draft, see C.7) → `01-gateway-config-and-adapter-contract.md`
+- `a2a-gateway-decisions.md` — 2 revisions (see C.6) → `02-decisions.md`
+- `a2a_t2_outstanding.md` — 2 identical copies (informal commentary) → content folded into `05-tier2-hosted-agents.md` §4.3 and the C.2 correction above
+- `a2a-code-interpreter-use-container-with-shorter-timeout.md`, `a2a-save-artifacts.md`, `a2a-t1-code-interpreter.md` — three informal working notes, single copies each → merged into `07-artifacts-and-code-interpreter.md`
+- `t3-durable-agents-guide.md` — single copy → `06-tier3-durable-agents.md`
