@@ -1,0 +1,63 @@
+[project]
+name = "long-duration-agent"
+version = "0.1.0"
+description = "Hosted MAF agent that translates a prompt to Spain Spanish, saves a bilingual Markdown artifact to Blob Storage, and returns a direct, signed SAS download link to the chat UI."
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2.7",
+  "pydantic-settings>=2.3",
+  "python-dotenv>=1.0",
+  "sse-starlette>=2.1",
+  "httpx>=0.27",
+  "azure-identity>=1.17",
+  "azure-storage-blob[aio]>=12.20",
+  "agent-framework-core>=1.12.0",
+  "pyjwt[crypto]>=2.8",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2",
+  "pytest-asyncio>=0.23",
+]
+# Required only for LDA_USE_STUB_TRANSLATOR=0 (real translation calls). Not needed for the
+# demo/test path, which uses the offline stub - see translator.py. Pinned lower than
+# agent-framework-core: these connector packages trail the core package's own version numbers.
+translate = [
+  "agent-framework-openai>=1.10.0",
+  "agent-framework-foundry>=1.10.0",
+]
+# Required only for LDA_CHECKPOINT_BACKEND/LDA_METADATA_BACKEND=azurite|azure and/or
+# LDA_KEY_VAULT_URL - the multi-instance-safe backends. Not needed for the single-host/demo
+# defaults (FileCheckpointStorage + SQLite + a plain env var).
+production = [
+  "azure-data-tables>=12.5",
+  "azure-keyvault-secrets>=4.8",
+]
+# Required only for LDA_OTEL_EXPORTER=console|otlp and/or LDA_METRICS_ENABLED=true (the
+# default). agent-framework-core already depends on opentelemetry-api (a no-op stub without
+# these); observability.py degrades gracefully to no-op metrics if prometheus-client isn't
+# installed, but actually exporting traces needs the real SDK below.
+observability = [
+  "opentelemetry-sdk>=1.30",
+  "opentelemetry-exporter-otlp-proto-http>=1.30",
+  "prometheus-client>=0.20",
+]
+# Required only for LDA_CONTENT_SAFETY_MODE=azure. Not needed for "off" (default) or
+# "blocklist", both of which are pure Python - see content_safety.py.
+content-safety = [
+  "azure-ai-contentsafety>=1.0.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
