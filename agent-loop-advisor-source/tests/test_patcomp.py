@@ -636,22 +636,22 @@ class TestGoldenSet(unittest.TestCase):
         self.assertEqual(m26["negatives_false_positive"], 0)
 
     def test_recall_and_target_match_hold_on_the_full_tuning_cohort(self):
-        """Same shape of guard as above, scoped to all 111 tuning cases (the
-        original 26, the 45 relabeled from validation in Phase 2 round 2,
-        and the 40 relabeled from validation in Phase 2 round 3,
-        2026-08-01). Thresholds are today's honestly-measured numbers, not
-        aspirational ones — see docs/golden-set-methodology.md for the
-        checkpoint that produced them. A harder, more diverse cohort than
-        the original 26 is expected to score a little lower; the floor here
-        exists to catch a regression below TODAY, not to demand perfection.
+        """Same shape of guard as above, scoped to all 151 tuning cases (the
+        original 26, the 45 relabeled in round 2, the 40 relabeled in round
+        3, and the 40 relabeled in round 5, 2026-08-01). Thresholds are
+        today's honestly-measured numbers, not aspirational ones — see
+        docs/golden-set-methodology.md for the checkpoint that produced
+        them. A harder, more diverse cohort than the original 26 is
+        expected to score a little lower; the floor here exists to catch a
+        regression below TODAY, not to demand perfection.
         positive_outcome_match is a floor, not an equality, as of round 3:
         a handful of cases were passing for the WRONG reason (a coincidental
         term match on an unrelated signature happened to still route to the
         right outcome) and now correctly fall back once that term was
         removed — see docs/golden-set-methodology.md for which ones and
         why that's a fix, not a regression."""
-        self.assertGreaterEqual(self.m["positive_outcome_match"], 84)
-        self.assertGreaterEqual(self.m["positive_target_match"], 70)
+        self.assertGreaterEqual(self.m["positive_outcome_match"], 114)
+        self.assertGreaterEqual(self.m["positive_target_match"], 97)
         self.assertGreaterEqual(self.m["diagnosis_recall"], 0.86)
         self.assertEqual(self.m["negatives_false_positive"], 0)
 
@@ -693,10 +693,15 @@ class TestGoldenSet(unittest.TestCase):
         # TEST... ingredient PASSED through" in an unrelated supply-chain
         # traceability case.
         "contamination-trace-back": {"validated_artefacts"},
-        # (beneficial-ownership-check's "sign off" collision from round 2 is
-        # gone: "sign off" was removed in round 3 as a pure coincidental
-        # collision elsewhere — see human_judgement_in_output's evidence
-        # comment — which fixed this case as a side effect.)
+        # beneficial-ownership-check's "sign off" collision from round 2 was
+        # gone for one round (round 3 removed bare "sign off" as a pure
+        # coincidental collision elsewhere), but round 5 re-added a 3-word
+        # form, "actually sign off", to recover other cases' recall — and
+        # this case's own "we actually owns... before we can sign off"
+        # genuinely contains "actually" too. Plausible genuine second
+        # label, not a bug: KYC "before we can sign off" is itself
+        # human-judgement-shaped language.
+        "beneficial-ownership-check": {"human_judgement_in_output"},
         # Coincidental: "a person to look" bag-of-words-collides on "too
         # much for ONE PERSON... LOOK at why [tests] fail" — unrelated
         # workflow-decomposition and program-repair language landing on the
@@ -729,6 +734,63 @@ class TestGoldenSet(unittest.TestCase):
         # FAILED tolerance checks... it's actually been TESTED against the
         # data" in this unrelated root-cause-investigation case.
         "production-defect-root-cause": {"validated_artefacts"},
+        # Round 5 (2026-08-01) additions — same weak_judgement <->
+        # multiple_interpretations boundary as manufacturer-diagnostics.
+        "contract-clause-judgement-calls": {"multiple_interpretations"},
+        "water-damage-claim-conflicting-story": {"weak_judgement"},
+        "regional-outage-root-cause": {"weak_judgement"},
+        # "decide whether" genuinely reads as either signature: deciding IS
+        # judgement-shaped language even when the case's actual point is
+        # that a human, not the model, has to do the deciding.
+        "parts-deviation-airworthiness-signoff": {"weak_judgement"},
+        # cross_session_recall's "remember" and should_improve_over_runs'
+        # "carry forward" are both continuity-across-time language and
+        # genuinely blur into each other; both terms are load-bearing
+        # elsewhere and can't be removed.
+        "weekly-recap-editing-feedback-loop": {"cross_session_recall"},
+        "buyer-preferences-across-viewings": {"should_improve_over_runs"},
+        # Coincidental: "latency" is load-bearing broadly for
+        # cost_latency_pressure and bag-of-words-collides with "network
+        # latency" named as a QA test AREA here, not a cost/speed
+        # constraint on the system itself.
+        "release-candidate-qa-split": {"cost_latency_pressure"},
+        # Coincidental: "single number in" is load-bearing elsewhere and
+        # bag-of-words-collides on an unrelated "same phone NUMBER... no
+        # SINGLE claim file" in this relationship-discovery case.
+        "connected-claims-across-policies": {"stale_facts"},
+        # Coincidental: "whatever this costs" is load-bearing elsewhere
+        # (real-time-bid-latency, same-day-delivery-routing) and
+        # bag-of-words-collides on "costing more than it saves" alongside
+        # the stable-high-volume framing that's the actual expected label.
+        "fnol-intake-massive-volume": {"cost_latency_pressure"},
+        # Coincidental: "system of record" is a generic load-bearing term
+        # elsewhere.
+        "disability-benefits-application-flow": {"needs_tools_midreasoning"},
+        # "actually sign off" (re-added round 5 as a 3-word-safe form of
+        # round 2's "sign off") genuinely reads as human_judgement_in_output
+        # boundary language in both of these — a "final sign-off" stage
+        # named inside a larger workflow is plausibly its own secondary
+        # label, the same shape as expense-report-review/disability-
+        # benefits-application-flow expecting multiple signatures at once.
+        "building-permit-multi-department-flow": {"human_judgement_in_output"},
+        "nightly-build-qa-and-save-compat": {"human_judgement_in_output"},
+        # Two independent findings on the same case: "a lookup against" is
+        # plausible genuine secondary evidence (the case explicitly
+        # describes one step as pure grounding, "shouldn't involve any
+        # judgment... human or otherwise"); "human approval on" is a real
+        # architectural limitation, not a term choice — its bag-of-words
+        # support ("human" from the correctly-negated "shouldn't involve...
+        # human or otherwise" clause, "approval" from an earlier, un-negated
+        # "payout approval") is split across a negated and a non-negated
+        # segment, and the per-segment discount can't see that split. The
+        # term is solely load-bearing for dotnet-migration-synthesis and
+        # can't be removed.
+        "hailstorm-claim-multistage": {"stale_facts", "human_judgement_in_output"},
+        # Coincidental: "live systems" is load-bearing elsewhere and
+        # bag-of-words-collides on "the system... goes live" (deployment
+        # language, not a live-mid-reasoning-lookup claim) in this
+        # validated_artefacts case.
+        "irrigation-schedule-generate-and-test": {"needs_tools_midreasoning"},
     }
 
     def test_diagnosis_precision_has_no_new_unexplained_over_firing(self):
@@ -740,11 +802,11 @@ class TestGoldenSet(unittest.TestCase):
                              f"{r.id}: new/changed over-firing, investigate before accepting")
 
     def test_diagnosis_precision_is_reported(self):
-        """Threshold reflects the full 111-case tuning cohort (Phase 2 round
-        3, 2026-08-01), not the original 26's tighter 0.95 — see
+        """Threshold reflects the full 151-case tuning cohort (Phase 2 round
+        5, 2026-08-01), not the original 26's tighter 0.95 — see
         docs/golden-set-methodology.md."""
         self.assertIsNotNone(self.m["diagnosis_precision"])
-        self.assertGreaterEqual(self.m["diagnosis_precision"], 0.90)
+        self.assertGreaterEqual(self.m["diagnosis_precision"], 0.85)
 
     # ---- cohorts (Phase 0/1/2): tuning vs validation must actually separate.
     def test_original_tuning_cases_are_still_tagged_tuning(self):
@@ -814,24 +876,56 @@ class TestGoldenSet(unittest.TestCase):
         for case_id in self._RELABELED_PHASE2R2_IDS:
             self.assertEqual(by_id[case_id].cohort, "tuning", case_id)
 
+    # The 40 cases blind-authored for the Phase 2 round 4 holdout, relabeled
+    # tuning in Phase 2 round 5 (2026-08-01) at the user's explicit request
+    # to extend the signature list to improve recall — widening evidence
+    # meant reading this batch's text directly. See
+    # docs/golden-set-methodology.md.
+    _RELABELED_PHASE2R4_IDS = {
+        "contract-clause-judgement-calls", "irrigation-decision-live-lookups",
+        "fiber-rollout-sequencing", "water-damage-claim-conflicting-story",
+        "buyer-preferences-across-viewings", "weekly-recap-editing-feedback-loop",
+        "building-permit-multi-department-flow", "release-candidate-qa-split",
+        "parts-deviation-airworthiness-signoff", "batch-release-go-no-go",
+        "connected-claims-across-policies", "network-migration-config-generation",
+        "checkin-experience-no-measure", "instant-valuation-at-scale",
+        "fnol-intake-massive-volume", "governing-law-clause-lookup",
+        "part-spec-sheet-lookup", "fence-setback-ordinance-lookup",
+        "current-cleaning-sop-lookup", "front-desk-faster-vague",
+        "farm-operation-ai-vague", "network-ops-smarter-memo",
+        "coach-wants-ai-vague", "disability-benefits-application-flow",
+        "property-claim-triage-judgement", "regional-outage-root-cause",
+        "nightly-build-qa-and-save-compat", "peak-season-showing-routes",
+        "listing-price-recommendation-variance", "avionics-fault-live-diagnostics",
+        "broadcast-crew-weekend-scheduling", "coating-batch-root-cause",
+        "player-support-history-recall", "due-diligence-memo-recurring-gaps",
+        "hailstorm-claim-multistage", "regional-compliance-report-assembly",
+        "commercial-property-investment-signoff", "housing-assistance-eligibility-rule",
+        "new-client-conflict-check", "irrigation-schedule-generate-and-test",
+    }
+
+    def test_relabeled_phase2r4_cases_are_tagged_tuning(self):
+        by_id = {r.id: r for r in self.rows}
+        self.assertEqual(len(self._RELABELED_PHASE2R4_IDS), 40)
+        for case_id in self._RELABELED_PHASE2R4_IDS:
+            self.assertEqual(by_id[case_id].cohort, "tuning", case_id)
+
     def test_cohort_filter_actually_filters(self):
         tuning_only = metrics(self.rows, cohort="tuning")
         validation_only = metrics(self.rows, cohort="validation")
-        self.assertEqual(tuning_only["n"], 111)
-        self.assertEqual(validation_only["n"], 40)
+        self.assertEqual(tuning_only["n"], 151)
+        self.assertEqual(validation_only["n"], 0)
 
 
 # ------------------------------------------------- validation cohort report
 class TestGoldenSetValidationCohort(unittest.TestCase):
-    """The Phase 2 round 4 holdout (2026-08-01): 40 cases, blind-authored
-    per docs/phase1-validation-authoring-brief.md by a fresh, isolated
-    subagent (zero tool uses confirmed) after the round 2 batch was
-    relabelled tuning in round 3 to investigate its 0-recall signatures —
-    see docs/golden-set-methodology.md for the full checkpoint history.
-    Numbers are reported, not gated against a pre-chosen threshold — this
-    is the first time THIS cohort has ever been run. The invariants that DO
-    get asserted are cross-cohort ones that must never depend on which
-    cases happen to be in the holdout."""
+    """As of Phase 2 round 5 (2026-08-01) there is NO current holdout: the
+    round 4 batch was relabeled tuning to extend evidence lists, and no
+    fresh batch has been authored yet. This class stays in place (running
+    over an empty validation cohort) so the next round only has to add a
+    fresh batch and this reporting comes back for free — see
+    docs/golden-set-methodology.md for the checkpoint history and what the
+    next blind batch needs to cover."""
 
     @classmethod
     def setUpClass(cls):
@@ -839,9 +933,11 @@ class TestGoldenSetValidationCohort(unittest.TestCase):
         cls.rows = [r for r in rows if r.cohort == "validation"]
         cls.m = metrics(rows, cohort="validation")
 
-    # Populated only if this checkpoint's run finds a genuine over-selling
-    # case — see docs/golden-set-methodology.md for the Phase 2 round 4
-    # checkpoint result. Per the Phase 3 rule, a finding here gets reported
+    def test_no_current_holdout(self):
+        self.assertEqual(len(self.rows), 0)
+
+    # Populated only if a future checkpoint's run finds a genuine
+    # over-selling case. Per the Phase 3 rule, a finding here gets reported
     # and tracked, not tuned against in the same round.
     _KNOWN_OVER_SOLD: set[str] = set()
 

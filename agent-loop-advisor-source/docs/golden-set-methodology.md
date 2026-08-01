@@ -448,6 +448,112 @@ alternatives (a real thesaurus pass, or a separate embedding/model
 second opinion) exist to eventually address, not more manual term
 chasing against an ever-larger tuning cohort.
 
+### Phase 2 round 5 — extending the signature list, 2026-08-01
+
+Requested directly: extend the signature list to improve recall.
+Extending it meant reading the round 4 batch's text, so it was relabelled
+`validation` → `tuning` first, same discipline as every prior round.
+
+**A fourth real bug, and probably the most consequential one found so
+far: contraction-based negation was never working at all.** `_NEG`'s
+patterns were written as `"doesn t"` / `"don t"` — spelled the way
+`normalise()` renders a contraction (apostrophes aren't alphanumeric, so
+`_WORD` tokenisation splits `"doesn't"` into `"doesn"` + `"t"`) — but
+`negated_spans()` was matching them against the RAW, un-normalised
+segment, where the literal string `"doesn't"` (with an apostrophe) never
+equals the pattern `"doesn t"` (with a space). The two spelled-out forms
+(`"does not"`, `"do not"`) worked throughout every prior round; every
+contraction — `"doesn't"`, `"shouldn't"`, `"can't"`, all of them — was
+silently invisible to the scanner from the day it was written. Confirmed
+directly: `negated_spans("It doesn't compare options...")` returned `[]`
+where `negated_spans("It does not compare options...")` correctly
+returned the negated segment. Concretely, `"...are pure lookups against
+our policy system and shouldn't involve any judgment at all, human or
+otherwise"` let `human approval on` fire as if the sentence never said
+`"shouldn't"`. Fixed by normalising each segment before running `_NEG`
+against it (`negated_spans()`), and widened the pattern list to cover
+the contractions that now actually match (`isn t`, `aren t`, `wasn t`,
+`weren t`, `haven t`, `hasn t`, `hadn t`, `won t`, `wouldn t`, `shouldn
+t`, `couldn t`, `can t`, `mustn t`, `shan t`, `didn t`). Verified against
+every existing negation test, including the list case (`"does not
+compare options, plan, or take actions"`) and the contraction form of
+the same sentence.
+
+One related, smaller finding logged but not fixed this round: the
+round-2 `", not X"` segment boundary (added to stop a trailing aside from
+reaching backward) uses a non-capturing regex group, so `re.split()`
+consumes the word `"not"` itself along with the comma — the resulting
+trailing segment is never actually self-tagged as negated. This doesn't
+undermine the boundary's actual purpose (protecting the earlier clause
+from cross-clause reach still works), and no case currently depends on
+the trailing segment being self-negated, so it's left as a documented
+architectural quirk rather than chased further this round.
+
+**Widened evidence for the round 4 batch's remaining gaps**, same
+discipline as every prior round (signature's own `problem`/pattern
+`summary`/`beats_baseline_when` text plus, now that these are tuning
+cases, their own wording): `why the others were rejected` / `nobody can
+articulate` (weak_judgement); `cross reference` / `pull live` / `live
+status` (needs_tools_midreasoning); `valid orderings` / `knock most of
+them out` / `eliminate most` (planning_under_constraints); `sit open
+for` / `goes down overnight` (long_running_process); `a record of why` /
+`actually sign off` / `a documented reason` / `needs a paper trail`
+(human_judgement_in_output); `no discretion` (deterministic_policy_compliance);
+`split by area` / `independent pieces` (workflow_too_large); `run
+against` / `fails a check` (validated_artefacts); `in measurable terms`
+(quality_undefined); `cited` / `read back` / `version number`
+(stale_facts); `hops away` (relationship_discovery).
+
+`actually sign off` is a deliberate 3-word-safe replacement for round
+3's removed `sign off`: requiring `"actually"` adjacent-in-bag-of-words
+recovers the genuine KYC/sign-off signal round 3 traded away
+(`beneficial-ownership-check`) without reintroducing round 3's specific
+collision (the veterinary case that broke it never says `"actually"`).
+It does introduce two new, milder collisions on cases that separately
+happen to say `"actually"` elsewhere in a long paragraph — investigated
+and pinned as plausible genuine secondary labels (a named `"final
+sign-off"` stage inside a larger workflow is boundary-shaped the same
+way `expense-report-review`/`disability-benefits-application-flow`
+already are), not silently accepted.
+
+**One term added and then removed in the same round**: `maintenance
+windows` (long_running_process) fixed nothing on its own (the case it
+was added for already fires via `sit open for`) and bag-of-words-collided
+on an unrelated "unlogged maintenance event... around the same window" in
+a root-cause-investigation case. Checked reliance before removing, same
+discipline as every removal this project has made.
+
+**One finding classified as a genuine architectural limitation, not a
+term problem**: `hailstorm-claim-multistage`'s `human approval on`
+over-fire survives even the contraction-negation fix, because its
+bag-of-words support is split across two segments — `"human"` comes from
+the correctly-negated `"shouldn't involve any judgment... human or
+otherwise"` clause, `"approval"` from an earlier, un-negated `"payout
+approval"` — and the per-segment discount only catches a term when ALL
+of its supporting words sit inside the same negated segment. The term is
+solely load-bearing for `dotnet-migration-synthesis` and can't be
+removed. Fixing this properly needs position-aware matching (which
+segment did each matched word actually come from), a bigger change than
+this round's scope; logged as a known limitation rather than patched
+around.
+
+**Result:** all 16 signatures now sit at recall ≥5/6 (83%) on the full
+151-case tuning cohort, most in the 85-100% range — `human_judgement_in_output`
+15/17, `stale_facts` 12/14, `weak_judgement` 10/13,
+`deterministic_policy_compliance` 10/13, `cost_latency_pressure` 8/8,
+`stable_high_volume` 5/5. Original 26 held their exact Round-1 baseline
+throughout (20/20, recall 0.938, precision 0.962). Full 151-case tuning
+cohort: 114/122 outcome match, 97/122 target match, recall 0.871,
+precision 0.881, 0 false positives.
+
+This round has not been checked against a fresh blind holdout — no
+validation-cohort case currently exists (every batch authored so far has
+ended up relabelled tuning). The contraction-negation fix in particular
+is structural and should generalise broadly — it isn't phrased around
+any case's specific wording, and negation via contraction is at least as
+common in real business writing as the spelled-out form — but, as
+always, that's a prediction until measured.
+
 **Phase 2 — expand evidence lists (tuning cohort only).**
 Per signature, source candidate terms from its `problem` text and the
 pattern's `summary`/`beats_baseline_when` in `agent_pattern.md`/the

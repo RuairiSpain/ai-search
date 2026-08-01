@@ -89,8 +89,24 @@ class ModelDiagnoser(Protocol):
 # evidence AGAINST planning, not for it. Without this the prior reads a
 # document's own disclaimers as support and over-sells orchestration — the
 # dominant failure mode this compiler exists to avoid.
+#
+# This is matched against the NORMALISED segment (see negated_spans below),
+# so "doesn t"/"don t"/etc. are written the way normalise() actually spells
+# a contraction — apostrophes aren't alphanumeric, so _WORD tokenisation
+# splits "doesn't" into "doesn" + "t", never leaving the apostrophe in.
+# Round 5 (2026-08-01) found that this had been matched against the RAW,
+# un-normalised segment since the fix was written: "doesn t" as a literal
+# string never appears in real text (which has an apostrophe, "doesn't"),
+# so EVERY contraction-based negation — "shouldn't", "doesn't", "can't",
+# all of them, not just the two spelled out here — was silently invisible
+# to the scanner. "are pure lookups against our policy system and
+# shouldn't involve any judgment at all, human or otherwise" let
+# "human approval on" fire as if the sentence never said "shouldn't" at
+# all. Widened the contraction list now that matching actually works.
 _NEG = re.compile(
-    r"\b(does not|do not|doesn t|don t|no |not |never|without|"
+    r"\b(does not|do not|doesn t|don t|didn t|isn t|aren t|wasn t|weren t|"
+    r"haven t|hasn t|hadn t|won t|wouldn t|shouldn t|couldn t|can t|"
+    r"mustn t|shan t|no |not |never|without|"
     r"rather than|instead of|nothing that)\b", re.I)
 # A negation's scope ends at a coordinating boundary that starts a new
 # predicate (";", ":", ", and", ", while"), not at the end of the sentence.
@@ -129,12 +145,20 @@ def negated_spans(text: str) -> list[str]:
     earlier, unrelated positive evidence. The "does not compare options,
     plan, or take actions" list case is unaffected: "does not" sits at the
     start of its segment, so the forward scope still covers the whole list.
+
+    Matches against the NORMALISED segment, not the raw one — see _NEG's
+    comment for why: normalise() is what actually turns "doesn't" into
+    "doesn t", so searching raw text for that literal string never matched
+    any real contraction.
     """
     out = []
     for segment in _SEGMENT.split(text):
-        m = _NEG.search(segment) if segment else None
+        if not segment:
+            continue
+        norm_segment = normalise(segment)
+        m = _NEG.search(norm_segment)
         if m:
-            out.append(normalise(segment[m.start():]))
+            out.append(norm_segment[m.start():])
     return out
 
 

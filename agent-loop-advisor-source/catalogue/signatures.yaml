@@ -44,10 +44,18 @@ signatures:
     # (2026-08-01, Phase 2 round 3): three more natural ways a genuinely
     # retrieval-only ask gets described (pointing at a source document)
     # without ever saying "cite" or "quote".
+    # "cited" added (2026-08-01, Phase 2 round 5): same silent-e stemmer gap
+    # as quote/quoted — stem("cited") -> "cit", stem("cite") stays "cite",
+    # so the two never bridge through the stemmer. "read back" is a sibling
+    # of "quote it back" for the same verbatim-retrieval concept with a
+    # different verb. "version number" grounds the signature's own claim
+    # (current vs. stale) directly: naming the version is how a genuine
+    # grounding-only request signals "the CURRENT one, not whatever's
+    # cached."
     evidence: [rag, retrieval, knowledge base, cannot find, already exists somewhere,
-              no actions are taken, answer and cite, cite, quote it back, quoted back,
+              no actions are taken, answer and cite, cite, cited, quote it back, quoted back,
               already documented, single answer in, single number in, word for word,
-              pull the answer from, straight out of, a lookup against]
+              pull the answer from, straight out of, a lookup against, read back, version number]
 
   - id: weak_judgement
     problem: Correct facts, weak judgement
@@ -64,11 +72,17 @@ signatures:
     # possible statement of the signature's own definition (people looking
     # at the same facts and landing on different picks) — grounded directly
     # in the "Correct facts, weak judgement" problem line above.
+    # "why the others were rejected" and "nobody can articulate" added
+    # (2026-08-01, Phase 2 round 5): the former grounds pattern 01's own
+    # summary ("select one and say why the others lost") almost verbatim;
+    # the latter names the actual failure (no account of why one pick beat
+    # another) without needing "weigh"/"facts"/"judgement" to be present.
     evidence: [wrong recommendation, first answer, weak judgement, decide whether, root cause,
               propose an assessment, commits to the first, weigh the evidence, draft a recommendation,
               bounded iterations, critique them, inconsistent recommendations, judgement call,
               considered call, reasonable call, weigh the facts, same facts different,
-              weigh it differently, pick the best one, can't agree which]
+              weigh it differently, pick the best one, can't agree which,
+              why the others were rejected, nobody can articulate]
 
   - id: needs_tools_midreasoning
     problem: Needs tools, data lookups or actions mid-reasoning
@@ -92,10 +106,16 @@ signatures:
     # observe-decide without ever naming a tool, a system, or an action verb
     # from the existing list; "live traffic" is a sibling of "live systems"
     # for the same live-conditions-mid-task framing.
+    # "cross reference", "pull live" and "live status" added (2026-08-01,
+    # Phase 2 round 5): "live status"/"pull live" are further siblings of
+    # "live systems"/"live traffic" for the same live-conditions framing;
+    # "cross reference" names the act of checking one source against
+    # another mid-task without any of the existing action verbs.
     evidence: [call the api, crm, system of record, take action, update the record,
-              live systems, live traffic, gathers evidence from, checking as it goes,
-              react to what it finds, changes while it works,
-              adjust based on what it finds, mid-reasoning, mid reasoning, act on it]
+              live systems, live traffic, live status, pull live, gathers evidence from,
+              checking as it goes, react to what it finds, changes while it works,
+              adjust based on what it finds, mid-reasoning, mid reasoning, act on it,
+              cross reference]
 
   - id: planning_under_constraints
     problem: Planning under constraints with many valid options
@@ -113,9 +133,15 @@ signatures:
     # "lots of valid"/"dozens of valid" added: "many valid" required the
     # literal word "many", and a lot of genuine cases say "lots of" or
     # "dozens of" instead.
+    # "valid orderings", "knock most of them out" and "eliminate most"
+    # added (2026-08-01, Phase 2 round 5): "valid orderings" drops the
+    # quantifier requirement entirely (many/lots/dozens all optional now);
+    # the other two are siblings of "rule out the ones that" for the same
+    # cheap-elimination-first concept.
     evidence: [ordering constraints, dependency order, many valid, lots of valid, dozens of valid,
-              migration order, feasible, must be migrated in, sensible one, hard constraints,
-              many workable, rule out the ones that, many possible, technically fit]
+              valid orderings, migration order, feasible, must be migrated in, sensible one,
+              hard constraints, many workable, rule out the ones that, knock most of them out,
+              eliminate most, many possible, technically fit]
 
   - id: multiple_interpretations
     problem: Multiple plausible interpretations, first answer often wrong
@@ -190,10 +216,20 @@ signatures:
     # processes measured in weeks rather than days, and a sibling of
     # "survive a restart"/"restarts overnight" for the common "resume after
     # a system restart" phrasing (different verb, same claim).
+    # "sit open for" and "goes down overnight" added (2026-08-01, Phase 2
+    # round 5): "sit open for" is how a process spanning weeks often gets
+    # described without "runs"; "goes down overnight" is a further sibling
+    # of "restarts overnight" for the same must-survive-an-interruption
+    # claim, different phrasing. "maintenance windows" added and removed
+    # the same round: not solely relied on (the case it was added for
+    # already fires via "sit open for"), and bag-of-words-collided on an
+    # unlogged "maintenance event... around the same window" in an
+    # unrelated root-cause-investigation case.
     evidence: [sla, case management, several days, over several, escalates, second approval,
               then either, sits in, across days, state transition, defined stages,
               picks back up, survive a restart, restarts overnight, runs for weeks,
-              system restart, keep its place, persist through]
+              system restart, sit open for, goes down overnight,
+              keep its place, persist through]
 
   - id: workflow_too_large
     problem: Workflow too large or heterogeneous for one agent
@@ -216,10 +252,15 @@ signatures:
     # "several steps" was the same story — matched no true positive either,
     # and bag-of-words-collided on "two blending steps... several linked
     # records" in an unrelated relationship-discovery case.
+    # "split by area" and "independent pieces" added (2026-08-01, Phase 2
+    # round 5): siblings of "split the work"/"narrow subtasks" for cases
+    # that name the split by its axis (area/piece) rather than the act of
+    # splitting.
     evidence: [multiple teams, decompose, decomposed, heterogeneous, many sources,
               breadth, split the work, narrow subtasks, worker agents, small model can, in parallel,
               independent reviewer, different source system, splitting it up,
-              too much for one, run side by side, different skill sets]
+              too much for one, run side by side, different skill sets, split by area,
+              independent pieces]
 
   - id: human_judgement_in_output
     problem: Human judgement is part of output quality, not just a gate
@@ -231,9 +272,17 @@ signatures:
     # and bag-of-words-collided on "early SIGNs of... gone OFF their feed"
     # in an unrelated veterinary-diagnosis case — "sign" (stemmed from
     # "signs") and "off" both common enough alone to scatter-match.
+    # "actually sign off" added back (2026-08-01, Phase 2 round 5) as the
+    # 3-word form of what "sign off" alone used to cover: requiring
+    # "actually" adjacent rules out the round-3 collision (that case never
+    # says "actually"), while still catching the genuine sign-off phrasing.
+    # "a record of why" and "a documented reason" ground the signature's
+    # own "recorded reason" requirement directly.
     evidence: [analyst decides, expert judgement, human review, senior handler,
               cannot be automated, for review before, critique, human approval on, escalate the hard,
-              a person to look, a real person, real deadline, route to a reviewer, too costly to get wrong]
+              a person to look, a real person, actually sign off, a record of why,
+              a documented reason, needs a paper trail, real deadline, route to a reviewer,
+              too costly to get wrong]
 
   - id: deterministic_policy_compliance
     problem: Deterministic policy compliance required
@@ -251,18 +300,26 @@ signatures:
     # usually — it has to be guaranteed"; "unbreakable" is a single-word
     # sibling of "cannot bend"/"never bend" (same claim, same low collision
     # risk as any other single distinctive word).
+    # "no discretion" added (2026-08-01, Phase 2 round 5): the plain-English
+    # negative of "the model proposes, a deterministic rules engine
+    # decides" — self-negating full phrase, exempt from the negation
+    # discount for the same reason as "no exceptions" above.
     evidence: [regulation, must not, mandatory, cannot vary, set by compliance, which rule was,
               audit trail, threshold, deterministic, policy compliance, no exceptions,
               cannot bend, never bend, hard rule, has to be guaranteed, no close enough,
-              zero tolerance, unbreakable]
+              zero tolerance, unbreakable, no discretion]
 
   - id: relationship_discovery
     problem: Relationship discovery, no single document has the answer
     pattern: "10"
     paper_section: 15
+    # "hops away" added (2026-08-01, Phase 2 round 5): grounds pattern 10's
+    # own summary ("plans traversals over an entity graph") in the way an
+    # infrastructure/network case actually describes indirect connection —
+    # the real cause is N hops away from where the symptom shows up.
     evidence: [lineage, graph, ownership, who owns, records connect, no single record,
               share a director, relationships, follow it through, several linked records,
-              layers of holding, full chain, no one filing shows]
+              layers of holding, full chain, no one filing shows, hops away]
 
   - id: validated_artefacts
     problem: Validated artefacts required, not advice
@@ -273,9 +330,15 @@ signatures:
     # "pass our compliance checklist... if a clause is missing, redo it" is
     # the same free, unflatterable evaluator pattern 11's beats_baseline_when
     # describes, just for a document artefact instead of code.
+    # "run against" and "fails a check" added (2026-08-01, Phase 2 round 5):
+    # two genuinely different cases independently described the same
+    # generate-run-repair loop as "run against our/a simulator... fails a
+    # check" rather than naming tests explicitly — a strong enough repeated
+    # signal to add despite "run against" being a fairly generic two-word
+    # combination.
     evidence: [generate code, migration script, artefact, must compile, the deliverable is,
               tests pass, fails the tests, pass or fail, look at the error and repair,
-              compliance checklist]
+              compliance checklist, run against, fails a check]
 
   # Advisory signatures. No folder, no emitted agents. These change the shape of
   # the recommendation rather than adding a pattern to the composition.
@@ -289,9 +352,13 @@ signatures:
     # good" — both are deliberately self-negating full phrases (see
     # diagnose.score_signatures' fix for self-negating evidence terms),
     # since the absence itself is the positive evidence for this signature.
+    # "in measurable terms" added (2026-08-01, Phase 2 round 5): the
+    # definitional opposite of what this signature names — a request that
+    # explicitly can't describe the target "in measurable terms" is stating
+    # the gap directly.
     evidence: [not sure how to measure, no benchmark, subjective, quality varies,
               no scorecard, nobody has agreed, nobody has said, never been measured,
-              no clear definition of good, no agreed measure]
+              no clear definition of good, no agreed measure, in measurable terms]
 
   - id: cost_latency_pressure
     problem: Cost or latency pressure at scale
