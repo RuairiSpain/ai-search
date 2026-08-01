@@ -23,6 +23,7 @@ from patcomp import diagnose, estimate, generate, intake       # noqa: E402
 from patcomp import legality, present, primitives, route       # noqa: E402
 from patcomp.cli import main                                   # noqa: E402
 from patcomp.goldenset import Row, metrics, run_golden_set     # noqa: E402
+from patcomp import signature_audit                            # noqa: E402
 from patcomp.models import (IR, Blast, Candidate, Confidence,  # noqa: E402
                             EvaluatorCandidate, Field_, Node, Outcome,
                             SignatureLabel, TaskClass, ToolBinding)
@@ -600,6 +601,39 @@ class TestGoldenSet(unittest.TestCase):
         self.assertGreaterEqual(self.m["diagnosis_recall"], 0.90)
         self.assertEqual(self.m["negatives_false_positive"], 0)
 
+    # ---- precision (Phase 0): widening an evidence list to fix one case's
+    # recall must not silently start firing it on others. These two are
+    # known and accepted today (see signature_audit's registered pairs and
+    # docs/golden-set-methodology.md); a THIRD case with an unexpected
+    # signature should fail loudly, not slide in unnoticed.
+    _KNOWN_OVER_FIRES = {
+        "manufacturer-diagnostics": {"multiple_interpretations"},
+        "vendor-onboarding-case-management": {"cost_latency_pressure"},
+    }
+
+    def test_diagnosis_precision_has_no_new_unexplained_over_firing(self):
+        for r in self.rows:
+            expected_extra = self._KNOWN_OVER_FIRES.get(r.id, set())
+            self.assertEqual(set(r.diagnosis_extra), expected_extra,
+                             f"{r.id}: new/changed over-firing, investigate before accepting")
+
+    def test_diagnosis_precision_is_reported(self):
+        self.assertIsNotNone(self.m["diagnosis_precision"])
+        self.assertGreaterEqual(self.m["diagnosis_precision"], 0.95)
+
+    # ---- cohorts (Phase 0): tuning vs validation must actually separate.
+    def test_all_current_cases_default_to_tuning_cohort(self):
+        """The 26 cases as of 2026-08-01 have all been looked at while tuning
+        evidence lists — none of them are a valid holdout."""
+        self.assertTrue(all(r.cohort == "tuning" for r in self.rows))
+
+    def test_cohort_filter_actually_filters(self):
+        tuning_only = metrics(self.rows, cohort="tuning")
+        validation_only = metrics(self.rows, cohort="validation")
+        self.assertEqual(tuning_only["n"], len(self.rows))
+        self.assertEqual(validation_only["n"], 0)
+        self.assertIsNone(validation_only["diagnosis_recall"])
+
 
 class TestGoldenSetRowMatching(unittest.TestCase):
     """Row.target_match must compare PATTERN IDS, not operator names — the
@@ -638,6 +672,42 @@ class TestGoldenSetRowMatching(unittest.TestCase):
     def test_none_or_empty_expected_always_matches(self):
         self.assertTrue(self._row("none", []).target_match)
         self.assertTrue(self._row("", []).target_match)
+
+
+# ---------------------------------------------------------- signature audit
+class TestSignatureAudit(unittest.TestCase):
+    """A finding here is not automatically a bug — diagnosis is deliberately
+    multi-label, so some overlap is expected. What must not happen is a NEW,
+    unreviewed collision sliding in unnoticed alongside a routine evidence
+    edit. Known, already-reviewed collisions are pinned below; shrinking this
+    set is always fine, growing it should be a deliberate, visible choice."""
+
+    _ACCEPTED_COLLISIONS = {
+        ("weak_judgement", "multiple_interpretations"),
+        ("workflow_too_large", "planning_under_constraints"),
+    }
+
+    def test_no_unreviewed_collisions_beyond_the_accepted_set(self):
+        found = set(signature_audit.audit(CAT).keys())
+        self.assertTrue(
+            found <= self._ACCEPTED_COLLISIONS,
+            f"new, unreviewed collision(s): {found - self._ACCEPTED_COLLISIONS}")
+
+    def test_check_pair_is_symmetric_in_shape(self):
+        result = signature_audit.check_pair(CAT, "weak_judgement", "multiple_interpretations")
+        self.assertIn("a_terms_that_hit_b", result)
+        self.assertIn("b_terms_that_hit_a", result)
+
+    def test_unrelated_pair_is_clean(self):
+        """Two signatures with no plausible conceptual overlap should not
+        collide — a sanity check that the audit isn't just noisy."""
+        result = signature_audit.check_pair(CAT, "stale_facts", "validated_artefacts")
+        self.assertEqual(result["a_terms_that_hit_b"], [])
+        self.assertEqual(result["b_terms_that_hit_a"], [])
+
+    def test_unknown_signature_raises(self):
+        with self.assertRaises(KeyError):
+            signature_audit.check_pair(CAT, "not_a_real_signature", "weak_judgement")
 
 
 # ---------------------------------------------------------------- CLI
@@ -679,6 +749,17 @@ class TestCLI(unittest.TestCase):
     def test_goldenset_command(self):
         out = self._run(["--catalogue", CAT_DIR, "goldenset"])
         self.assertIn("false-positive rate", out)
+        self.assertIn("diagnosis precision", out)
+        self.assertIn("mixes tuning and validation", out)
+
+    def test_goldenset_command_with_cohort(self):
+        out = self._run(["--catalogue", CAT_DIR, "goldenset", "--cohort", "tuning"])
+        self.assertIn("[cohort=tuning]", out)
+        self.assertNotIn("mixes tuning and validation", out)
+
+    def test_audit_signatures_command(self):
+        out = self._run(["--catalogue", CAT_DIR, "audit-signatures"])
+        self.assertIn("Signature confusability audit", out)
 
 
 if __name__ == "__main__":
