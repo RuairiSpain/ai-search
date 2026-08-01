@@ -105,6 +105,68 @@ its wording to fix it consumes it as a holdout. Author a fresh validation
 batch for the next checkpoint (this file's cohort can move to `tuning` at
 that point, since it will have informed edits).
 
+### Phase 2 checkpoint — round 1, 2026-08-01
+
+Evidence lists were widened for 14 of the 16 signatures, sourced only from
+each signature's own `problem` text, its pattern's `summary` /
+`beats_baseline_when`, and the *aggregate* `over_fired_signatures` counts
+from the Phase 1 checkpoint above — never from reading a validation-cohort
+case's wording. `metrics()` gained `recall_by_signature` (aggregate
+hit/expected counts per signature, never per-case) specifically so this
+round could be targeted without opening any of the 45 held-out cases.
+
+Three self-introduced problems were found and fixed before this checkpoint
+ran, via the tuning cohort and `patcomp audit-signatures` — not the
+validation cohort:
+- Removing bare `tool` from `needs_tools_midreasoning` regressed
+  `renewals-copilot` (tuning) to `baseline_recommended`, because
+  `stale_facts`'s newly-added `look it up` bag-of-words-matched "looking up
+  ticket severity" instead. Fixed by dropping `look it up` from
+  `stale_facts` and adding `mid-reasoning`/`mid reasoning` (the signature's
+  own name) to `needs_tools_midreasoning`.
+- `needs_tools_midreasoning`'s new term `call out to` bag-of-words-collided
+  with `workflow_too_large`'s own pattern summary ("fan **out**" + "**call**s").
+  Removed.
+- `needs_tools_midreasoning`'s new term `check live` bag-of-words-collided
+  with unrelated "identity **checks**... goes **live**" wording in a
+  `long_running_process` tuning case. Removed (redundant with "checking as
+  it goes" / "live systems" anyway).
+
+| Metric | Tuning (26, self-tuned) | Validation (45, blind, read only in aggregate) |
+|---|---|---|
+| positive outcome match | 20/20 | 21/36 (was 15/36) |
+| positive target match | 16/20 | 18/36 (was 11/36) |
+| diagnosis recall (positives) | 0.938 (unchanged) | **0.454** (was 0.231) |
+| diagnosis precision (all cases) | 0.962 (unchanged) | 0.843 (was 0.819) |
+| give-up rate (baseline_fallback) | 0.154 (unchanged) | 0.533 (was 0.644) |
+| negatives over-sold | 0 | **0** (was 1 — `policy-coverage-limit-lookup` is now correctly diagnosed) |
+
+The tuning cohort held exactly steady — no regression traded for the
+validation gain. Validation recall roughly doubled and the give-up rate
+dropped by more than a fifth, without spending any visibility into the
+holdout's actual wording; precision moved in the right direction too
+(0.819 → 0.843), so this wasn't recall bought with false positives.
+
+Per-signature recall on the validation cohort after this round (aggregate
+hit/expected — see `recall_by_signature`): `multiple_interpretations` 3/3,
+`human_judgement_in_output` 3/3, `stable_high_volume` 2/2,
+`cross_session_recall` 2/3, `long_running_process` 2/3,
+`workflow_too_large` 2/3, `validated_artefacts` 2/3,
+`needs_tools_midreasoning` 1/3, `planning_under_constraints` 1/3,
+`should_improve_over_runs` 1/3, `cost_latency_pressure` 1/3,
+`weak_judgement` 0/3, `deterministic_policy_compliance` 0/3,
+`relationship_discovery` 0/3, `stale_facts` 0/3, `quality_undefined` 0/2.
+The five signatures still at 0 are the concrete worklist for a future
+round. `cost_latency_pressure` also still over-fires 4 times on the
+holdout — removing "per day" didn't fix it, meaning one of the round's
+other terms is now the culprit; not yet diagnosed, since finding out which
+one requires either aggregate signal this round didn't produce or reading
+case text, which would spend the holdout. Both are logged here rather than
+chased further in this round, per the "run once, report, stop" rule below.
+
+No validation-cohort case text was read at any point in this round —
+only the numbers in the table above and the per-signature counts.
+
 **Phase 2 — expand evidence lists (tuning cohort only).**
 Per signature, source candidate terms from its `problem` text and the
 pattern's `summary`/`beats_baseline_when` in `agent_pattern.md`/the

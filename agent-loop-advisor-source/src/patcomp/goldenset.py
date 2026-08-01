@@ -165,6 +165,22 @@ def metrics(rows: list[Row], cohort: str | None = None) -> dict:
     for r in rows:
         for sig_id in r.diagnosis_extra:
             extra_counts[sig_id] = extra_counts.get(sig_id, 0) + 1
+    # Per-signature recall, aggregated across cases (never per-case): "recall
+    # is bad" isn't actionable for a Phase 2 pass; "signature X missed 6/8 of
+    # its expected cases" is, and this stays a headcount — it never reveals
+    # which case or what its text said, so reading it does not consume a
+    # validation-cohort case as a holdout the way opening its wording would.
+    sig_expected: dict[str, int] = {}
+    sig_hit: dict[str, int] = {}
+    for r in rows:
+        for sig_id in r.expected_diagnosis:
+            sig_expected[sig_id] = sig_expected.get(sig_id, 0) + 1
+            if sig_id in r.diagnosed:
+                sig_hit[sig_id] = sig_hit.get(sig_id, 0) + 1
+    recall_by_signature = {
+        sig_id: (sig_hit.get(sig_id, 0), n_expected)
+        for sig_id, n_expected in sorted(sig_expected.items(), key=lambda kv: -kv[1])
+    }
     return {
         "n": len(rows),
         "false_positive_rate": round(len(fp) / len(neg), 3) if neg else None,
@@ -188,6 +204,7 @@ def metrics(rows: list[Row], cohort: str | None = None) -> dict:
         "cases_with_extra_diagnosis": sum(1 for r in rows if r.diagnosis_extra),
         "over_fired_signatures": dict(
             sorted(extra_counts.items(), key=lambda kv: -kv[1])),
+        "recall_by_signature": recall_by_signature,
     }
 
 
@@ -222,6 +239,11 @@ def report(rows: list[Row], mode: str = "deterministic, interview defaults accep
         out.append("    over-fired signatures (not expected, but diagnosed):")
         for sig_id, n in m["over_fired_signatures"].items():
             out.append(f"      {sig_id:32s} {n} case(s)")
+    if m["recall_by_signature"]:
+        out.append("    recall by signature (hits/expected — aggregate counts only):")
+        for sig_id, (hit, expected) in m["recall_by_signature"].items():
+            flag = "  <-- " if hit < expected else ""
+            out.append(f"      {sig_id:32s} {hit}/{expected}{flag}")
     out.append("")
     out.append("CAVEAT: with only 4 negative cases a single error scores 0.25.")
     out.append("This seed cannot measure the headline metric credibly. Expand")

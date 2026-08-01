@@ -577,12 +577,13 @@ class TestGoldenSet(unittest.TestCase):
         """Recommending orchestration for a grounding problem is a BUG, not a
         measurement. This is the headline failure mode and it is asserted.
 
-        The tuning cohort holds zero. The validation cohort has one real,
-        tracked exception (policy-coverage-limit-lookup) — see
-        TestGoldenSetValidationCohort, which is where that finding is
-        pinned and explained; not re-litigated here."""
+        policy-coverage-limit-lookup was over-sold on the first (2026-08-01)
+        validation checkpoint, tracked as a known exception in
+        TestGoldenSetValidationCohort. Phase 2's stale_facts widening
+        (adding "quote it back", "cite", etc.) fixed it as a side effect —
+        confirmed here across both cohorts."""
         fps = {r.id for r in self.rows if r.verdict == "false_positive"}
-        self.assertEqual(fps, {"policy-coverage-limit-lookup"}, f"over-sold: {fps}")
+        self.assertEqual(fps, set(), f"over-sold: {fps}")
 
     def test_insufficient_input_never_gets_a_confident_recommendation(self):
         for r in self.rows:
@@ -682,15 +683,15 @@ class TestGoldenSetValidationCohort(unittest.TestCase):
         cls.rows = [r for r in rows if r.cohort == "validation"]
         cls.m = metrics(rows, cohort="validation")
 
-    # Real finding from the first-ever run of this cohort, 2026-08-01: a
-    # genuinely retrieval-only scenario ("Customer wants to know their dental
-    # coverage annual maximum... look it up, quote it, done") got recommended
-    # three_cards instead of the baseline. Per the Phase 3 rule this is NOT
-    # fixed here — fixing evidence lists is Phase 2, and this is the checkpoint
-    # reporting stage. Pinned so it stays visible and named rather than either
-    # silently passing or leaving CI red with no path forward. Growing this
-    # set is a real regression; shrinking it is the goal of the next round.
-    _KNOWN_OVER_SOLD = {"policy-coverage-limit-lookup"}
+    # policy-coverage-limit-lookup was over-sold on the first (2026-08-01)
+    # checkpoint — a genuinely retrieval-only scenario got recommended
+    # three_cards instead of the baseline — and was pinned here as a tracked,
+    # unfixed finding per the Phase 3 rule (report, don't tune, in the same
+    # round). It's since been fixed as a side effect of the Phase 2
+    # stale_facts widening (verified: no evidence-list edit targeted this
+    # case's wording directly, which was never read). Empty until the next
+    # real finding.
+    _KNOWN_OVER_SOLD: set[str] = set()
 
     def test_no_new_over_selling_on_the_holdout(self):
         fps = {r.id for r in self.rows if r.verdict == "false_positive"}

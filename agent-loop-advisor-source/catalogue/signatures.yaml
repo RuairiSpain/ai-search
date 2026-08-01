@@ -16,7 +16,21 @@ signatures:
     problem: Missing or stale facts
     pattern: "00"
     paper_section: 4
-    evidence: [rag, retrieval, out of date, knowledge base, cannot find, already exists somewhere, no actions are taken, answer and cite]
+    # "answer and cite" required that exact adjacency; a lot of genuinely
+    # retrieval-only requests just say "quote it back" without ever using
+    # "answer" or "cite" together. Widened toward that (2026-08-01, Phase 2,
+    # following the Phase 1 validation checkpoint).
+    # NOT added: "look it up" — bag-of-words partial credit made it fire on
+    # "looking up ticket severity... mid-reasoning" (needs_tools_midreasoning's
+    # renewals-copilot case), stealing that case's diagnosis via the generic
+    # word "look" the two signatures both plausibly use. "Looking something
+    # up" is genuinely ambiguous between one-shot retrieval and a step inside
+    # a longer tool loop; the actual distinguishing signal is the multi-step/
+    # live-reasoning framing, not the word "look up" itself, so it belongs on
+    # needs_tools_midreasoning ("mid-reasoning" below) and NOT here.
+    evidence: [rag, retrieval, out of date, knowledge base, cannot find, already exists somewhere,
+              no actions are taken, answer and cite, cite, quote it back,
+              already documented, single answer in]
 
   - id: weak_judgement
     problem: Correct facts, weak judgement
@@ -24,20 +38,37 @@ signatures:
     paper_section: 5
     evidence: [wrong recommendation, first answer, weak judgement, decide whether, root cause,
               propose an assessment, commits to the first, weigh the evidence, draft a recommendation,
-              bounded iterations, critique them, inconsistent recommendations]
+              bounded iterations, critique them, inconsistent recommendations, judgement call,
+              considered call, reasonable call, weigh the facts, same facts different]
 
   - id: needs_tools_midreasoning
     problem: Needs tools, data lookups or actions mid-reasoning
     pattern: "02"
     paper_section: 6
-    evidence: [look up, call the api, crm, system of record, take action, update the record, tool,
-              live systems, gathers evidence from]
+    # Bare "tool" was too generic a single word for a signature this specific
+    # (any mention of tooling in general, not specifically live mid-reasoning
+    # calls) and is a likely source of over-firing; dropped in favour of more
+    # specific phrases (2026-08-01, Phase 2). "mid-reasoning"/"mid reasoning"
+    # is the signature's own name and was missing from its own evidence list.
+    # "call out to" removed: bag-of-words matched "fan out" + "call" in
+    # workflow_too_large's own pattern summary, a coincidental collision with
+    # no real semantic relationship to that signature. "check live" removed
+    # for the same reason: bag-of-words matched unrelated "identity checks...
+    # goes live" in a long_running_process tuning case — both words individually
+    # common enough that non-adjacent bag-of-words credit is too easy to trip;
+    # already covered by "checking as it goes" and "live systems" separately.
+    evidence: [call the api, crm, system of record, take action, update the record,
+              live systems, gathers evidence from, checking as it goes,
+              react to what it finds, changes while it works,
+              adjust based on what it finds, mid-reasoning, mid reasoning]
 
   - id: planning_under_constraints
     problem: Planning under constraints with many valid options
     pattern: "09"
     paper_section: 7
-    evidence: [ordering constraints, dependency order, many valid, migration order, feasible, must be migrated in, sensible one]
+    evidence: [ordering constraints, dependency order, many valid, migration order, feasible,
+              must be migrated in, sensible one, hard constraints, many workable,
+              rule out the ones that, valid combinations, many possible]
 
   - id: multiple_interpretations
     problem: Multiple plausible interpretations, first answer often wrong
@@ -62,21 +93,25 @@ signatures:
     # instead of leaning on the stemmer to reconcile a stem against a stem.
     evidence: [remember, previous conversation, conversation history, session history,
               personalised, personalized, returning customer, context across sessions,
-              each session, repeats failed]
+              each session, repeats failed, picks up where, same account over,
+              shouldn't have to repeat, aware of earlier]
 
   - id: should_improve_over_runs
     problem: Repeated task that should improve run over run
     pattern: "07"
     paper_section: 10
     evidence: [learn from, improve over time, same task each, recurring, run over run, gets better,
-              reflect, reusable skill, skill library, loads automatically next time]
+              reflect, reusable skill, skill library, loads automatically next time,
+              same feedback, keep getting the same, faster next time,
+              picks up on that pattern, capture the fix]
 
   - id: long_running_process
     problem: Long-running business process with defined stages
     pattern: "08"
     paper_section: 11
     evidence: [sla, case management, several days, over several, escalates, second approval,
-              then either, sits in, across days, state transition, defined stages]
+              then either, sits in, across days, state transition, defined stages,
+              picks back up, survive a restart, keep its place, persist through]
 
   - id: workflow_too_large
     problem: Workflow too large or heterogeneous for one agent
@@ -90,33 +125,39 @@ signatures:
     # natural business phrasing pattern 03 is actually defined by.
     evidence: [multiple teams, several steps, decompose, decomposed, heterogeneous, many sources,
               breadth, split the work, narrow subtasks, worker agents, small model can, in parallel,
-              independent reviewer, different source system]
+              independent reviewer, different source system, split it up, too much for one,
+              run side by side, different skill sets]
 
   - id: human_judgement_in_output
     problem: Human judgement is part of output quality, not just a gate
     pattern: "13"
     paper_section: 13
     evidence: [analyst decides, expert judgement, sign off, human review, senior handler,
-              cannot be automated, for review before, critique, human approval on, escalate the hard]
+              cannot be automated, for review before, critique, human approval on, escalate the hard,
+              a person to look, real deadline, route to a reviewer, too costly to get wrong]
 
   - id: deterministic_policy_compliance
     problem: Deterministic policy compliance required
     pattern: "04"
     paper_section: 14
     evidence: [regulation, must not, mandatory, cannot vary, set by compliance, which rule was,
-              audit trail, threshold, deterministic, policy compliance]
+              audit trail, threshold, deterministic, policy compliance, no exceptions,
+              cannot bend, never bend, hard rule, has to be guaranteed]
 
   - id: relationship_discovery
     problem: Relationship discovery, no single document has the answer
     pattern: "10"
     paper_section: 15
-    evidence: [lineage, graph, ownership, who owns, records connect, no single record, share a director, relationships]
+    evidence: [lineage, graph, ownership, who owns, records connect, no single record,
+              share a director, relationships, follow it through, several linked records,
+              layers of holding, full chain, no one filing shows]
 
   - id: validated_artefacts
     problem: Validated artefacts required, not advice
     pattern: "11"
     paper_section: 16
-    evidence: [generate code, migration script, artefact, must compile, the deliverable is, tests pass, fails the tests]
+    evidence: [generate code, migration script, artefact, must compile, the deliverable is,
+              tests pass, fails the tests, pass or fail, look at the error and repair]
 
   # Advisory signatures. No folder, no emitted agents. These change the shape of
   # the recommendation rather than adding a pattern to the composition.
@@ -125,18 +166,32 @@ signatures:
     pattern: null
     advisory: evaluation_first
     paper_section: 17
-    evidence: [not sure how to measure, no benchmark, subjective, quality varies]
+    evidence: [not sure how to measure, no benchmark, subjective, quality varies,
+              no scorecard, nobody has agreed, never been measured, no clear definition of good]
 
   - id: cost_latency_pressure
     problem: Cost or latency pressure at scale
     pattern: null
     advisory: routing_and_budgets
     paper_section: 18
-    evidence: [per day, high volume, cost per, latency, real time, seconds, throughput, scale]
+    # "per day" was the likely dominant over-firer: any volume mention at all
+    # ("200 cases per day") reads as cost/latency pressure even when cost and
+    # speed were never called out as the actual constraint. Dropped in favour
+    # of phrases that require cost or speed to be the explicit point
+    # (2026-08-01, Phase 2, following the Phase 1 checkpoint's over-fired-
+    # signatures report — this and stable_high_volume were the two largest).
+    evidence: [high volume, cost per, latency, real time, seconds, throughput, scale,
+              cost per conversation, capping what we, respond within, milliseconds,
+              whatever this costs]
 
   - id: stable_high_volume
     problem: Stable high-volume workload, orchestration cost dominates
     pattern: null
     advisory: learning_and_optimisation
     paper_section: 19
-    evidence: [millions, stable, unchanged for, fine-tune, distil, same shape every time]
+    # Bare "stable" was too generic on its own (any mature/settled process
+    # reads as this) and is a likely over-firer; the signature's actual claim
+    # — stability AND high volume AND unchanging shape together — is already
+    # covered by the more specific phrases below (2026-08-01, Phase 2).
+    evidence: [millions, unchanged for, fine-tune, distil, same shape every time,
+              hasn't changed in years, isn't going to change]
