@@ -1,0 +1,1 @@
+{"query": "Since upgrading to v4.2 last Tuesday, our nightly ETL pipeline stalls around 02:30 with no error in the job log. Data volume is unchanged month-over-month. The upgrade included a new database driver. What's wrong?"}

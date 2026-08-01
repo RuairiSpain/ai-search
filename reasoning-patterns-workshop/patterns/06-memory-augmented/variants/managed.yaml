@@ -1,0 +1,7 @@
+# Managed memory (Foundry Agent Service built-in memory, preview-gated in some
+# tenants). If the SDK/tenant lacks it, the code falls back to explicit and
+# says so in the trace — variant name still logs to Experiments correctly.
+agent_deployment: small
+memory_mode: managed
+enforce_scope: true
+attach_procedural: true

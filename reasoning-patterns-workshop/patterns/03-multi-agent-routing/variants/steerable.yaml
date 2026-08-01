@@ -1,0 +1,9 @@
+# Human steering at contract boundaries: after the Plan (veto/edit subtasks
+# before fan-out spends money) and on a reviewer 'revise' verdict (your
+# guidance replaces the reviewer's). Run with: make run-interactive
+planner_deployment: frontier
+worker_deployment: small
+reviewer_deployment: reviewer
+merger_deployment: small
+max_workers_parallel: 3
+steerable: true

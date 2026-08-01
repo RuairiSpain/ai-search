@@ -1,0 +1,5 @@
+max_llm_calls: 10
+max_total_tokens: 50000
+max_wall_clock_s: 200     # excludes human wait (Budget.human_wait)
+sla_hours: 24             # exception review SLA before escalation
+auto_approve_under_eur: 2500

@@ -1,0 +1,4 @@
+gen_deployment: frontier
+analyst_deployment: frontier
+repair_rounds: 3
+test_subset: null

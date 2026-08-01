@@ -1,0 +1,7 @@
+# The ablation that IS the lesson: same rules, but only as prompt text. No
+# engine call, no enforcement layer. Compliance becomes probabilistic — the
+# eval's sanctioned-jurisdiction and PEP rows will show it.
+extractor_deployment: nano
+proposer_deployment: small
+explainer_deployment: nano
+use_rules_engine: false

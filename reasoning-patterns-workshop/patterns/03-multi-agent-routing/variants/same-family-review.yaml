@@ -1,0 +1,7 @@
+# Reviewer from the SAME family as workers. Watch review verdicts get more
+# agreeable on the failure rows — correlated blind spots (§12).
+planner_deployment: frontier
+worker_deployment: small
+reviewer_deployment: small
+merger_deployment: small
+max_workers_parallel: 3

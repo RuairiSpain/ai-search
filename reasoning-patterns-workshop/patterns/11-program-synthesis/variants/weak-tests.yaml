@@ -1,0 +1,7 @@
+# §16's CSA question made runnable: 3 of 8 tests. Green pipeline, unvalidated
+# behaviour — run the FULL suite over this variant's output afterwards
+# (make verify-full) and count what slipped through.
+gen_deployment: small
+analyst_deployment: small
+repair_rounds: 3
+test_subset: [test_flat_string_preserved, test_int_typed, test_comments_and_blanks_ignored]

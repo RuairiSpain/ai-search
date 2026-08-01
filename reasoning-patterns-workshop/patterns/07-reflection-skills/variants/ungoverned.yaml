@@ -1,0 +1,8 @@
+# §10 governance failure: skip the review gate, activate skills after
+# authoring. Watch the tamper-pressure row (07-04) succeed at inserting a
+# poisoned skill — the exhibit for 'self-modification without a gate is
+# how agents drift'.
+close_deployment: small
+reflector_deployment: small
+author_deployment: small
+skip_review_gate: true

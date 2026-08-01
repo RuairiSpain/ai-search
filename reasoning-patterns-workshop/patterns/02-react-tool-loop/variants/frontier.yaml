@@ -1,0 +1,11 @@
+# Same agent on the frontier deployment. Compare tool-call accuracy + adherence
+# vs baseline in Experiments, then `make cost`. Small models often hold up on
+# bounded tool loops — this is the migration evidence.
+agent_deployment: frontier
+agent_name: p02-renewals-copilot-frontier
+instructions_file: agents/renewals-copilot/instructions.md
+skills:
+  - skills/tool-hygiene/SKILL.md
+  - skills/retention-offers/SKILL.md
+attach_knowledge: true
+mcp_tools: [get_account, list_tickets, get_contract_terms, draft_offer]

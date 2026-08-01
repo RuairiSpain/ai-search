@@ -1,0 +1,6 @@
+# MCP server image deps — verified on PyPI 2026-07-23; audit with
+# scripts/check_package_versions.py before rebuilding the image.
+fastapi==0.138.0   # HOLD: >=0.138.1 conflicts with agent-framework-devui in a shared env
+uvicorn==0.51.0
+mcp==1.28.1        # FastMCP streamable_http_app + stateless_http need >=1.9
+pydantic==2.13.4

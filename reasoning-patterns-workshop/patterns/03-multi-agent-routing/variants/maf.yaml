@@ -1,0 +1,19 @@
+# Same models as baseline, but routed through src/maf_workflow.py's REAL MAF
+# graph (WorkflowBuilder, add_edge, executors) instead of the dependency-free
+# implementation. This is the ONLY variant in the workshop where `make run`/
+# `make eval` actually EXECUTE a Microsoft Agent Framework workflow — every
+# other maf_workflow.py in the repo (this one included, for build_steerable
+# and WorkflowViz) exists for study/steering/diagramming but isn't itself on
+# the executed path unless you select this variant.
+#
+# Same eval dataset, same evaluators as baseline — compare the two in
+# Experiments to see whether the MAF-native graph and the hand-rolled one
+# actually produce equivalent decisions (they should: both call the exact
+# same plan/work/review/merge functions in workflow.py; maf_workflow.py's
+# executors are thin adapters, not a second implementation).
+planner_deployment: frontier
+worker_deployment: small
+reviewer_deployment: reviewer
+merger_deployment: small
+max_workers_parallel: 3
+engine: maf

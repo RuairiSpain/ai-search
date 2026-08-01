@@ -1,0 +1,6 @@
+# Zeta uses a non-standard format: pipe-delimited, credit is negative
+account|amount
+revenue|-95000
+cost_of_sales|60000
+opex|20000
+tax|3000

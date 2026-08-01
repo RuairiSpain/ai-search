@@ -1,0 +1,10 @@
+# Everything on nano. Expect the deterministic check to reject more candidates
+# and quality scores to drop — the question is whether they drop below the
+# release gate (see README "Release gate" step).
+generator_deployment: nano
+judge_deployment: nano
+n_candidates: 3
+instructions_file: agents/deliberate-diagnostician/instructions.md
+skills:
+  - skills/hypothesis-generation/SKILL.md
+  - skills/runbook-compliance/SKILL.md

@@ -1,0 +1,7 @@
+# Workers on the model-router deployment: per-prompt selection across
+# cost/latency/quality. Compare cost + scores vs baseline.
+planner_deployment: frontier
+worker_deployment: router
+reviewer_deployment: reviewer
+merger_deployment: small
+max_workers_parallel: 3

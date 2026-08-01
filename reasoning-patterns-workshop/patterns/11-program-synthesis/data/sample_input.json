@@ -1,0 +1,1 @@
+{"query": "Migrate the legacy config parser to the new typed API: ints and bools typed, dotted keys supported, KeyError on missing keys unless a default is given, ValueError on malformed lines. Preserve flat string behaviour."}

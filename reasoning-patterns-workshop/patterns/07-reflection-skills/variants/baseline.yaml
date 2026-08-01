@@ -1,0 +1,4 @@
+close_deployment: small
+reflector_deployment: small
+author_deployment: small
+reviewer_deployment: reviewer   # cross-family per §12

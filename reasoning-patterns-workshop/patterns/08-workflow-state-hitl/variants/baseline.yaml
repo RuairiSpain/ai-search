@@ -1,0 +1,5 @@
+extractor_deployment: nano
+assessor_deployment: small
+reviewer_deployment: small
+mode: local
+approval_mode: auto        # scripted approver for reproducible evals

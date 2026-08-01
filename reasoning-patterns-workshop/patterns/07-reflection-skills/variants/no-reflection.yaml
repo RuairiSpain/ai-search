@@ -1,0 +1,5 @@
+# One run, no reflection, no skill acquisition. First-run pass rate is the
+# metric — usually zeta.csv fails because the alternate-ledger format wasn't
+# in the initial skill set. The delta vs baseline shows what reflection buys.
+close_deployment: small
+skip_reflection: true

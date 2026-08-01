@@ -1,0 +1,18 @@
+# Steering via tool approval (§6 decision-support boundary, live):
+# reads are unattended; the ONLY write (draft_offer) parks the run until a
+# human approves — or rejects WITH A REASON, which lands in the thread and
+# steers the agent's revision. Run with: make run-interactive
+agent_deployment: small
+agent_name: p02-renewals-copilot-steer
+instructions_file: agents/renewals-copilot/instructions.md
+skills:
+  - skills/tool-hygiene/SKILL.md
+  - skills/retention-offers/SKILL.md
+attach_knowledge: true
+mcp_tools: [get_account, list_tickets, get_contract_terms, draft_offer]
+approval:
+  never: { tool_names: [get_account, list_tickets, get_contract_terms] }
+# Headless runs (make eval) use a deterministic policy reviewer with this
+# threshold; `make run-interactive` puts YOU at the gate instead.
+review_policy:
+  max_auto_approve_discount_pct: 10

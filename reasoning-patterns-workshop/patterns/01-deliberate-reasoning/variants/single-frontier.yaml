@@ -1,0 +1,6 @@
+# The falsifiability baseline (§ Closing): ONE frontier call, no orchestration.
+# If the pattern doesn't beat this on quality or cost, retire the pattern.
+mode: single_call
+generator_deployment: frontier
+instructions_file: agents/baseline-diagnostician/instructions.md
+skills: []

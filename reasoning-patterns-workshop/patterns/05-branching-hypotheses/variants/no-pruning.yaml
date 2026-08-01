@@ -1,0 +1,9 @@
+# Every branch runs every round regardless of score. The §8/§20 failure mode
+# 'over-branching and hidden cost explosion' — measured, not asserted.
+hypo_deployment: small
+assessor_deployment: small
+scorer_deployment: nano
+synth_deployment: small
+n_hypotheses: 5
+disable_pruning: true
+shield_observations: true

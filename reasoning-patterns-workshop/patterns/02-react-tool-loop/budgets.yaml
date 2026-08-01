@@ -1,0 +1,3 @@
+max_llm_calls: 15          # informational for this pattern (platform owns loop)
+max_total_tokens: 80000
+max_wall_clock_s: 150      # enforced: run_agent cancels the run past this

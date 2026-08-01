@@ -1,0 +1,2 @@
+# Pattern-local: the synthesis loop's deterministic evaluator.
+pytest==9.1.1

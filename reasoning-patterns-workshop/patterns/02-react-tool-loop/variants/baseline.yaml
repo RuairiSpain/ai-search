@@ -1,0 +1,8 @@
+agent_deployment: small
+agent_name: p02-renewals-copilot
+instructions_file: agents/renewals-copilot/instructions.md
+skills:
+  - skills/tool-hygiene/SKILL.md
+  - skills/retention-offers/SKILL.md
+attach_knowledge: true          # contoso-policies index
+mcp_tools: [get_account, list_tickets, get_contract_terms, draft_offer]

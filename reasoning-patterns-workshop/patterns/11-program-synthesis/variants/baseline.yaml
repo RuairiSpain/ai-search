@@ -1,0 +1,4 @@
+gen_deployment: small
+analyst_deployment: small
+repair_rounds: 3
+test_subset: null            # all 8 acceptance tests

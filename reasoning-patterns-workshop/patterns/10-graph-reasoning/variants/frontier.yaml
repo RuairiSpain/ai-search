@@ -1,0 +1,4 @@
+planner_deployment: frontier
+synth_deployment: frontier
+graph_tools: true
+shield_observations: true

@@ -1,0 +1,7 @@
+# The naive build: frontier everywhere. Run it once, run `make cost`,
+# and let the table make the argument.
+planner_deployment: frontier
+worker_deployment: frontier
+reviewer_deployment: frontier
+merger_deployment: frontier
+max_workers_parallel: 3

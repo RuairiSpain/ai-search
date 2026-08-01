@@ -1,0 +1,4 @@
+extractor_deployment: nano
+proposer_deployment: small
+explainer_deployment: nano
+use_rules_engine: true

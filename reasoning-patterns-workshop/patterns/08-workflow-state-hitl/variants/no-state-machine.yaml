@@ -1,0 +1,6 @@
+# The §11 anti-pattern: replace the state machine with one agent that does
+# everything, including deciding payment. Watch the audit-trail and
+# determinism graders collapse even when the ANSWER is right.
+extractor_deployment: nano
+assessor_deployment: small
+mode: single_agent

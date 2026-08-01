@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.env
+.shared-env
+**/runs/*.jsonl
+**/runs/cost-*.json
+**/runs/_composed-*.md

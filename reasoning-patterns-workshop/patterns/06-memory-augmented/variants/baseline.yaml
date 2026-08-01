@@ -1,0 +1,6 @@
+# Explicit memory path (vector store + Azure Tables). Works in any tenant.
+agent_deployment: small
+memory_mode: explicit
+episode_ttl_hours: 24
+enforce_scope: true
+attach_procedural: true

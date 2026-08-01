@@ -1,0 +1,5 @@
+planner_deployment: frontier     # low call volume justifies frontier (§12 table)
+worker_deployment: small
+reviewer_deployment: reviewer    # claude-haiku class — cross-family review
+merger_deployment: small
+max_workers_parallel: 3
