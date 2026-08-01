@@ -120,11 +120,21 @@ def negated_spans(text: str) -> list[str]:
     Within a segment a negation carries across a list ("does not compare
     options, plan, or take actions" negates all three), but it does not cross
     into an independent clause.
+
+    Scope runs FORWARD from the cue to the end of the segment, not across the
+    whole segment. "During a network outage... needs to check live service
+    status... rather than working off a static script" has "rather than"
+    negating the static-script alternative, not the live-status-checking
+    that's stated before it — a whole-segment scope wrongly erased the
+    earlier, unrelated positive evidence. The "does not compare options,
+    plan, or take actions" list case is unaffected: "does not" sits at the
+    start of its segment, so the forward scope still covers the whole list.
     """
     out = []
     for segment in _SEGMENT.split(text):
-        if segment and _NEG.search(segment):
-            out.append(normalise(segment))
+        m = _NEG.search(segment) if segment else None
+        if m:
+            out.append(normalise(segment[m.start():]))
     return out
 
 

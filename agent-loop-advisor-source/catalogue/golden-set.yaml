@@ -997,6 +997,14 @@ cases:
   # expected_target are MY translation of the author's own stated "which problem
   # types apply" answer into signature/pattern ids -- set before running this cohort
   # even once, never adjusted after seeing a result.
+  #
+  # RELABELLED cohort: validation -> tuning on 2026-08-01 (Phase 2 round 3), at the
+  # user's explicit request to investigate the 0-recall signatures the round 2
+  # checkpoint found. Investigating meant reading this batch's text directly, which
+  # spends it as a holdout the same way tuning against its aggregate signal would --
+  # so the honest move is to relabel rather than quietly treat it as still-blind.
+  # A future round needs a freshly authored batch before quoting another
+  # generalisation number. See docs/golden-set-methodology.md.
 
   - id: ad-tagline-shortlist
     title: "Fall campaign tagline pick"
@@ -1006,7 +1014,7 @@ cases:
     expected_diagnosis: [weak_judgement]
     expected_target: "01"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [1]."
 
   - id: menu-item-cut
@@ -1017,7 +1025,7 @@ cases:
     expected_diagnosis: [weak_judgement]
     expected_target: "01"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [1]."
 
   - id: greenhouse-watering-decisions
@@ -1028,7 +1036,7 @@ cases:
     expected_diagnosis: [needs_tools_midreasoning]
     expected_target: "02"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [2]."
 
   - id: printer-fleet-triage
@@ -1039,7 +1047,7 @@ cases:
     expected_diagnosis: [needs_tools_midreasoning]
     expected_target: "02"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [2]."
 
   - id: turbine-inspection-scheduling
@@ -1050,7 +1058,7 @@ cases:
     expected_diagnosis: [planning_under_constraints]
     expected_target: "09"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [3]."
 
   - id: exam-hall-seating
@@ -1061,7 +1069,7 @@ cases:
     expected_diagnosis: [planning_under_constraints]
     expected_target: "09"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [3]."
 
   - id: checkout-conversion-drop
@@ -1072,7 +1080,7 @@ cases:
     expected_diagnosis: [multiple_interpretations]
     expected_target: "05"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [4]."
 
   - id: dairy-herd-symptom-review
@@ -1083,7 +1091,7 @@ cases:
     expected_diagnosis: [multiple_interpretations]
     expected_target: "05"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [4]."
 
   - id: fitness-coach-continuity
@@ -1094,7 +1102,7 @@ cases:
     expected_diagnosis: [cross_session_recall]
     expected_target: "06"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [5]."
 
   - id: tutor-progress-memory
@@ -1105,7 +1113,7 @@ cases:
     expected_diagnosis: [cross_session_recall]
     expected_target: "06"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [5]."
 
   - id: grant-proposal-drafting-loop
@@ -1116,7 +1124,7 @@ cases:
     expected_diagnosis: [should_improve_over_runs]
     expected_target: "07"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [6]."
 
   - id: sales-call-coaching-notes
@@ -1127,7 +1135,7 @@ cases:
     expected_diagnosis: [should_improve_over_runs]
     expected_target: "07"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [6]."
 
   - id: appliance-recall-tracking
@@ -1138,7 +1146,7 @@ cases:
     expected_diagnosis: [long_running_process]
     expected_target: "08"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [7]."
 
   - id: new-hire-clearance-pipeline
@@ -1149,7 +1157,7 @@ cases:
     expected_diagnosis: [long_running_process]
     expected_target: "08"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [7]."
 
   - id: quarterly-board-pack
@@ -1160,7 +1168,7 @@ cases:
     expected_diagnosis: [workflow_too_large]
     expected_target: "03"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [8]."
 
   - id: multi-market-launch-brief
@@ -1171,7 +1179,7 @@ cases:
     expected_diagnosis: [workflow_too_large]
     expected_target: "03"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [8]."
 
   - id: borderline-post-review
@@ -1182,7 +1190,7 @@ cases:
     expected_diagnosis: [human_judgement_in_output]
     expected_target: "13"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [9]."
 
   - id: research-animal-protocol-review
@@ -1193,7 +1201,7 @@ cases:
     expected_diagnosis: [human_judgement_in_output]
     expected_target: "13"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [9]."
 
   - id: recipe-allergen-guardrail
@@ -1204,7 +1212,7 @@ cases:
     expected_diagnosis: [deterministic_policy_compliance]
     expected_target: "04"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [10]."
 
   - id: crane-load-limit-check
@@ -1215,7 +1223,7 @@ cases:
     expected_diagnosis: [deterministic_policy_compliance]
     expected_target: "04"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [10]."
 
   - id: foodborne-illness-source-trace
@@ -1226,7 +1234,7 @@ cases:
     expected_diagnosis: [relationship_discovery]
     expected_target: "10"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [11]."
 
   - id: patent-citation-conflict-check
@@ -1237,7 +1245,7 @@ cases:
     expected_diagnosis: [relationship_discovery]
     expected_target: "10"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [11]."
 
   - id: schema-migration-script
@@ -1248,7 +1256,7 @@ cases:
     expected_diagnosis: [validated_artefacts]
     expected_target: "11"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [12]."
 
   - id: firmware-config-generator
@@ -1259,7 +1267,7 @@ cases:
     expected_diagnosis: [validated_artefacts]
     expected_target: "11"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [12]."
 
   - id: better-brainstorm-sessions
@@ -1270,7 +1278,7 @@ cases:
     expected_diagnosis: [quality_undefined]
     expected_target: "none"
     expected_outcome: baseline_recommended
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [13]."
 
   - id: culture-survey-assistant
@@ -1281,7 +1289,7 @@ cases:
     expected_diagnosis: [quality_undefined]
     expected_target: "none"
     expected_outcome: baseline_recommended
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [13]."
 
   - id: checkout-recommendation-latency
@@ -1292,7 +1300,7 @@ cases:
     expected_diagnosis: [cost_latency_pressure]
     expected_target: "none"
     expected_outcome: baseline_recommended
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [14]."
 
   - id: meter-anomaly-code-classification
@@ -1303,7 +1311,7 @@ cases:
     expected_diagnosis: [stable_high_volume]
     expected_target: "none"
     expected_outcome: baseline_recommended
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [15]."
 
   - id: barcode-tag-sorting
@@ -1314,7 +1322,7 @@ cases:
     expected_diagnosis: [stable_high_volume]
     expected_target: "none"
     expected_outcome: baseline_recommended
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [15]."
 
   - id: parental-leave-policy-lookup
@@ -1325,7 +1333,7 @@ cases:
     expected_diagnosis: [stale_facts]
     expected_target: "00"
     expected_outcome: baseline_recommended
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): neg."
 
   - id: bolt-torque-spec-lookup
@@ -1336,7 +1344,7 @@ cases:
     expected_diagnosis: [stale_facts]
     expected_target: "00"
     expected_outcome: baseline_recommended
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): neg."
 
   - id: warranty-window-check
@@ -1347,7 +1355,7 @@ cases:
     expected_diagnosis: [stale_facts]
     expected_target: "00"
     expected_outcome: baseline_recommended
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): neg."
 
   - id: be-more-efficient-ticket
@@ -1358,7 +1366,7 @@ cases:
     expected_diagnosis: []
     expected_target: "00"
     expected_outcome: baseline_fallback
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): None."
 
   - id: something-with-agents-memo
@@ -1369,7 +1377,7 @@ cases:
     expected_diagnosis: []
     expected_target: "00"
     expected_outcome: baseline_fallback
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): None."
 
   - id: help-us-with-customers
@@ -1380,7 +1388,7 @@ cases:
     expected_diagnosis: []
     expected_target: "00"
     expected_outcome: baseline_fallback
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): None."
 
   - id: home-aide-visit-scheduling
@@ -1391,7 +1399,7 @@ cases:
     expected_diagnosis: [planning_under_constraints, deterministic_policy_compliance]
     expected_target: "sequence(04, 09)"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [3, 10]."
 
   - id: quarterly-filing-prep-cycle
@@ -1402,7 +1410,7 @@ cases:
     expected_diagnosis: [should_improve_over_runs, long_running_process, human_judgement_in_output]
     expected_target: "sequence(07, 08, 13)"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [6, 7, 9]."
 
   - id: brand-voice-localization-rollout
@@ -1413,7 +1421,7 @@ cases:
     expected_diagnosis: [workflow_too_large, cross_session_recall]
     expected_target: "sequence(03, 06)"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [8, 5]."
 
   - id: production-defect-root-cause
@@ -1424,7 +1432,7 @@ cases:
     expected_diagnosis: [multiple_interpretations, relationship_discovery]
     expected_target: "sequence(05, 10)"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [4, 11]."
 
   - id: outage-support-chat-at-scale
@@ -1435,5 +1443,5 @@ cases:
     expected_diagnosis: [needs_tools_midreasoning, human_judgement_in_output, cost_latency_pressure]
     expected_target: "sequence(02, 13)"
     expected_outcome: three_cards
-    cohort: validation
+    cohort: tuning
     tests: "Phase 2 round 2 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [2, 9, 14]."

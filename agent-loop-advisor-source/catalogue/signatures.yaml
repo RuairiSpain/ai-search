@@ -40,9 +40,14 @@ signatures:
     # "out of date" removed in round 2: matched no true positive in the
     # golden set and bag-of-words-collided on "throws OUT the ones that
     # break a hard due DATE" in an unrelated planning-under-constraints case.
+    # "pull the answer from", "straight out of" and "a lookup against" added
+    # (2026-08-01, Phase 2 round 3): three more natural ways a genuinely
+    # retrieval-only ask gets described (pointing at a source document)
+    # without ever saying "cite" or "quote".
     evidence: [rag, retrieval, knowledge base, cannot find, already exists somewhere,
               no actions are taken, answer and cite, cite, quote it back, quoted back,
-              already documented, single answer in, single number in, word for word]
+              already documented, single answer in, single number in, word for word,
+              pull the answer from, straight out of, a lookup against]
 
   - id: weak_judgement
     problem: Correct facts, weak judgement
@@ -55,11 +60,15 @@ signatures:
     # phrased when the facts themselves aren't named. "pick the best one"
     # grounds pattern 01's own summary ("select one and say why the others
     # lost") in the way people actually ask for it.
+    # "can't agree which" added (2026-08-01, Phase 2 round 3): the plainest
+    # possible statement of the signature's own definition (people looking
+    # at the same facts and landing on different picks) — grounded directly
+    # in the "Correct facts, weak judgement" problem line above.
     evidence: [wrong recommendation, first answer, weak judgement, decide whether, root cause,
               propose an assessment, commits to the first, weigh the evidence, draft a recommendation,
               bounded iterations, critique them, inconsistent recommendations, judgement call,
               considered call, reasonable call, weigh the facts, same facts different,
-              weigh it differently, pick the best one]
+              weigh it differently, pick the best one, can't agree which]
 
   - id: needs_tools_midreasoning
     problem: Needs tools, data lookups or actions mid-reasoning
@@ -95,10 +104,18 @@ signatures:
     # "technically fit" added (2026-08-01, Phase 2 round 2): a sibling of
     # "many workable"/"many possible" for the same "lots of candidates
     # superficially satisfy the ask" concept, just phrased as "fit" instead
-    # of "workable"/"possible".
-    evidence: [ordering constraints, dependency order, many valid, migration order, feasible,
-              must be migrated in, sensible one, hard constraints, many workable,
-              rule out the ones that, valid combinations, many possible, technically fit]
+    # of "workable"/"possible". "valid combinations" removed round 3: matched
+    # no true positive in the golden set and, once the negation scanner's
+    # scope was corrected to run forward from its cue instead of across the
+    # whole segment (see diagnose.negated_spans), started bag-of-words-
+    # matching "valid" (from an unrelated "no valid option") and "combination"
+    # scattered elsewhere in an unrelated needs_tools_midreasoning case.
+    # "lots of valid"/"dozens of valid" added: "many valid" required the
+    # literal word "many", and a lot of genuine cases say "lots of" or
+    # "dozens of" instead.
+    evidence: [ordering constraints, dependency order, many valid, lots of valid, dozens of valid,
+              migration order, feasible, must be migrated in, sensible one, hard constraints,
+              many workable, rule out the ones that, many possible, technically fit]
 
   - id: multiple_interpretations
     problem: Multiple plausible interpretations, first answer often wrong
@@ -123,20 +140,40 @@ signatures:
     # instead of leaning on the stemmer to reconcile a stem against a stem.
     # "shouldn't have to re-explain" added (2026-08-01, Phase 2 round 2) as a
     # sibling of the already-present "shouldn't have to repeat" — same
-    # complaint, different verb.
+    # complaint, different verb. "picks up where" and "returning customer"
+    # removed round 3: neither matched any true positive, and both bag-of-
+    # words-collided on unrelated text ("picks it up in time... borderline
+    # ones — where" for the former; "log returns... losing track of where
+    # each customer is" for the latter) — each pair of words individually
+    # common enough, and far enough apart, to scatter-match without either
+    # being adjacent.
     evidence: [remember, previous conversation, conversation history, session history,
-              personalised, personalized, returning customer, context across sessions,
-              each session, repeats failed, picks up where, same account over,
+              personalised, personalized, context across sessions,
+              each session, repeats failed, same account over,
               shouldn't have to repeat, shouldn't have to re-explain, aware of earlier]
 
   - id: should_improve_over_runs
     problem: Repeated task that should improve run over run
     pattern: "07"
     paper_section: 10
-    evidence: [learn from, improve over time, same task each, recurring, run over run, gets better,
+    # "carry forward", "inform the next" and "same mistakes" added
+    # (2026-08-01, Phase 2 round 3): grounded in pattern 07's own
+    # beats_baseline_when ("a captured lesson pays back the reflection
+    # cost") — carrying a lesson forward so the next run is informed by it,
+    # instead of every run repeating the same mistake. "recurring" removed
+    # the same round: matched no true positive in the golden set at all —
+    # any complaint or ticket described as "recurring" read as this
+    # signature regardless of whether learning-over-time was actually the
+    # point (e.g. a plain IT-ticket-triage case), pure risk with zero signal.
+    # "run over run" removed the same round for the same reason: matched no
+    # true positive either, and bag-of-words-collided on "run in parallel...
+    # over many rounds" in an unrelated workflow-decomposition case — the
+    # signature's own problem line above already names the concept without
+    # needing it in the evidence list too.
+    evidence: [learn from, improve over time, same task each, gets better,
               reflect, reusable skill, skill library, loads automatically next time,
               same feedback, keep getting the same, faster next time,
-              picks up on that pattern, capture the fix]
+              picks up on that pattern, capture the fix, carry forward, inform the next, same mistakes]
 
   - id: long_running_process
     problem: Long-running business process with defined stages
@@ -148,9 +185,15 @@ signatures:
     # name the restart, never "survive" — pattern 08's own beats_baseline_when
     # is literally "survives restarts", but that's paper language; "restarts
     # overnight" is closer to how an operator actually says it.
+    # "runs for weeks" and "system restart" added (2026-08-01, Phase 2 round
+    # 3): a plain time-span sibling of "several days"/"across days" for
+    # processes measured in weeks rather than days, and a sibling of
+    # "survive a restart"/"restarts overnight" for the common "resume after
+    # a system restart" phrasing (different verb, same claim).
     evidence: [sla, case management, several days, over several, escalates, second approval,
               then either, sits in, across days, state transition, defined stages,
-              picks back up, survive a restart, restarts overnight, keep its place, persist through]
+              picks back up, survive a restart, restarts overnight, runs for weeks,
+              system restart, keep its place, persist through]
 
   - id: workflow_too_large
     problem: Workflow too large or heterogeneous for one agent
@@ -182,9 +225,15 @@ signatures:
     problem: Human judgement is part of output quality, not just a gate
     pattern: "13"
     paper_section: 13
-    evidence: [analyst decides, expert judgement, sign off, human review, senior handler,
+    # "a real person" added (2026-08-01, Phase 2 round 3): a plainer sibling
+    # of "a person to look" for the common "we want a real person pulled in"
+    # phrasing. "sign off" removed the same round: matched no true positive
+    # and bag-of-words-collided on "early SIGNs of... gone OFF their feed"
+    # in an unrelated veterinary-diagnosis case — "sign" (stemmed from
+    # "signs") and "off" both common enough alone to scatter-match.
+    evidence: [analyst decides, expert judgement, human review, senior handler,
               cannot be automated, for review before, critique, human approval on, escalate the hard,
-              a person to look, real deadline, route to a reviewer, too costly to get wrong]
+              a person to look, a real person, real deadline, route to a reviewer, too costly to get wrong]
 
   - id: deterministic_policy_compliance
     problem: Deterministic policy compliance required
@@ -197,9 +246,15 @@ signatures:
     # itself is the positive evidence (see diagnose.score_signatures' fix
     # for self-negating evidence terms), not something for the negation
     # scanner to discount.
+    # "zero tolerance" and "unbreakable" added (2026-08-01, Phase 2 round
+    # 3): "zero tolerance" is the plainest possible restatement of "not
+    # usually — it has to be guaranteed"; "unbreakable" is a single-word
+    # sibling of "cannot bend"/"never bend" (same claim, same low collision
+    # risk as any other single distinctive word).
     evidence: [regulation, must not, mandatory, cannot vary, set by compliance, which rule was,
               audit trail, threshold, deterministic, policy compliance, no exceptions,
-              cannot bend, never bend, hard rule, has to be guaranteed, no close enough]
+              cannot bend, never bend, hard rule, has to be guaranteed, no close enough,
+              zero tolerance, unbreakable]
 
   - id: relationship_discovery
     problem: Relationship discovery, no single document has the answer
@@ -229,8 +284,14 @@ signatures:
     pattern: null
     advisory: evaluation_first
     paper_section: 17
+    # "nobody has said" and "no agreed measure" added (2026-08-01, Phase 2
+    # round 3): siblings of "nobody has agreed"/"no clear definition of
+    # good" — both are deliberately self-negating full phrases (see
+    # diagnose.score_signatures' fix for self-negating evidence terms),
+    # since the absence itself is the positive evidence for this signature.
     evidence: [not sure how to measure, no benchmark, subjective, quality varies,
-              no scorecard, nobody has agreed, never been measured, no clear definition of good]
+              no scorecard, nobody has agreed, nobody has said, never been measured,
+              no clear definition of good, no agreed measure]
 
   - id: cost_latency_pressure
     problem: Cost or latency pressure at scale
@@ -274,5 +335,11 @@ signatures:
     # place: it's still grounded in the actual stability half of the claim,
     # like the other phrases here, so the genuine stable+volume cases this
     # was covering for don't lose their signal.
+    # "haven't changed in" and "aren't going to" added (2026-08-01, Phase 2
+    # round 3): same silent-apostrophe-word tokenization gap as elsewhere —
+    # "hasn't"/"haven't" and "isn't"/"aren't" tokenize to different words
+    # ("hasn"+"t" vs "haven"+"t"), so the singular and plural subject-verb
+    # forms need to be listed separately rather than relying on the
+    # stemmer or bag-of-words to bridge them.
     evidence: [unchanged for, fine-tune, distil, same shape every time, same format,
-              hasn't changed in years, isn't going to change]
+              hasn't changed in years, haven't changed in, isn't going to change, aren't going to]

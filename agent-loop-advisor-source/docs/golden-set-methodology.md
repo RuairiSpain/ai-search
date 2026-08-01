@@ -319,6 +319,86 @@ above become the new tuning-informing baseline only if a future round
 explicitly relabels them (with the same relabel-then-fresh-batch
 discipline used this round) — until then they remain the holdout.
 
+### Phase 2 round 3 — investigating the 0-recall worklist, 2026-08-01
+
+Requested directly: investigate why 9 signatures scored 0/2-0/3 on the
+round 2 holdout. Investigating meant reading that batch's actual case
+text, which — per the same reasoning as the round 2 relabel — spends it
+as a holdout even though only aggregate numbers had been read before.
+Relabelled all 40 cases `validation` → `tuning` before reading anything,
+rather than quietly reading a "holdout" that was about to stop being one.
+
+**Two more real bugs, found the same way as round 2's:**
+
+- **Negation scope ran across the whole segment instead of forward from
+  the cue.** "During a network outage... needs to check live service
+  status... rather than working off a static script" has "rather than"
+  negating the static-script alternative; a whole-segment scope wrongly
+  erased "check live service status" too, even though it's stated
+  *before* the cue, not after it. Same bug explained the still-open
+  `press-line-scheduling` gap from round 2 and a `deterministic_policy_compliance`
+  miss on `claims-processing-workflow` (the word "deterministic" itself,
+  sitting before an unrelated "no" later in the same sentence). Fixed by
+  slicing each negated segment from the cue's match position onward
+  (`negated_spans()`) instead of returning the whole segment. Verified the
+  list-negation case ("does not compare options, plan, or take actions")
+  is unaffected, since "does not" sits at the start of its segment.
+- This fix alone resolved `turbine-inspection-scheduling`,
+  `exam-hall-seating`, and `home-aide-visit-scheduling`'s
+  `planning_under_constraints` half — all three use "lots of valid X" /
+  "dozens of valid X" phrasing that the existing `many valid` term missed
+  purely on the word "many" being absent (separately widened, see below),
+  compounded by the whole-segment bug swallowing the signal in some cases.
+
+**Widened evidence for the remaining gaps**, same discipline as round 2
+(signature's own `problem`/pattern `summary`/`beats_baseline_when` text
+plus, now that these are legitimate tuning cases, their own wording where
+a generalisable phrase was clearly there): `can't agree which`
+(weak_judgement), `lots of valid`/`dozens of valid` (planning_under_constraints),
+`carry forward`/`inform the next`/`same mistakes` (should_improve_over_runs),
+`runs for weeks`/`system restart` (long_running_process), `zero tolerance`/
+`unbreakable` (deterministic_policy_compliance), `nobody has said`/
+`no agreed measure` (quality_undefined), `haven't changed in`/`aren't
+going to` (stable_high_volume — same apostrophe-tokenization gap as
+`quoted`/`quote`: "hasn't"/"haven't" and "isn't"/"aren't" tokenize to
+different words and need listing separately), `pull the answer from`/
+`straight out of`/`a lookup against` (stale_facts), `a real person`
+(human_judgement_in_output).
+
+**Removed six evidence terms with zero true-positive reliance that were
+pure bag-of-words collision generators**, found by re-checking the full
+tuning cohort after each addition: `valid combinations`, `recurring`,
+`run over run`, `picks up where`, `returning customer`, `sign off`. Two
+of these had been silently propping up a *correct outcome for the wrong
+reason* — `printer-fleet-triage` (`recurring` → `should_improve_over_runs`,
+not the expected `needs_tools_midreasoning`) and `dairy-herd-symptom-review`
+(`sign off` → `human_judgement_in_output`, not the expected
+`multiple_interpretations`) now correctly fall back to `baseline_fallback`
+instead of confidently routing via a signature that was never actually
+supported. That is a **precision fix reported as a small recall/outcome-match
+drop**, not a regression — see the `positive_outcome_match` floor change
+in `tests/test_patcomp.py`, which stopped requiring exact equality for
+exactly this reason.
+
+**Result:** all 16 signatures now show real recall on the full 111-case
+tuning cohort (worst case 4/5; most in the 75-100% range) — a
+qualitative change from round 2's 9 signatures sitting at literal zero.
+Original 26 held their exact Round-1 baseline throughout (20/20, recall
+0.938, precision 0.962). Full 111-case tuning cohort: 84/90 outcome
+match, 71/90 target match, recall 0.864, precision **0.914** (up from
+round 2's 0.894, despite the much larger and more varied cohort — the
+bug fixes bought recall without spending precision). 0 false positives,
+unchanged.
+
+**This round has NOT been checked against a fresh blind holdout.** Every
+number above is a tuning-cohort number; no validation-cohort case exists
+right now (all four batches to date have been relabelled tuning at some
+point). The two bug fixes (forward-scoped negation, self-negating-term
+exemption from round 2) are structural and should generalise — they
+aren't phrased around any specific case's wording — but that is a
+prediction, not a measurement, until a fresh batch is authored and
+checkpointed the same way as rounds 1 and 2.
+
 **Phase 2 — expand evidence lists (tuning cohort only).**
 Per signature, source candidate terms from its `problem` text and the
 pattern's `summary`/`beats_baseline_when` in `agent_pattern.md`/the
