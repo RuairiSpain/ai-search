@@ -554,6 +554,66 @@ any case's specific wording, and negation via contraction is at least as
 common in real business writing as the spelled-out form — but, as
 always, that's a prediction until measured.
 
+*(Note: PR #7 merged before this checkpoint was run — see the "Branch
+history" note at the end of this document for where round 6's commits
+actually live.)*
+
+### Phase 3 checkpoint — round 6, 2026-08-01
+
+A fresh 40-case blind batch was authored (new isolated subagent, zero
+tool calls, industries deliberately disjoint from every prior round:
+retail banking/payments, hospital/clinical admin, warehouse logistics,
+environmental compliance, mining, automotive manufacturing, higher-ed
+admin, nonprofit grants, maritime shipping, consumer electronics supply
+chain, biotech lab operations, entertainment rights licensing,
+cybersecurity/SOC, recruiting, B2B SaaS support, satellite operations,
+municipal utilities). Checkpoint run once, reported as measured:
+
+| Metric | Tuning (151) | Fresh validation (40, never tuned against) |
+|---|---|---|
+| positive outcome match | 114/122 | 22/32 |
+| positive target match | 97/122 | 19/32 |
+| diagnosis recall (positives) | 0.871 | **0.609** |
+| diagnosis precision (all cases) | 0.881 | **0.938** |
+| give-up rate | (n/a) | 0.425 |
+| negatives over-sold | 0 | **0** |
+
+This is the strongest validation-cohort result of any round to date, on
+every axis — recall nearly 40% higher than round 4's 0.438 on a genuinely
+fresh cohort touching zero previously-used industries, and precision
+*higher* than the tuning cohort's own number. The two structural fixes
+from round 5 (contraction-based negation, in particular) look like they
+generalised the way the round 5 write-up predicted: only 4 of 40 cases
+fired an unexpected signature, and only one signature
+(`workflow_too_large`, 0/2) sits at zero recall — a single-digit
+residual, not the wide 5-9-signature spread every earlier round's fresh
+holdout produced. The hard invariant holds exactly, as it has on every
+round: **zero cases over-sold orchestration**, on 4 negative cases in
+this batch.
+
+Per-signature recall: `should_improve_over_runs` 3/3, `multiple_interpretations`
+2/2, `cross_session_recall` 2/2, `relationship_discovery` 2/2,
+`cost_latency_pressure` 2/2, `weak_judgement` 2/3, `needs_tools_midreasoning`
+2/3, `validated_artefacts` 2/3, `human_judgement_in_output` 2/4,
+`long_running_process` 1/2, `quality_undefined` 1/2, `stable_high_volume`
+1/2, `planning_under_constraints` 1/3, `deterministic_policy_compliance`
+1/3, `stale_facts` 1/4, and `workflow_too_large` 0/2 — the one clear
+worklist item for a future round, if one happens. Over-firing was
+similarly narrow: `weak_judgement` ×2, `workflow_too_large` ×1,
+`cost_latency_pressure` ×1.
+
+No validation-cohort case text was read while producing this report —
+only the table and per-signature counts above. Per the Phase 3 rule,
+this round stops here: no follow-up tuning against this result.
+
+**Branch history note (2026-08-01):** PR #7 (rounds 1-5) merged to `main`
+before this checkpoint was authored. Per this repo's session convention,
+work continuing after a merge restarts the same branch name from the new
+`main` rather than reopening the merged PR — this round's commit
+(golden-set additions + this write-up + test-count updates only, no
+`signatures.yaml`/`diagnose.py` changes) therefore lives on a fresh
+history based on `main`, landed via a new PR.
+
 **Phase 2 — expand evidence lists (tuning cohort only).**
 Per signature, source candidate terms from its `problem` text and the
 pattern's `summary`/`beats_baseline_when` in `agent_pattern.md`/the

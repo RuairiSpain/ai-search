@@ -1902,3 +1902,452 @@ cases:
     expected_outcome: three_cards
     cohort: tuning
     tests: "Phase 2 round 4 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [12]."
+
+  # ================= PHASE 2 ROUND 6 VALIDATION COHORT 2026-08-01 =================
+  # Blind-authored via docs/phase1-validation-authoring-brief.md by a fresh subagent
+  # with zero tool uses (confirmed no repository access) -- the round 4 batch above
+  # was relabelled tuning in round 5 to extend the signature list, so this is the
+  # genuine holdout for the Phase 2 round 6 checkpoint. expected_diagnosis and
+  # expected_target are MY translation of the author's own stated "which problem
+  # types apply" answer into signature/pattern ids -- set before running this cohort
+  # even once, never adjusted after seeing a result.
+
+  - id: fraud-call-inconsistency
+    title: "Fraud escalation call inconsistency"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Our fraud analysts already pull the same transaction data every time, but they keep waffling on which cases to escalate versus close \u2014 two analysts looking at the identical file often land on opposite calls. We want something that weighs a few possible calls against our written risk guidelines and tells us which one it picked and why the others didn't make the cut."
+    expected_diagnosis: [weak_judgement]
+    expected_target: "01"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [1]."
+
+  - id: crossdock-holdup
+    title: "Cross-dock pallet holdup live checks"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "When a pallet gets stuck at a cross-dock, our dispatchers have to check the yard system, ping the carrier's tracking feed, and sometimes call the driver directly \u2014 and each of those steps changes what they check next. We want the same back-and-forth handled automatically."
+    expected_diagnosis: [needs_tools_midreasoning]
+    expected_target: "02"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [2]."
+
+  - id: exam-timetable-crunch
+    title: "University exam timetable crunch"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Building next semester's exam timetable: hundreds of room/time combinations are technically fine on paper, but professor availability, room capacity, and accessibility needs rule most of them out instantly. Among what survives that, the order we schedule things in matters a lot for keeping conflicts down."
+    expected_diagnosis: [planning_under_constraints]
+    expected_target: "09"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [3]."
+
+  - id: soc-first-read
+    title: "SOC alert first-read often wrong"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "When an alert fires, our first read on what happened is right maybe half the time \u2014 we assume 'it's the vendor VPN again,' close it, then two days later find out it was a credential leak. We need something that keeps a few explanations open and lets the evidence knock the wrong ones out before landing on an answer."
+    expected_diagnosis: [multiple_interpretations]
+    expected_target: "05"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [4]."
+
+  - id: repeat-ticket-context
+    title: "Repeat support ticket account context"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "A customer might open three tickets over two months about the same integration problem, each handled by a different rep who starts from zero. We can't have every agent seeing every customer's entire history forever, but it should pull in what's actually relevant to that account and let old stuff drop off."
+    expected_diagnosis: [cross_session_recall]
+    expected_target: "06"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [5]."
+
+  - id: phone-screen-drift
+    title: "Phone screen calibration repeated mistakes"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We run the same first-round phone screen calibration every week and keep making the same mistakes. A good screener could flag 'we're screening out too aggressively on communication skills,' but nobody writes it down anywhere the next week's screeners actually see it."
+    expected_diagnosis: [should_improve_over_runs]
+    expected_target: "07"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [6]."
+
+  - id: permit-signoff-chain
+    title: "Extraction permit multi-stage sign-off"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Getting a new extraction permit through internal sign-off takes three to six weeks and passes through environmental review, safety sign-off, legal, and finally an executive approval. If the system reboots partway through we can't lose track of where a given application was, and a couple of those checks are just yes/no against a checklist \u2014 no judgement involved at all."
+    expected_diagnosis: [long_running_process]
+    expected_target: "08"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [7]."
+
+  - id: supplier-quality-pack
+    title: "Monthly supplier quality pack assembly"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Monthly supplier quality pack memo: pulling defect stats, drafting the corrective-action summary, and formatting the regulatory annex are three pretty different jobs that barely depend on each other, and right now one person tries to do all three end to end. We'd want the pieces handled separately and then someone or something checking that the combined pack actually holds together before it goes out."
+    expected_diagnosis: [workflow_too_large]
+    expected_target: "03"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [8]."
+
+  - id: grant-sign-off-window
+    title: "Large grant senior sign-off window"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Before a grant over $250k goes out, someone senior needs to actually look at it, not just click approve. If they don't get to it within two business days it should go to someone else, with a note on file for why it got kicked back if it does."
+    expected_diagnosis: [human_judgement_in_output]
+    expected_target: "13"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [9]."
+
+  - id: shutoff-notice-compliance
+    title: "Utility shutoff notice compliance"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Every disconnection notice has to comply with the state's shutoff moratorium rules \u2014 medical exemptions, weather holds, payment plan status \u2014 and 'right most of the time' gets us sued. The system can suggest what it thinks should happen, but the actual go/no-go has to run through a hard rule check that can't be argued out of it."
+    expected_diagnosis: [deterministic_policy_compliance]
+    expected_target: "04"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [10]."
+
+  - id: sync-rights-trace
+    title: "Music sync rights ownership trace"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Figuring out who actually owns the sync rights to a given track means working through publisher assignments, a catalogue sale from years back, and a co-writer split sheet sitting in a completely different file. No single document has the answer \u2014 you have to trace it through all of them and be able to show the trail it followed."
+    expected_diagnosis: [relationship_discovery]
+    expected_target: "10"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [11]."
+
+  - id: liquid-handler-script
+    title: "Liquid handler protocol script generation"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We want it to produce the actual protocol script for the liquid handler, not just describe one. We already have a simulator that either accepts the script or throws specific errors back, so it should be able to fix its own mistakes against that before a bench scientist ever sees it."
+    expected_diagnosis: [validated_artefacts]
+    expected_target: "11"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [12]."
+
+  - id: anomaly-triage-unclear
+    title: "Satellite anomaly triage no measure"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We want AI to help triage anomaly reports off the satellite bus, but honestly nobody on the team has agreed on what a good triage call even looks like or how you'd score one against another."
+    expected_diagnosis: [quality_undefined]
+    expected_target: "none"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [13]."
+
+  - id: berth-allocation-unclear
+    title: "Berth allocation quality undefined"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Leadership wants an AI tool to help with berth allocation decisions, but ask five people what makes one allocation better than another and you get five different answers."
+    expected_diagnosis: [quality_undefined]
+    expected_target: "none"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [13]."
+
+  - id: sku-restock-scale
+    title: "SKU restock recommendation latency budget"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We're routing something like 400,000 SKU restock recommendations a day and finance is already asking about the per-call cost. Whatever we build has to come back in under a second and can't blow up the compute bill."
+    expected_diagnosis: [cost_latency_pressure]
+    expected_target: "none"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [14]."
+
+  - id: card-swipe-scoring
+    title: "Card-present fraud scoring latency"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Card-present fraud scoring runs on every swipe \u2014 millions a day, sub-200ms or the terminal times out. Cost per decision matters just as much as accuracy at that volume."
+    expected_diagnosis: [cost_latency_pressure]
+    expected_target: "none"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [14]."
+
+  - id: emissions-report-repetition
+    title: "Emissions report stable high volume"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Same emissions-report format, same handful of fields, every single day for years, tens of thousands of times a day. It never changes, so lately most of what we're paying for seems to be overhead rather than the actual work."
+    expected_diagnosis: [stable_high_volume]
+    expected_target: "none"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [15]."
+
+  - id: meter-read-volume
+    title: "Municipal meter reading stable volume"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Two million-odd routine meter readings a day, identical three-field format, day after day after day \u2014 the per-read tooling overhead is starting to cost more than the reading itself."
+    expected_diagnosis: [stable_high_volume]
+    expected_target: "none"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [15]."
+
+  - id: email-digest-lookup
+    title: "Email digest setting lookup"
+    source: authored
+    case_type: negative_baseline
+    requirements_brief: "Where in the admin console does a customer turn off email digests? Just need the answer with a link to the help doc."
+    expected_diagnosis: [stale_facts]
+    expected_target: "00"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): neg."
+
+  - id: icu-visitor-hours
+    title: "ICU visitor hours policy lookup"
+    source: authored
+    case_type: negative_baseline
+    requirements_brief: "What's our current policy on visitor hours for the ICU? Need the exact wording pulled from the handbook."
+    expected_diagnosis: [stale_facts]
+    expected_target: "00"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): neg."
+
+  - id: meter-lookup-policy
+    title: "Meter account and late fee policy lookup"
+    source: authored
+    case_type: negative_baseline
+    requirements_brief: "Look up the account holder's name and meter number for service address 14 Birch Lane, and tell me which policy document covers the late fee on that account type."
+    expected_diagnosis: [stale_facts]
+    expected_target: "00"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): neg."
+
+  - id: reagent-sds-lookup
+    title: "Reagent safety data sheet lookup"
+    source: authored
+    case_type: negative_baseline
+    requirements_brief: "Find the safety data sheet for the reagent we use in assay prep and pull the flash point number out of it."
+    expected_diagnosis: [stale_facts]
+    expected_target: "00"
+    expected_outcome: baseline_recommended
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): neg."
+
+  - id: grant-efficiency-ticket
+    title: "Vague grant efficiency ticket"
+    source: authored
+    case_type: insufficient_input
+    requirements_brief: "TICKET-4471 / Priority: High / Requestor: Development team / Description: We want to use AI to help us be more efficient with grant stuff."
+    expected_diagnosis: []
+    expected_target: "00"
+    expected_outcome: baseline_fallback
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): None."
+
+  - id: plant-floor-ai-vague
+    title: "Vague plant floor AI request"
+    source: authored
+    case_type: insufficient_input
+    requirements_brief: "Can we get some AI on the plant floor? Not totally sure what for yet, just feels like we're falling behind everyone else."
+    expected_diagnosis: []
+    expected_target: "00"
+    expected_outcome: baseline_fallback
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): None."
+
+  - id: satellite-ops-explore
+    title: "Vague satellite ops exploration"
+    source: authored
+    case_type: insufficient_input
+    requirements_brief: "Explore whether an agent could help with satellite operations generally and come back with ideas."
+    expected_diagnosis: []
+    expected_target: "00"
+    expected_outcome: baseline_fallback
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): None."
+
+  - id: rights-team-ai-initiative
+    title: "Vague rights team AI initiative"
+    source: authored
+    case_type: insufficient_input
+    requirements_brief: "Leadership wants an 'AI initiative' for the rights team by Q3. Details TBD, but they want something to show the board."
+    expected_diagnosis: []
+    expected_target: "00"
+    expected_outcome: baseline_fallback
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): None."
+
+  - id: discharge-approval-compound
+    title: "Clinical discharge and insurance compliance"
+    source: authored
+    case_type: positive_composition
+    requirements_brief: "Discharge approvals need someone with clinical authority to actually sign off, not a rubber stamp. Separately, the insurance pre-authorization rules for discharge have to be followed to the letter every single time or the claim gets denied \u2014 two different problems, but they're both part of getting a patient out the door."
+    expected_diagnosis: [human_judgement_in_output, deterministic_policy_compliance]
+    expected_target: "sequence(04, 13)"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [9, 10]."
+
+  - id: port-closure-reroute
+    title: "Port closure shipment reroute planning"
+    source: authored
+    case_type: positive_composition
+    requirements_brief: "Rerouting a shipment after a port closure means checking live carrier capacity and customs status as you go, and then picking among dozens of valid reroute options where truck availability and delivery windows knock most of them out fast \u2014 and the order you consider the survivors in still matters for cost."
+    expected_diagnosis: [needs_tools_midreasoning, planning_under_constraints]
+    expected_target: "sequence(02, 09)"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [2, 3]."
+
+  - id: onboarding-bot-memory-and-lessons
+    title: "Freshman onboarding bot memory and lessons"
+    source: authored
+    case_type: positive_composition
+    requirements_brief: "Every incoming freshman cohort gets an onboarding chatbot, and each student comes back to it over the semester with more questions. It needs to remember what a given student already asked this term, and it should also get better cohort over cohort about which answers actually help versus which ones confuse people."
+    expected_diagnosis: [cross_session_recall, should_improve_over_runs]
+    expected_target: "sequence(06, 07)"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [5, 6]."
+
+  - id: major-incident-response
+    title: "Major incident response with legal gate"
+    source: authored
+    case_type: positive_composition
+    requirements_brief: "A major incident response runs for days across containment, forensics, and disclosure prep \u2014 some of that sits on a strict compliance clock. The final call on whether to notify customers has to go through legal's eyes within a deadline, not an automatic send, no matter how the earlier steps went."
+    expected_diagnosis: [long_running_process, human_judgement_in_output]
+    expected_target: "sequence(08, 13)"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [7, 9]."
+
+  - id: hiring-pipeline-crunch
+    title: "Hiring pipeline split with final judgement call"
+    source: authored
+    case_type: positive_composition
+    requirements_brief: "Sifting through 300 applications for one role means splitting resume screening, reference-check summarizing, and panel-feedback collation into separate streams that barely touch each other, then someone checking the combined shortlist holds together. At the very end, picking between the top three candidates is really a judgement call \u2014 the facts on all three are fine, it's the weighing that's hard."
+    expected_diagnosis: [workflow_too_large, weak_judgement]
+    expected_target: "sequence(01, 03)"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [8, 1]."
+
+  - id: blast-plan-clearance
+    title: "Blast plan generation and safety clearance"
+    source: authored
+    case_type: positive_composition
+    requirements_brief: "We want it to draft the actual blast-plan configuration file \u2014 that part's just something we can run against our simulator and fix if it fails. But whether a given blast plan meets the required safety clearance distances has to be a hard rule check, not a suggestion it's allowed to talk its way around."
+    expected_diagnosis: [validated_artefacts, deterministic_policy_compliance]
+    expected_target: "sequence(04, 11)"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [12, 10]."
+
+  - id: defect-report-first-theory
+    title: "Vehicle defect report first theory often wrong"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "When a vehicle defect report comes in, our engineers' first theory is usually a supplier part batch \u2014 but it's actually the assembly torque spec about half the time, and by the time the recall case is built around the wrong theory we've burned two weeks."
+    expected_diagnosis: [multiple_interpretations]
+    expected_target: "05"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [4]."
+
+  - id: recalled-capacitor-trace
+    title: "Recalled capacitor lot trace"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Tracing which finished-goods lots contain a recalled capacitor means following purchase orders through three tiers of contract manufacturers and a component-substitution log kept somewhere else entirely. The answer isn't sitting in any one system."
+    expected_diagnosis: [relationship_discovery]
+    expected_target: "10"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [11]."
+
+  - id: shift-schedule-picks
+    title: "Shift scheduling judgement inconsistency"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Same shift-scheduling facts every week, but the supervisor's picks are inconsistent. Want it to weigh the options and explain the choice."
+    expected_diagnosis: [weak_judgement]
+    expected_target: "01"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [1]."
+
+  - id: soc-live-lookup-ticket
+    title: "SOC live lookup interleaved investigation"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "TICKET-8823 / Priority: Medium / Component: SOC tooling / Description: analyst needs the assistant to pull live EDR process trees, check a threat-intel feed, and possibly isolate a host, all interleaved as the picture develops. Can't pre-fetch this \u2014 depends entirely on what the last lookup shows."
+    expected_diagnosis: [needs_tools_midreasoning]
+    expected_target: "02"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [2]."
+
+  - id: haul-route-planning
+    title: "Mining haul route weekly planning"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Weekly haul-route planning: tons of legal route combos, but permit and axle-weight limits rule most out fast; sequencing what's left matters for fuel cost."
+    expected_diagnosis: [planning_under_constraints]
+    expected_target: "09"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [3]."
+
+  - id: cell-culture-panel-learning
+    title: "Cell culture panel repeated mistake learning"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "Every month we run same panel of experiment on cell culture, and every time junior scientist repeat same mistake nobody write down before. Need something that learn from last run and tell next time what must change."
+    expected_diagnosis: [should_improve_over_runs]
+    expected_target: "07"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [6]."
+
+  - id: conjunction-manoeuvre-signoff
+    title: "Collision avoidance manoeuvre sign-off"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "A collision-avoidance manoeuvre recommendation is cheap to get wrong in dollars but catastrophic to get wrong in orbit \u2014 so before anything actually fires thrusters, a flight dynamics engineer has to sign it, inside a tight window before the conjunction closes, and we need a record of why if they ever override it."
+    expected_diagnosis: [human_judgement_in_output]
+    expected_target: "13"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [9]."
+
+  - id: billing-migration-script
+    title: "Billing pricing tier migration script"
+    source: authored
+    case_type: positive_single
+    requirements_brief: "We need the actual updated pricing-tier migration script for the billing database, not a description of one. We have a staging environment that will tell us straight away whether it actually works, and it should keep patching itself against those failures instead of handing us something broken."
+    expected_diagnosis: [validated_artefacts]
+    expected_target: "11"
+    expected_outcome: three_cards
+    cohort: validation
+    tests: "Phase 2 round 6 validation cohort (blind-authored via docs/phase1-validation-authoring-brief.md, fresh batch). Author-stated problem type(s): [12]."
