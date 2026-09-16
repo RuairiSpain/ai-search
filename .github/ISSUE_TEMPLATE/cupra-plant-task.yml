@@ -1,0 +1,44 @@
+name: Cupra plant task
+description: Create a concise work item for the Cupra manufacturing demo
+title: "[Cupra Demo] "
+labels:
+  - needs-triage
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What plant outcome is needed?
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Plant area
+      options:
+        - Body shop
+        - Paint
+        - Battery assembly
+        - Final assembly
+        - Quality
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I checked that this work item is not already tracked
+          required: true

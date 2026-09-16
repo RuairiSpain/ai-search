@@ -1,5 +1,8 @@
 # Documentation
 
+## GitHub Projects training
+
+- [Cupra GitHub Projects demo](./index.html)
 
 ## Azure AI Search deep-dive guides
 
