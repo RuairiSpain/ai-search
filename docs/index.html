@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A visual GitHub Projects workflow guide using a simplified Cupra car manufacturing plant scenario.">
+  <title>Cupra GitHub Projects Demo</title>
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+      const theme =
+        param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --cp-bg: #f7f4ef;
+      --cp-bg-elevated: #fcfbf8;
+      --cp-surface: #ffffff;
+      --cp-surface-soft: #f5f5f5;
+      --cp-border: #dedede;
+      --cp-border-strong: #919191;
+      --cp-text: #242424;
+      --cp-text-muted: #5c5c5c;
+      --cp-text-soft: #6f6f6f;
+      --cp-accent: #b11f4b;
+      --cp-accent-hover: #9a1a41;
+      --cp-accent-soft: rgba(177, 31, 75, 0.08);
+      --cp-accent-fg: #ffffff;
+      --cp-success: #16a34a;
+      --cp-danger: #dc2626;
+      --cp-warning: #f59e0b;
+      --cp-link: #0078d4;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+      --cp-overlay: rgba(255, 255, 255, 0.8);
+      --cp-panel: rgba(255, 255, 255, 0.86);
+      --cp-panel-strong: rgba(255, 255, 255, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.55);
+      --cp-highlight: rgba(177, 31, 75, 0.12);
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --cp-bg: #3d3b3a;
+      --cp-bg-elevated: #343231;
+      --cp-surface: #292929;
+      --cp-surface-soft: #2e2e2e;
+      --cp-border: #474747;
+      --cp-border-strong: #5f5f5f;
+      --cp-text: #dedede;
+      --cp-text-muted: #919191;
+      --cp-text-soft: #b0b0b0;
+      --cp-accent: #fd8ea1;
+      --cp-accent-hover: #fb7b91;
+      --cp-accent-soft: rgba(253, 142, 161, 0.14);
+      --cp-accent-fg: #1a1a1a;
+      --cp-success: #4ade80;
+      --cp-danger: #f87171;
+      --cp-warning: #fbbf24;
+      --cp-link: #4da6ff;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+      --cp-overlay: rgba(41, 41, 41, 0.88);
+      --cp-panel: rgba(41, 41, 41, 0.72);
+      --cp-panel-strong: rgba(41, 41, 41, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.04);
+      --cp-highlight: rgba(253, 142, 161, 0.12);
+    }
+  </style>
+  <link rel="stylesheet" href="cupra-projects.css">
+</head>
+<body>
+  <header>
+    <div class="hero">
+      <p class="eyebrow">Cupra plant workflow</p>
+      <h1>GitHub Projects, from issue to Done</h1>
+      <p class="lede">GitHub Projects supports collaboration and modern Agile work by keeping planning, ownership, discussion, implementation, and status connected. The board gives the team a shared, current view without duplicating delivery work in a separate tracker.</p>
+    </div>
+  </header>
+
+  <nav aria-label="Page sections">
+    <ul>
+      <li><a href="#workflow">Contributor workflow</a></li>
+      <li><a href="#setup">Setup Project</a></li>
+      <li><a href="#reference">Quick reference</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <section id="workflow">
+      <p class="eyebrow">Normal contributor workflow</p>
+      <h2>Move plant work through a visible flow</h2>
+      <p class="intro">An <strong>issue</strong> is a trackable unit of work: a fault, improvement, check, or instruction update. A <strong>Kanban board</strong> groups those issues by current status so the team can see demand, active work, review queues, and completed outcomes.</p>
+
+      <ol class="status-flow" aria-label="Cupra demo status flow">
+        <li>Backlog</li>
+        <li>Ready</li>
+        <li>In Progress</li>
+        <li>In Review</li>
+        <li>Done</li>
+      </ol>
+
+      <div class="steps">
+        <article class="step">
+          <h3><span class="step-number">1</span>Find or create the issue</h3>
+          <p>Search the issue list first. Create a new issue only when the plant outcome is not already tracked.</p>
+          <figure>
+            <img src="images/cupra-01-issues-list.png" alt="RuairiSpain ai-search issue list containing Cupra plant demo work items with labels, assignees, and milestone">
+            <figcaption>The repository issue list is the searchable backlog and shows ownership and classification at a glance.</figcaption>
+          </figure>
+        </article>
+
+        <article class="step">
+          <h3><span class="step-number">2</span>Use a small issue template</h3>
+          <p>Capture a summary, testable acceptance criteria, the plant area, and confirmation that the work is not a duplicate.</p>
+          <figure>
+            <img src="images/cupra-02-issue-template.png" alt="Cupra plant task issue form YAML in the RuairiSpain ai-search repository">
+            <figcaption>The committed issue-form template stays intentionally small so reporters provide useful structure without unnecessary ceremony.</figcaption>
+          </figure>
+        </article>
+
+        <article class="step">
+          <h3><span class="step-number">3</span>Set ownership and planning metadata</h3>
+          <p>Use the sidebar to set an existing collaborator, plant-area labels, the project, and the pilot-build milestone. Reassign when responsibility changes.</p>
+          <div class="grid">
+            <figure>
+              <img src="images/cupra-03-issue-detail.png" alt="Populated Cupra demo issue in RuairiSpain ai-search with acceptance criteria and sidebar metadata">
+              <figcaption>A complete work item combines a clear outcome with visible ownership, labels, and milestone.</figcaption>
+            </figure>
+            <figure>
+              <img src="images/cupra-04-assignment.png" alt="GitHub issue sidebar showing the existing RuairiSpain assignee">
+              <figcaption>The demo assigns only the existing repository owner. It does not invite collaborators or change repository access.</figcaption>
+            </figure>
+          </div>
+        </article>
+
+        <article class="step">
+          <h3><span class="step-number">4</span>Collaborate in the timeline</h3>
+          <p>Use comments for decisions, evidence, blockers, and direct hand-offs. Mention the responsible person and update acceptance criteria when the expected outcome changes.</p>
+          <figure>
+            <img src="images/cupra-05-comments.png" alt="Cupra torque-station issue timeline with a hand-off comment">
+            <figcaption>The issue timeline keeps the calibration hand-off and requested evidence beside the work item.</figcaption>
+          </figure>
+        </article>
+
+        <article class="step">
+          <h3><span class="step-number">5</span>Move the card as the work changes</h3>
+          <p>Drag a card between columns or change its Status field. The field value and board column represent the same delivery state.</p>
+          <div class="grid">
+            <figure>
+              <img src="images/cupra-06-board-ready.png" alt="Cupra Github Project Demo board with the torque calibration card in Ready">
+              <figcaption>The torque-station calibration is refined and ready to begin.</figcaption>
+            </figure>
+            <figure>
+              <img src="images/cupra-07-board-progress.png" alt="Cupra Github Project Demo board with the paint checklist card in In Progress">
+              <figcaption>The paint-checklist update is active, making queued and current work easy to distinguish.</figcaption>
+            </figure>
+          </div>
+        </article>
+
+        <article class="step">
+          <h3><span class="step-number">6</span>Link the pull request</h3>
+          <p>Put <code>Fixes #14</code> in the pull-request description when the PR completes the issue. GitHub adds Development links in both directions and closes the issue after merge to the default branch.</p>
+          <figure>
+            <img src="images/cupra-08-linked-pr.png" alt="RuairiSpain ai-search pull request linked to issue 14 with a Fixes keyword">
+            <figcaption>The implementation PR is connected to the training issue with a closing keyword rather than a loose comment reference.</figcaption>
+          </figure>
+        </article>
+
+        <article class="step">
+          <h3><span class="step-number">7</span>Verify the outcome and finish in Done</h3>
+          <p>Close completed work with evidence in the timeline. The Done column should contain verified outcomes, not abandoned work.</p>
+          <figure>
+            <img src="images/cupra-09-done.png" alt="Closed battery carrier fitment issue and corresponding Done project card">
+            <figcaption>The battery fitment instruction is closed and represented in Done beside open work in every other stage.</figcaption>
+          </figure>
+        </article>
+      </div>
+    </section>
+
+    <section id="setup">
+      <p class="eyebrow">Administration</p>
+      <h2>Setup Project</h2>
+      <p class="intro">Project setup is a one-time team task. Start with a board, connect work from the repository, keep the status model small, and add only fields that support a planning decision.</p>
+
+      <div class="steps">
+        <article class="step">
+          <h3><span class="step-number">1</span>Create the project</h3>
+          <p>Create a new project named <strong>Cupra Github Project Demo</strong>. Add only <strong>RuairiSpain/ai-search</strong> work and make the source repository explicit on every card.</p>
+          <figure>
+            <img src="images/cupra-10-project-overview.png" alt="Cupra Github Project Demo overview showing five statuses and RuairiSpain ai-search work">
+            <figcaption>The project contains only clearly identified destination-repository work across the five-stage flow.</figcaption>
+          </figure>
+        </article>
+
+        <article class="step">
+          <h3><span class="step-number">2</span>Create the issue template</h3>
+          <p>Add <code>.github/ISSUE_TEMPLATE/cupra-plant-task.yml</code> with only Summary, Acceptance criteria, Plant area, and duplicate-check confirmation.</p>
+          <figure>
+            <img src="images/cupra-11-template-source.png" alt="Cupra plant task issue form source on the destination branch">
+            <figcaption>The YAML file defines the same concise structure used by the demo issues and will render as an issue form after merge.</figcaption>
+          </figure>
+        </article>
+
+        <article class="step">
+          <h3><span class="step-number">3</span>Use existing access; do not grant it for a demo</h3>
+          <p>Repository collaborators can be assigned to issues. Add or change access only through repository or organization settings and only with explicit authorization.</p>
+          <figure>
+            <img src="images/cupra-12-access.png" alt="Destination issue showing assignment to the existing repository owner">
+            <figcaption>This demo reuses existing authorization and does not invite or grant permissions to additional users.</figcaption>
+          </figure>
+        </article>
+
+        <article class="step">
+          <h3><span class="step-number">4</span>Configure Status and Priority</h3>
+          <p>Use five Status values: Backlog, Ready, In Progress, In Review, and Done. Add a small Priority field with P1, P2, and P3.</p>
+          <div class="grid">
+            <figure>
+              <img src="images/cupra-13-status-settings.png" alt="Cupra project Status field showing Backlog, Ready, In Progress, In Review, and Done">
+              <figcaption>A compact Status field keeps the board readable and gives each column an unambiguous meaning.</figcaption>
+            </figure>
+            <figure>
+              <img src="images/cupra-14-priority-field.png" alt="Cupra project Priority field showing P1, P2, and P3">
+              <figcaption>Priority answers what should be worked on first without duplicating Status.</figcaption>
+            </figure>
+          </div>
+        </article>
+
+        <article class="step">
+          <h3><span class="step-number">5</span>Keep views and workflows useful</h3>
+          <p>Use the Kanban board for flow, a Priority board to focus planning conversations, and a burndown chart in Insights to compare remaining work with completed work over time. Built-in workflows can reduce status drift by moving closed items to Done and reopened items back to active work.</p>
+          <div class="grid">
+            <figure>
+              <img src="images/cupra-15-burndown.png" alt="Burndown chart in GitHub Projects Insights for the Cupra demo">
+              <figcaption>The burndown chart makes progress and remaining work visible during the pilot-build period.</figcaption>
+            </figure>
+            <figure>
+              <img src="images/cupra-16-workflows.png" alt="Enabled GitHub Projects workflows for the Cupra demo">
+              <figcaption>Use automation only where it reflects a reliable team rule; issue and pull-request activity remains the system of record.</figcaption>
+            </figure>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="reference" class="callout">
+      <h2>Quick reference</h2>
+      <p><strong>Issue:</strong> the work and acceptance criteria. <strong>Assignee:</strong> the accountable collaborator. <strong>Labels:</strong> type and plant area. <strong>Priority:</strong> urgency. <strong>Status:</strong> current delivery stage. <strong>Pull request:</strong> the reviewed implementation. <strong>Done:</strong> completed and verified.</p>
+      <p><a href="https://github.com/users/RuairiSpain/projects/3">Open Cupra Github Project Demo</a> · <a href="https://github.com/RuairiSpain/ai-search/issues?q=is%3Aissue%20label%3Acupra-demo">Open the destination demo issues</a></p>
+    </section>
+  </main>
+
+  <footer>
+    <p>Training scenario only. The Cupra-labelled issues and project exist to demonstrate GitHub Projects without changing production work.</p>
+  </footer>
+</body>
+</html>
